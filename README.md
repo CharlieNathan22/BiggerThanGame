@@ -1,4 +1,4 @@
-# Bigger Than
+# BiggerThanGame
 
 **A higher-or-lower game for football fans, where the stat keeps changing underneath you.**
 
@@ -25,12 +25,12 @@ Built for football fans, not casual quizzers. The deck assumes you know who Pirl
 
 **In development.** Friendly Mode ships first; ranked play and leaderboards follow.
 
-| | |
-|---|---|
-| Friendly Mode | In progress |
-| Daily Ranked | Not started |
-| Endless | Not started |
-| Deck | Being entered by hand |
+|               |                       |
+| ------------- | --------------------- |
+| Friendly Mode | In progress           |
+| Daily Ranked  | Not started           |
+| Endless       | Not started           |
+| Deck          | Being entered by hand |
 
 ---
 
@@ -52,20 +52,20 @@ All three modes use one life. One wrong answer ends the run.
 
 ## The stats
 
-| Stat | Definition |
-|---|---|
-| Career goals | Senior career goals, club and country. Not applicable to goalkeepers. |
-| Caps | Senior international appearances only. |
-| International goals | Senior international goals. Not applicable to goalkeepers. |
-| Club appearances | Senior club appearances, all competitions, all clubs. |
-| Instagram followers | Snapshot-dated. The date is shown on the card. |
-| Highest transfer fee | Largest single reported fee, shown with the year. **Not** inflation-adjusted. |
-| World Cup appearances | World Cup finals matches played. |
-| Club trophies | See below. |
-| International trophies | Major international honours. |
-| Clean sheets | Goalkeepers and defenders only. |
-| Clubs played for | Count of senior clubs. |
-| Age | Computed from date of birth. Living players only. |
+| Stat                   | Definition                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| Career goals           | Senior career goals, club and country. Not applicable to goalkeepers.         |
+| Caps                   | Senior international appearances only.                                        |
+| International goals    | Senior international goals. Not applicable to goalkeepers.                    |
+| Club appearances       | Senior club appearances, all competitions, all clubs.                         |
+| Instagram followers    | Snapshot-dated. The date is shown on the card.                                |
+| Highest transfer fee   | Largest single reported fee, shown with the year. **Not** inflation-adjusted. |
+| World Cup appearances  | World Cup finals matches played.                                              |
+| Club trophies          | See below.                                                                    |
+| International trophies | Major international honours.                                                  |
+| Clean sheets           | Goalkeepers and defenders only.                                               |
+| Clubs played for       | Count of senior clubs.                                                        |
+| Age                    | Computed from date of birth. Living players only.                             |
 
 **Club trophies counts:** domestic leagues, domestic cups, continental competitions and cups
 (Champions League, Europa League, Copa Libertadores and equivalents), and the Club World Cup.
@@ -160,7 +160,7 @@ The full design and architecture documents are in this repo:
 They're public because a documented design is a better design, and because the anti-cheat model
 should hold whether or not it's written down. If it only works while it's secret, it doesn't work.
 
-They also record *why* decisions went the way they did, which is the part that usually gets lost.
+They also record _why_ decisions went the way they did, which is the part that usually gets lost.
 
 ---
 
@@ -209,7 +209,7 @@ Commercial use is not permitted. If you want to do something commercial with it,
 The deck data is not covered by this licence and is not distributed here. Images remain under their
 own licences — see the [credits page](https://biggerthangame.com/credits).
 
-*Not legal advice; read the licence itself rather than this summary.*
+_Not legal advice; read the licence itself rather than this summary._
 
 ---
 
