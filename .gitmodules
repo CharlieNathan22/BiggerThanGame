@@ -1,0 +1,3 @@
+[submodule "packages/deck/data"]
+	path = packages/deck/data
+	url = git@github.com:CharlieNathan22/biggerthan-deck.git
