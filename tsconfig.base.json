@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "resolveJsonModule": true,
+    "noEmit": true,
+
+    "paths": {
+      "@bt/core": ["./packages/core/src/index.ts"],
+      "@bt/core/*": ["./packages/core/src/*"],
+      "@bt/deck": ["./packages/deck/src/index.ts"],
+      "@bt/deck/*": ["./packages/deck/src/*"]
+    }
+  }
+}

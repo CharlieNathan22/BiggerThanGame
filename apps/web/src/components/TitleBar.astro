@@ -1,0 +1,50 @@
+---
+interface Props { streak?: number; best?: number; }
+const { streak = 0, best = 0 } = Astro.props;
+---
+
+<header class="topbar">
+  <div class="title">
+    <span class="bt">Bigger<em>Than</em> Game</span>
+    <span class="dash">—</span>
+    <span class="fl">Football <span class="legends">Legends</span></span>
+  </div>
+  <div class="scores">
+    <div class="score"><span>Streak</span><strong class="num">{streak}</strong></div>
+    <div class="score"><span>Best</span><strong class="num">{best}</strong></div>
+  </div>
+</header>
+
+<style>
+  .topbar {
+    background: var(--ink);
+    border-bottom: 1px solid rgba(255, 176, 32, 0.28);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; padding: 9px 16px; flex-wrap: wrap;
+  }
+  .title { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; line-height: 1; }
+  .bt { font-size: 14px; font-variation-settings: 'wdth' 112, 'wght' 800; letter-spacing: -0.01em; }
+  .bt em { font-style: normal; color: var(--gold); }
+  .dash { color: rgba(238, 243, 241, 0.3); font-size: 13px; }
+  .fl {
+    font-size: 13.5px; color: var(--dim);
+    font-variation-settings: 'wdth' 90, 'wght' 600;
+    display: flex; align-items: baseline; gap: 7px;
+  }
+  .legends {
+    font-family: var(--font-display); font-weight: 900;
+    font-size: 19px; letter-spacing: 0.055em;
+    background: linear-gradient(177deg, #FFF3C4 0%, #FFD164 32%, #E8991A 62%, #A96A0C 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.85));
+  }
+  @media (min-width: 560px) {
+    .bt { font-size: 16px; }
+    .legends { font-size: 22px; }
+    .fl { font-size: 14.5px; }
+  }
+  .scores { display: flex; gap: 18px; align-items: baseline; margin-left: auto; }
+  .score { display: flex; gap: 6px; align-items: baseline; }
+  .score span { font-size: 10.5px; color: var(--dim); font-variation-settings: 'wdth' 88, 'wght' 600; }
+  .score strong { font-size: 18px; }
+</style>

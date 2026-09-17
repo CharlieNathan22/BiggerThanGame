@@ -1,9 +1,5 @@
 {
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "lib": ["ES2022"],
-    "types": [],
-    "rootDir": "./src"
-  },
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "lib": ["ES2022"], "types": [], "rootDir": "./src" },
   "include": ["src/**/*"]
 }
