@@ -2,6 +2,9 @@ name = "biggerthangame"
 main = "worker/index.ts"
 compatibility_date = "2026-09-17"
 compatibility_flags = ["nodejs_compat"]
+routes = [
+  { pattern = "biggerthangame.com", custom_domain = true }
+]
 
 [assets]
 directory = "./apps/web/dist"

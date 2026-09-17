@@ -1,6 +1,6 @@
 # Bigger Than — Architecture
 
-**Version 1** · September 2026 · companion to `DESIGN.md`
+**Version 2** · September 2026 · companion to `DESIGN.md`
 
 `DESIGN.md` is the authority on what the game is. This document covers how it is built and served.
 Where the two overlap, `DESIGN.md` wins on game behaviour and this document wins on
@@ -67,7 +67,7 @@ served through a custom domain), `RUN_SECRET` (secret), `TURNSTILE_SECRET` (secr
 │   │   ├── sequence.ts    # deterministic round sequence from a seed
 │   │   └── types.ts
 │   └── deck/
-│       ├── players/       # one YAML file per player
+│       ├── data/          # private submodule: player YAML + image originals
 │       ├── schema.ts      # Zod schema
 │       └── build.ts       # validation + precompute → artifacts
 ├── apps/web/              # Astro + Svelte
@@ -95,7 +95,7 @@ These four are what make the leaderboard defensible. Everything else is negotiab
    (~80–100 players) because that mode runs entirely in the browser. **Nothing outside the Friendly
    pool may ever appear in a client bundle.** The build must assert this.
 2. **No prefetching of hidden values, not even one round ahead.** Buffering rounds for latency
-   would mean several readable answers sitting in memory at all times. Prefetch *display* data
+   would mean several readable answers sitting in memory at all times. Prefetch _display_ data
    only — and do prefetch it: images especially must be loaded ahead of the round they appear in
    (section 9).
 3. **The round sequence is a pure function of the seed** and does not depend on player answers.
@@ -109,38 +109,49 @@ These four are what make the leaderboard defensible. Everything else is negotiab
 
 ## 5. The deck
 
-One YAML file per player under `packages/deck/players/`:
+One YAML file per player, in the private submodule at `packages/deck/data/players/`:
 
 ```yaml
 id: zidane-zinedine
 name: Zinedine Zidane
 country: France
-position: MF          # GK | DF | MF | FW  — drives clean-sheet eligibility
+position: MF # GK | DF | MF | FW  — drives the goals-stat exclusion
 dob: 1972-06-23
 deceased: false
+friendly: true # in the client-side Friendly pool — full values ship publicly
 stats:
-  goals:  { value: 156,  source: "wikipedia:Zinedine_Zidane", as_of: 2026-09-01 }
-  caps:   { value: 108,  source: "wikipedia:Zinedine_Zidane", as_of: 2026-09-01 }
-  apps:   { value: 506,  source: "wikipedia:Zinedine_Zidane", as_of: 2026-09-01 }
-  ig:     { value: 41.2, source: "instagram:zidane",          as_of: 2026-09-01 }
-  fee:    { value: 77.5, year: 2001, source: "...",           as_of: 2026-09-01 }
-  wca:    { value: 12,   source: "...", as_of: 2026-09-01 }
-  igoals: { value: 31,   source: "...", as_of: 2026-09-01 }   # international goals
-  ct:     { value: 9,    source: "...", as_of: 2026-09-01 }
-  it:     { value: 2,    source: "...", as_of: 2026-09-01 }
-  clubs:  { value: 4,    source: "...", as_of: 2026-09-01 }
-  # cs omitted — not a goalkeeper or defender
+  club_goals: 125
+  caps: 108
+  apps: 506
+  igoals: 31
+  ct: 9
+  it: 2
+  clubs: 4
+  ig: { value: 41.2, as_of: 2026-09-17 } # snapshot date is shown on the card
+  fee: { value: 77.5, year: 2001 } # year is shown on the card
+image: # omit entirely if no usable free image exists
+  file: zidane-2008.jpg # original, under packages/deck/images/
+  author: "Jane Smith"
+  licence: CC-BY-4.0 # CC-BY-* | CC-BY-SA-* | CC0 | PD
+  source: https://commons.wikimedia.org/wiki/File:...
 ```
 
-**Every figure carries `source` and `as_of`.** An omitted stat means ineligible. Never use `0` or
-`null` to mean "don't ask about this" — zero is a legitimate value for international goals.
+**Ten stats. Plain numbers, no per-stat sources** — see `DESIGN.md` §11 for why. Only `ig` and `fee`
+are objects, and only because each displays an extra field on the card.
 
-`position` is one of `GK | DF | MF | FW`, assigned by majority career position and never inferred
-at runtime. It drives two eligibility rules today: **goals is available to everyone except
-goalkeepers**, and **clean sheets only to goalkeepers and defenders**. Keeping this in a field
-rather than in logic is what lets the rules change without touching the engine.
+**An omitted stat means ineligible.** Never use `0` or `null` to mean "don't ask about this" — zero
+is a legitimate value for international goals, international trophies and club trophies.
+
+`position` is one of `GK | DF | MF | FW`, assigned by majority career position and never inferred at
+runtime. It drives one eligibility rule today: **goalkeepers are excluded from `club_goals` and
+`igoals`**. Keeping it in a field rather than in logic is what lets rules change without touching
+the engine.
 
 `age` is derived from `dob` at runtime and is unavailable when `deceased: true`.
+
+**Images keep full provenance** even though stats do not. A licence is a legal obligation, not a
+convenience, so `author`, `licence` and `source` are all required whenever an `image` block is
+present.
 
 ---
 
@@ -148,25 +159,25 @@ rather than in logic is what lets the rules change without touching the engine.
 
 `packages/deck/build.ts` runs before the Astro build and emits:
 
-| Artifact | Destination | Contents |
-|---|---|---|
-| `deck.full.json` | bundled into Worker | ids, all stat values, eligibility |
-| `deck.public.json` | shipped to client | id, name, country only — **all** players |
-| `deck.friendly.json` | shipped to client | full stat values, **Friendly pool only** |
-| `indexes.json` | Worker | per stat: players sorted by value, tie groups |
-| `img/<id>-<hash>.webp` | uploaded to R2 | derivative at display size |
-| `credits.json` | shipped to client | author, licence and source per image |
-| `viability.md` | repo, committed | per stat and gap band, how many valid pairs exist |
-| `simulation.md` | repo, committed | streak distribution and stat firing rates over 10k runs |
+| Artifact               | Destination         | Contents                                                |
+| ---------------------- | ------------------- | ------------------------------------------------------- |
+| `deck.full.json`       | bundled into Worker | ids, all stat values, eligibility                       |
+| `deck.public.json`     | shipped to client   | id, name, country only — **all** players                |
+| `deck.friendly.json`   | shipped to client   | full stat values, **Friendly pool only**                |
+| `indexes.json`         | Worker              | per stat: players sorted by value, tie groups           |
+| `img/<id>-<hash>.webp` | uploaded to R2      | derivative at display size                              |
+| `credits.json`         | shipped to client   | author, licence and source per image                    |
+| `viability.md`         | repo, committed     | per stat and gap band, how many valid pairs exist       |
+| `simulation.md`        | repo, committed     | streak distribution and stat firing rates over 10k runs |
 
-The build **fails** on: a missing `source` or `as_of`; a stat value that is negative or
-non-numeric; a clean-sheet value on a player whose position is not GK or DF; a goals or
-international-goals value on a goalkeeper; a duplicate id; a player with fewer than three eligible
-stats.
+The build **fails** on: a stat value that is negative or non-numeric; a `club_goals` or `igoals`
+value on a goalkeeper; an `ig` entry without `as_of`; a `fee` entry without `year`; an unknown stat
+key; a duplicate id; a player with fewer than three eligible stats.
 
 It also fails if an `image` block is missing any of `author`, `licence` or `source`, or if the
-licence is not on the allow-list — the same guard pattern as stat provenance, and for the same
-reason. A player with no `image` block is valid and renders the monogram fallback.
+licence is not on the allow-list. Stats no longer carry provenance, so this is the **only** remaining
+provenance guard in the pipeline — which makes it the one that matters. A player with no `image`
+block is valid and renders the monogram fallback.
 
 It also fails if `deck.friendly.json` contains any player not flagged `friendly: true`, or if the
 Friendly pool exceeds its configured size. This is the guard on the one deliberate data-exposure
@@ -177,13 +188,14 @@ and are **barred from the first 10 rounds** — otherwise a rare stat landing at
 during the phase meant to build confidence.
 
 `viability.md` also reports **pairwise correlation between stats**, which is what identifies
-candidates for the correlated-pair exclusion in `wheel.ts` (`caps` and `igoals` are known to
-correlate and must never be switched between directly — see `DESIGN.md` §10).
+candidates for the correlated-pair exclusion in `wheel.ts`. `caps`/`igoals` and
+`club_goals`/`apps` are the expected pairs and must never be switched between directly — confirm
+the full list from the report rather than assuming it (see `DESIGN.md` §10).
 
 `viability.md` reports per stat **and per band** — not per floor — since a band can be empty even
-when a floor is well populated. It is the artifact that would have caught the clean-sheets problem
-at build time rather than in play, and it is what tells you whether the 30–80% late band is
-reachable. Read it after every deck change.
+when a floor is well populated. With ten stats and four of them rare and tie-prone, it is what tells
+you which stats can actually fire at the late bands, and whether the 30–80% band is reachable at
+all. Read it after every deck change.
 
 `simulation.md` runs the real engine 10,000 times over the compiled deck and reports the streak
 histogram and how often each stat actually fires after tie and gap filtering. This is how the
@@ -233,7 +245,7 @@ has to remember which tokens have been spent. That requires per-run state, and a
 Object** is the right primitive: strongly consistent, placed near the player, and cheap at roughly
 twenty messages per run.
 
-*Simpler alternative if you want one less moving part:* a single D1 row per run with an atomic
+_Simpler alternative if you want one less moving part:_ a single D1 row per run with an atomic
 compare-and-set (`UPDATE runs SET round = ?2 WHERE id = ?1 AND round = ?3`), checking rows
 affected. Correct, but D1 is regional rather than edge-local, so it adds latency the DO does not.
 
@@ -243,13 +255,18 @@ affected. Correct, but D1 is regional rather than edge-local, so it adds latency
 
 ```ts
 type Progress = {
-  runId: string; mode: "ranked" | "endless" | "friendly"; gameNo: number;
-  round: number; streak: number;
-  anchorId: string; challengerId: string; stat: StatKey;
-  anchorValue: number;      // already shown — safe
-  issuedAt: number;         // authoritative timer start
+  runId: string;
+  mode: "ranked" | "endless" | "friendly";
+  gameNo: number;
+  round: number;
+  streak: number;
+  anchorId: string;
+  challengerId: string;
+  stat: StatKey;
+  anchorValue: number; // already shown — safe
+  issuedAt: number; // authoritative timer start
   nonce: string;
-}
+};
 ```
 
 The token is signed, **not encrypted** — assume the client reads it. That is fine: it carries only
@@ -262,6 +279,7 @@ Verifies Turnstile. For Ranked, checks the signed device-day token and refuses a
 Creates the DO, returns round one's display payload and the first progress token.
 
 **`POST /api/round/guess`** → `{ token, guess }`
+
 1. Verify HMAC.
 2. Ask the DO to spend the nonce. Already spent → `409`, run void.
 3. Check `now - issuedAt` against the round's limit plus a **3s network grace**. The **server** owns
@@ -299,12 +317,12 @@ call. There is exactly one moment per question that depends on the network.
 
 ### The budget
 
-| Leg | Broadband | Good 4G | Poor mobile |
-|---|---|---|---|
-| Client → PoP → client | 15–40ms | 40–90ms | 150–400ms |
-| Worker → Durable Object → Worker | 2–15ms | same | same |
-| Sequence recompute + nonce spend | 5–15ms | same | same |
-| **Total** | **~25–70ms** | **~50–120ms** | **~160–430ms** |
+| Leg                              | Broadband    | Good 4G       | Poor mobile    |
+| -------------------------------- | ------------ | ------------- | -------------- |
+| Client → PoP → client            | 15–40ms      | 40–90ms       | 150–400ms      |
+| Worker → Durable Object → Worker | 2–15ms       | same          | same           |
+| Sequence recompute + nonce spend | 5–15ms       | same          | same           |
+| **Total**                        | **~25–70ms** | **~50–120ms** | **~160–430ms** |
 
 Indicative, not guaranteed. The DO hop is cheap because objects are placed near the requesting PoP
 on creation and hold state in memory — the nonce spend is a small write to an already-warm object,
@@ -350,7 +368,7 @@ allow immutable cache headers, so a returning player accumulates the deck locall
 **Player images must never be fetched at reveal time.** That would put a second round trip inside
 the same 640ms window and is the one thing that would actually make the game feel slow.
 
-Images are *display* data, and the next round's display payload arrives with the current answer.
+Images are _display_ data, and the next round's display payload arrives with the current answer.
 So:
 
 1. **The moment a guess response lands, preload the next two cards' images.** The player then spends
@@ -431,7 +449,7 @@ path entirely — the board is the same for everyone, so it should be served fro
 - **Nicknames:** default to a generated name (adjective + football noun + number); most people keep
   the suggestion, which shrinks the moderation surface to the minority who type their own.
   Validation normalises first — strip zero-width characters, fold unicode homoglyphs to ASCII,
-  collapse repeated characters — *then* checks the blocklist. A raw blocklist is defeated by
+  collapse repeated characters — _then_ checks the blocklist. A raw blocklist is defeated by
   leetspeak in a day.
 - **Nickname uniqueness is per game, Ranked only.** A unique index on
   `(mode, game_no, nickname_normalised)` where `mode = 'ranked'`. A taken name returns `409` and the
@@ -533,7 +551,6 @@ are complete.
   namespace introduced here is a useful precedent.
 - **Weekly and all-time boards**, Ranked only.
 
-
 ---
 
-*Bigger Than — architecture, version 1.*
+_Bigger Than — architecture, version 2._

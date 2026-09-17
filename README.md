@@ -1,4 +1,4 @@
-# BiggerThanGame
+# Bigger Than
 
 **A higher-or-lower game for football fans, where the stat keeps changing underneath you.**
 
@@ -8,7 +8,7 @@
 
 ## The idea
 
-Two footballers, side by side. A wheel spins and lands on a stat — career goals, caps, Instagram
+Two footballers, side by side. A wheel spins and lands on a stat — club goals, caps, Instagram
 followers, highest transfer fee. One player's number is showing, the other is hidden. Higher or
 lower? Get it right and the run continues.
 
@@ -54,18 +54,20 @@ All three modes use one life. One wrong answer ends the run.
 
 | Stat                   | Definition                                                                    |
 | ---------------------- | ----------------------------------------------------------------------------- |
-| Career goals           | Senior career goals, club and country. Not applicable to goalkeepers.         |
+| Club goals             | Senior club goals, all competitions, all clubs. Not goalkeepers.              |
 | Caps                   | Senior international appearances only.                                        |
-| International goals    | Senior international goals. Not applicable to goalkeepers.                    |
 | Club appearances       | Senior club appearances, all competitions, all clubs.                         |
 | Instagram followers    | Snapshot-dated. The date is shown on the card.                                |
 | Highest transfer fee   | Largest single reported fee, shown with the year. **Not** inflation-adjusted. |
-| World Cup appearances  | World Cup finals matches played.                                              |
+| International goals    | Senior international goals. Not goalkeepers.                                  |
 | Club trophies          | See below.                                                                    |
 | International trophies | Major international honours.                                                  |
-| Clean sheets           | Goalkeepers and defenders only.                                               |
 | Clubs played for       | Count of senior clubs.                                                        |
 | Age                    | Computed from date of birth. Living players only.                             |
+
+Club goals and international goals are kept separate rather than combined into one career total. A
+combined figure counts every international goal twice, which would make the two stats half the same
+question.
 
 **Club trophies counts:** domestic leagues, domestic cups, continental competitions and cups
 (Champions League, Europa League, Copa Libertadores and equivalents), and the Club World Cup.
@@ -137,14 +139,15 @@ That's how the difficulty curve gets tuned, rather than by guessing.
 
 Please tell us. There's a report link on the game-over screen, or open an issue.
 
-Include the player, the stat, the correct value and a source. Every figure in the deck carries its
-own source and a date it was checked, so a correction with a citation can be verified and applied
-quickly. Corrections take effect at the next daily rollover — never mid-game, since that would shift
-the sequence under players partway through.
+Include the player, the stat, the correct value and a source. A correction with a citation can be
+checked and applied quickly; one without takes considerably longer, so the link genuinely helps.
+Corrections take effect at the next daily rollover — never mid-game, since that would shift the
+sequence under players partway through.
 
-Some figures are genuinely contested (career goals totals for older players especially). Where
-sources disagree, the deck follows one named source consistently rather than picking the most
-flattering number.
+Some figures are genuinely contested, club goal totals for older players especially. Where sources
+disagree the deck aims to follow the same reference consistently rather than picking the most
+flattering number, but the figures are entered by hand and mistakes will exist. Reporting them is
+the fastest way they get fixed.
 
 ---
 

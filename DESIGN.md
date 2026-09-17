@@ -1,6 +1,6 @@
 # Bigger Than — Design Document
 
-**Version 2** · biggerthangame.com · Football legends · September 2026
+**Version 3** · biggerthangame.com · Football legends · September 2026
 
 A higher-or-lower streak game for football fans, where the stat keeps changing underneath you.
 
@@ -10,7 +10,7 @@ A higher-or-lower streak game for football fans, where the stat keeps changing u
 > are deliberately out of scope; do not build them speculatively.
 >
 > Infrastructure, data pipeline, API design and anti-cheat implementation live in
-> `ARCHITECTURE.md`. This document covers what the game *is*, not how it is served.
+> `ARCHITECTURE.md`. This document covers what the game _is_, not how it is served.
 
 ---
 
@@ -37,8 +37,8 @@ A higher-or-lower streak game for football fans, where the stat keeps changing u
 
 ## 1. What it is
 
-Two footballers are shown side by side. A wheel spins and lands on a stat — goals, caps,
-Instagram followers, club appearances and others. One player's number is visible, the other is
+Two footballers are shown side by side. A wheel spins and lands on a stat — club goals, caps,
+Instagram followers, highest transfer fee and others. One player's number is visible, the other is
 hidden. Guess whether the hidden one is higher or lower, and keep the run alive.
 
 The difference from every other game in this genre is that **the stat changes mid-run**. You beat
@@ -113,7 +113,7 @@ Endless use the full deck, held server-side and revealed one anchor value at a t
 
 The reason is exposure. A client-side mode publishes its entire dataset: permanently, scrapeable,
 archived. That matters more than "the stats are public facts" — public facts are not the problem,
-*our specific values* are. A bot working from Wikipedia might disagree with the deck on a 35% call
+_our specific values_ are. A bot working from Wikipedia might disagree with the deck on a 35% call
 and get it wrong; a bot working from our shipped deck never does. Slow reconstruction through normal
 play is unavoidable; handing the whole thing over on day one is not.
 
@@ -137,7 +137,7 @@ with.
 
 ### Why the framing differs
 
-An endless leaderboard is structurally noisy *even with perfect anti-cheat*, because two players'
+An endless leaderboard is structurally noisy _even with perfect anti-cheat_, because two players'
 runs are not the same test — one gets a kind sequence, another gets three knife-edge pairs in a
 row. It measures luck alongside knowledge and no amount of verification changes that. Daily Ranked
 exists precisely to be the board where the number means something.
@@ -178,7 +178,7 @@ Showing the players before the stat is the load-bearing detail. If the stat land
 evaluate the cards already knowing the question and the dissonance never happens.
 
 The ~640ms count-up on reveal is what hides the network round trip. Keep it. Prefetch the next
-card's *visible* data during the current round so the between-round transition stays instant.
+card's _visible_ data during the current round so the between-round transition stays instant.
 
 ### The winner does not stay on
 
@@ -199,31 +199,34 @@ big gaps between players, so a guess is a judgement. A narrow-range stat is a sm
 most legends cluster on the same few values — which produces constant ties, and **a tie has no
 right answer**.
 
-| Stat | Tier | Definition | Eligibility |
-|---|---|---|---|
-| **Goals** | Basic | Senior career goals, club and country combined | Everyone except goalkeepers |
-| **Caps** | Basic | Senior international appearances only | All |
-| **Club appearances** | Basic | Senior club appearances, all competitions, all clubs | All |
-| **Instagram followers** | Basic | Follower count, snapshot-dated | All with an account |
-| **Highest transfer fee** | Uncommon | Largest single reported fee, shown **with the year** | All with a reported fee |
-| **World Cup appearances** | Uncommon | Total World Cup finals matches played | All who qualified |
-| **International goals** | Uncommon | Senior international goals | Everyone except goalkeepers |
-| **Club trophies** | Rare | See definition below | All |
-| **International trophies** | Rare | Major international honours | All |
-| **Clean sheets** | Rare | Career clean sheets | Goalkeepers and defenders |
-| **Clubs played for** | Rare | Count of senior clubs | All |
-| **Age** | Rare | Computed from date of birth | Living players only |
+**Ten stats.**
+
+| Stat                       | Tier     | Definition                                           | Eligibility                 |
+| -------------------------- | -------- | ---------------------------------------------------- | --------------------------- |
+| **Club goals**             | Basic    | Senior club goals, all competitions, all clubs       | Everyone except goalkeepers |
+| **Caps**                   | Basic    | Senior international appearances only                | All                         |
+| **Club appearances**       | Basic    | Senior club appearances, all competitions, all clubs | All                         |
+| **Instagram followers**    | Basic    | Follower count, snapshot-dated                       | All with an account         |
+| **Highest transfer fee**   | Uncommon | Largest single reported fee, shown **with the year** | All with a reported fee     |
+| **International goals**    | Uncommon | Senior international goals                           | Everyone except goalkeepers |
+| **Club trophies**          | Rare     | See definition below                                 | All                         |
+| **International trophies** | Rare     | Major international honours                          | All                         |
+| **Clubs played for**       | Rare     | Count of senior clubs                                | All                         |
+| **Age**                    | Rare     | Computed from date of birth                          | Living players only         |
 
 **Never call anything but a senior international appearance a "cap" — fans will correct you.**
 
-**International goals replaced World Cup goals.** World Cup goals had most of the deck clustered
-between 0 and 5, so it lost pairs to tie exclusion constantly and rarely fired. International goals
-spreads far wider — Klose on 71 down to a defender on single figures — and behaves like a workhorse.
+**Club goals and international goals are deliberately separate** rather than one combined career
+total. A combined figure counts every international goal twice over — once in the total, once in the
+international stat — so the wheel switching between the two would be asking half the same question.
+Split, they are genuinely independent, and a prolific club scorer with a thin international record
+is a real piece of football knowledge rather than an artefact of arithmetic.
 
-It is kept at **uncommon** tier despite that range. Promoting it would give five basic stats, three
-of which (goals, international goals, club appearances) all ask a variation of "how much did they
-play and score". Keeping it uncommon stops the wheel landing on near-identical questions in
-succession. `viability.md` may argue otherwise once the deck is populated.
+International goals is kept at **uncommon** tier despite its wide range. Promoting it would give
+five basic stats, three of which (club goals, international goals, club appearances) all ask a
+variation of "how much did they play and score". Keeping it uncommon stops the wheel landing on
+near-identical questions in succession. `viability.md` may argue otherwise once the deck is
+populated.
 
 Instagram followers is the signature stat: wide range, no ties, nearly everyone eligible. It
 should fire often. Club appearances is the one wide-range stat goalkeepers keep, which is what
@@ -247,25 +250,20 @@ assigned by where the player spent the majority of their career, recorded explic
 with a note where the call is arguable (Lahm across both flanks, Ramos at centre-back and
 right-back, converted midfielders). It is never derived at runtime.
 
-Position drives stat eligibility today and gives room to extend it later.
-
-### Clean sheets
-
-Goalkeepers and defenders only. Defenders are those whose majority career position was LB, LWB,
-CB, RB or RWB.
-
-Clean sheets is a published stat for goalkeepers and is **not systematically tracked for outfield
-defenders**. Defender figures are therefore **sourced manually, player by player**, like the rest of
-the deck. Each figure must record the competition scope it covers in its `source` field so the stat
-stays internally consistent, and the scope rule must be published in the UI alongside the
-club-trophy rule.
+Position drives one eligibility rule today — **goalkeepers are excluded from club goals and
+international goals** — and the field exists so further rules can be added without touching the
+engine.
 
 ### Cut, and why
 
 - **Height** — nobody knows any player's height, so it isn't a knowledge test. It's a coin flip
   with a 50% chance of ending the run.
-- **World Cup goals** — too many of the deck sat between 0 and 5, so tie exclusion gutted it.
-  Replaced by international goals.
+- **World Cup goals and World Cup appearances** — too much of the deck sat on the same handful of
+  values, so tie exclusion gutted both. International goals covers similar ground with a far wider
+  spread.
+- **Clean sheets** — a published stat for goalkeepers and essentially untracked for outfield
+  defenders. No consistent source existed, so every defender figure would have been a guess.
+- **Combined career goals** — replaced by club goals, for the double-counting reason above.
 - **"International caps" as distinct from "Caps"** — the same stat under two names. Resolved to one.
 
 ---
@@ -274,15 +272,20 @@ club-trophy rule.
 
 Three tiers, three hues, readable in under a second on a phone.
 
-| Tier | Colour | Roughly | Character |
-|---|---|---|---|
-| Basic | Gold `#FFC24D` | 70% of spins | Wide range, large pool, reliable |
-| Uncommon | Blue `#5AB9F0` | 22% | Narrower, some tie exclusion |
-| Rare | Violet `#C77DFF` | 8% | Tie-prone or restricted pool |
+| Tier     | Colour           | Roughly      | Character                        |
+| -------- | ---------------- | ------------ | -------------------------------- |
+| Basic    | Gold `#FFC24D`   | 70% of spins | Wide range, large pool, reliable |
+| Uncommon | Blue `#5AB9F0`   | 22%          | Narrower, some tie exclusion     |
+| Rare     | Violet `#C77DFF` | 8%           | Tie-prone or restricted pool     |
 
 **Weight by tier, not per stat.** Dividing the tier's share across its members is essential: with
-four basic stats and three uncommon, a naive per-stat weighting gives basic four times its intended
-share and the uncommon stats effectively never appear. This was a real bug in the prototype.
+four basic stats, two uncommon and four rare, a naive per-stat weighting would give basic twice the
+share of uncommon and the uncommon stats would barely appear. This was a real bug in the prototype.
+
+With ten stats split 4 / 2 / 4, each basic stat fires roughly 17% of the time, each uncommon 11%,
+each rare 2%. Note that uncommon has only two members, so **highest transfer fee and international
+goals individually fire more often than any single rare stat** — worth remembering when judging how
+much verification each stat's data deserves.
 
 The percentages above are a starting guess, not a finding — tune them once the deck is populated
 and you can see how often each stat actually clears the tie and gap filters.
@@ -327,14 +330,14 @@ the pool at round 1 — every blowout that qualified early still qualifies late.
 from it keeps serving gifts, so expected difficulty barely moves. A ceiling is what makes a late
 round actually hard.
 
-| Rounds | Band | Feel |
-|---|---|---|
-| 1–10 | ≥200%, **no ceiling** | Nearly free. Blowouts are the joke, so leave them uncapped. |
-| 11–18 | 150–800% | Generous, no longer absurd. |
-| 19–26 | 100–400% | Requires some knowledge. |
-| 27–34 | 75–250% | Requires real knowledge. |
-| 35–42 | 50–150% | Hard. |
-| 43+ | 30–80% | Knife edge. |
+| Rounds | Band                  | Feel                                                        |
+| ------ | --------------------- | ----------------------------------------------------------- |
+| 1–10   | ≥200%, **no ceiling** | Nearly free. Blowouts are the joke, so leave them uncapped. |
+| 11–18  | 150–800%              | Generous, no longer absurd.                                 |
+| 19–26  | 100–400%              | Requires some knowledge.                                    |
+| 27–34  | 75–250%               | Requires real knowledge.                                    |
+| 35–42  | 50–150%               | Hard.                                                       |
+| 43+    | 30–80%                | Knife edge.                                                 |
 
 The first band keeps no ceiling deliberately — early rounds should actively favour the funniest
 available pair (a squad player against someone with sixty million followers), not merely any pair
@@ -401,9 +404,9 @@ trying to design it away. Daily Ranked mitigates it socially: everyone hits the 
 
 Rules the pair-selection logic must enforce:
 
-- **Eligibility per player per stat.** No goals stat for goalkeepers; no clean sheets for outfield
-  players other than defenders; no age for deceased legends. Store a per-player eligibility map
-  rather than inferring at runtime.
+- **Eligibility per player per stat.** No club goals or international goals for goalkeepers; no age
+  for deceased legends; no stat at all where the figure is absent from the deck. Store a per-player
+  eligibility map rather than inferring at runtime.
 - **Exclude ties.** Equal values have no correct answer. Skip the pair rather than calling a tie
   correct.
 - **Both players must be eligible for the stat** — including the carried-over anchor when the stat
@@ -414,8 +417,9 @@ Rules the pair-selection logic must enforce:
 - **Correlated-stat rule.** Caps and international goals move together — a player who just won on
   caps will usually win on international goals too, which undercuts the stat switch whose entire
   point is dissonance. The wheel must **not switch directly between caps and international goals**;
-  it needs an intervening stat. Apply the same rule to any pair `viability.md` later shows to be
-  strongly correlated.
+  it needs an intervening stat. **Club goals and club appearances** are the other likely pair.
+  `viability.md` reports pairwise correlation, so confirm the list from the data rather than
+  guessing at it.
 - **Volatility floor.** Any stat that can still move — chiefly followers — needs a wider gap than a
   frozen one, so a near-tie can't silently flip between data refreshes.
 - **Round one is curated, not random.** Most people who open the link play one run and never
@@ -431,23 +435,29 @@ a Node test harness without modification.
 
 ## 11. Data model
 
-Every figure carries its provenance. This costs almost nothing to fill in as the deck is built and
-is miserable to retrofit across hundreds of players.
+**Stat figures are stored as plain numbers, with no per-stat source recorded.** Citing each figure
+individually would mean roughly 4,000 source fields across the deck, almost all of them repeating
+the same reference, and the overhead was judged not to earn its keep. Corrections are handled by
+re-checking the figure against current sources rather than by consulting a stored citation.
 
-- `value` — the number
-- `source` — where it came from
-- `as_of` — snapshot date, displayed on the card for followers
+Two stats carry more than a number, because both display the extra field on the card:
+
+- **Instagram followers** carries `as_of`, the snapshot date.
+- **Highest transfer fee** carries `year`.
 
 Each player also carries a **position flag** (goalkeeper, defender, midfielder, striker), assigned
 by majority career position and recorded explicitly with a note where the call is arguable. It
 drives stat eligibility and must never be inferred at runtime.
 
 Store **date of birth**, not age — age is computed, and the player is excluded from the age stat if
-deceased. Store the transfer fee's **year** alongside the amount, since it is shown on the card.
+deceased.
 
-**The deck is entered by hand.** Roughly 400 players at eight or more sourced figures each is the
-largest single piece of work in the project. Development runs on a 50-player deck; public launch of
-the ranked modes needs around 100; the full deck is 400 and arrives incrementally.
+**Images are the exception and keep full provenance.** Author, licence and source URL are required
+per image, because a licence is a legal obligation rather than a convenience. See section 13.
+
+**The deck is entered by hand.** Roughly 400 players at up to ten figures each is the largest
+single piece of work in the project. Development runs on a 50-player deck; public launch of the
+ranked modes needs around 100; the full deck is 400 and arrives incrementally.
 
 Deck size is governed by **recognition**, not by how many players exist. A pair where neither name
 is familiar is a coin flip and feels terrible, so the usable deck is a few hundred names at most.
@@ -466,7 +476,7 @@ mobile and side-by-side on desktop, with a coloured plaque floating over the div
 current stat.
 
 - **Type:** Archivo variable for the interface, using the width axis so one family covers expanded
-  scoreboard numerals and normal-width text. Cinzel for the word *Legends* in the title bar, set
+  scoreboard numerals and normal-width text. Cinzel for the word _Legends_ in the title bar, set
   in a gold gradient on black.
 - **Player photography**, one image per card, treated as a background layer rather than a portrait
   crop: desaturated or duotoned toward the palette, darkened enough that the name and number stay
@@ -493,10 +503,12 @@ run, and the two players involved — that last detail is what makes it a conver
 a number.
 
 ### Daily Ranked board
+
 Resets daily. Same sequence for all players, so ranking is meaningful. Time taken breaks ties.
 This is the headline board.
 
 ### Endless board
+
 **Best single submitted run**, reset daily. Framed as a personal-best board, not a ranking — see
 section 3. Nicknames are **not** required to be unique here.
 
@@ -547,6 +559,7 @@ defensible.
 Recorded so they don't get relitigated.
 
 ### Name and domain
+
 **biggerthangame.com.** "Bigger than" is the literal question every round asks, whichever stat is
 live, and "bigger" means both a larger number and more famous — the ambiguity is the game.
 Descriptive alternatives (footballhigherorlower, sportshigherorlower, thehigherorlowergame) were
@@ -556,37 +569,44 @@ or lower" still appears in the tagline and title tag, where it does the comprehe
 costing shareability.
 
 ### Exact-match domains don't rank
+
 Google stopped rewarding keyword domains in 2012. A redirect from a domain with no links or
 history passes essentially nothing. If keyword traffic is wanted, the correct move is a page at
 `/football-higher-or-lower` on the main domain — it competes properly and consolidates authority
 instead of splitting it.
 
 ### King-of-the-hill rejected
+
 Keeping the larger value ratchets toward the deck maximum, making "lower" a winning strategy. The
 classic chain is 50/50 every round, so knowledge is the only edge.
 
 ### Inflation adjustment rejected
+
 Football fees have risen far faster than consumer prices, so a CPI-adjusted 1980s fee still looks
 trivial next to a modern one — the work would barely change any answer while claiming a rigour it
 doesn't have. Raw fee with the year shown is factual, sourceable and unarguable.
 
 ### Narrow-range stats demoted, not deleted
+
 The problem with small-integer stats isn't difficulty, it's ties. They still earn a place as
 occasional spice, but they can't carry the game.
 
 ### Rarity colouring without rarity rewards
+
 Rarity colouring normally signals reward, which would make a rare stat lighting up before a hard
 loss feel like a bait-and-switch. Keeping scoring flat resolves it: the colour communicates what
 kind of question is coming, not what it pays.
 
 ### Both modes are server-authoritative
+
 Hiding the deck client-side is not possible in any meaningful sense — the stats are public facts
-and anyone can look them up. But the *casual* cheat (open devtools, read the value) is entirely
+and anyone can look them up. But the _casual_ cheat (open devtools, read the value) is entirely
 preventable by never sending the challenger's value before the guess. The cost is one edge request
 per question, fully masked by the existing reveal animation. Obfuscation and WASM were rejected:
 an afternoon's work to defeat, and real debugging pain forever.
 
 ### An endless leaderboard cannot be fair
+
 Different players get different sequences, so the board measures luck alongside knowledge. This is
 a property of the format, not of the anti-cheat. Hence two boards with two different promises.
 
@@ -605,7 +625,8 @@ a property of the format, not of the anti-cheat. Hence two boards with two diffe
 Modes and their protection, game numbering and rollover, nickname identity and uniqueness, the
 club-trophy definition, position flags and stat eligibility, age as a rare stat, deck size and
 entry method, timer authority, disconnection behaviour, board size and rank display, launch order,
-bands versus floors, relaxation order, clean-sheet sourcing, and error-report routing (email).
+bands versus floors, relaxation order, the final ten-stat set, dropping per-stat sources, and
+error-report routing (email).
 
 ---
 
@@ -624,10 +645,11 @@ bands versus floors, relaxation order, clean-sheet sourcing, and error-report ro
 ## A note on the working prototype
 
 The figures in the HTML prototype are **approximate and from memory**. They are adequate for
-feeling out the difficulty curve and useless for shipping. Every number needs verifying against a
-cited source before launch, per section 11. The prototype is also fully client-side and therefore
-does not reflect the server-authoritative model described in section 3.
+feeling out the difficulty curve and useless for shipping. Every number needs checking against a
+real source before it enters the deck. The prototype also predates the current stat set — it still
+has clean sheets, World Cup stats and a combined career-goals figure, and it is fully client-side,
+so it does not reflect the server-authoritative model described in section 3.
 
 ---
 
-*Bigger Than — design document, version 2. Captures decisions taken to September 2026.*
+_Bigger Than — design document, version 3. Captures decisions taken to September 2026._
