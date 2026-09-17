@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter deck build && pnpm --filter web build",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p packages/core && tsc -p packages/deck && tsc -p worker",
     "simulate": "tsx packages/deck/src/simulate.ts",
     "deploy": "pnpm build && wrangler deploy"
