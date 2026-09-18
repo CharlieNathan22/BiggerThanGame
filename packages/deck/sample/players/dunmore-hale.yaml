@@ -1,0 +1,17 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: dunmore-hale
+name: Dunmore Hale
+country: Esteria
+position: DF
+dob: 1977-04-13
+stats:
+  club_goals: 34
+  caps: 112
+  apps: 780
+  igoals: 5
+  ct: 26
+  it: 2
+  clubs: 2
+  ig: { value: 11, as_of: 2026-09-01 }
+  fee: { value: 30, year: 2002 }

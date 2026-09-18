@@ -138,12 +138,15 @@ export const TIER_WEIGHT: Readonly<Record<Tier, number>> = {
  * because winning on one usually means winning on the other, which kills the
  * dissonance the stat switch exists to create.
  *
- * Confirm this list against viability.md's correlation report rather than
- * trusting the guesses here.
+ * **Driven by viability.md's correlation report, not by intuition.** The first
+ * version of this list paired caps with international goals and club goals with
+ * appearances; the report showed the real pairs run the other way — goals
+ * correlate with goals, appearances with appearances. Re-read the report after
+ * every substantial deck change and update this list to match.
  */
 export const CORRELATED_PAIRS: ReadonlyArray<readonly [StatKey, StatKey]> = [
-  ["caps", "igoals"],
-  ["club_goals", "apps"],
+  ["club_goals", "igoals"],
+  ["caps", "apps"],
 ];
 
 export function areCorrelated(a: StatKey, b: StatKey): boolean {

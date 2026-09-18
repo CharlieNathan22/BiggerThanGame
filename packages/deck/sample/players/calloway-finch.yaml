@@ -1,0 +1,18 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: calloway-finch
+name: Calloway Finch
+country: Esteria
+position: FW
+dob: 1985-06-15
+iconic: true
+stats:
+  club_goals: 360
+  caps: 76
+  apps: 560
+  igoals: 44
+  ct: 14
+  it: 0
+  clubs: 6
+  ig: { value: 130, as_of: 2026-09-01 }
+  fee: { value: 88, year: 2009 }

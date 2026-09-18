@@ -1,0 +1,17 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: lachlan-orme
+name: Lachlan Orme
+country: Esteria
+position: MF
+dob: 1976-04-13
+stats:
+  club_goals: 76
+  caps: 94
+  apps: 810
+  igoals: 11
+  ct: 24
+  it: 2
+  clubs: 2
+  ig: { value: 3, as_of: 2026-09-01 }
+  fee: { value: 21, year: 2000 }

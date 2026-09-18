@@ -1,0 +1,17 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: perrin-vasse
+name: Perrin Vasse
+country: Norlandia
+position: FW
+dob: 1973-04-13
+deceased: true
+stats:
+  club_goals: 520
+  caps: 87
+  apps: 600
+  igoals: 55
+  ct: 15
+  it: 1
+  clubs: 8
+  fee: { value: 16, year: 1998 }

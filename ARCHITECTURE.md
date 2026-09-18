@@ -90,12 +90,17 @@ served through a custom domain), `RUN_SECRET` (secret), `TURNSTILE_SECRET` (secr
 These four are what make the leaderboard defensible. Everything else is negotiable.
 
 1. **The client never receives a stat value it has not already been shown. No exceptions.**
-   `deck.public.json` carries names and nationalities only — no numbers, for any player, in any
-   mode. Friendly included: it fetches per question like the others.
+   **No client-bound deck artifact exists at all.** Every mode, Friendly included, fetches per
+   question, so the browser's only source of player data is the round payload.
    This was previously qualified — Friendly shipped full values for a small pool because it ran in
    the browser — and the build needed a guard to stop that hole widening. Moving Friendly behind
-   the endpoint removes the hole rather than policing it. A guard you do not need beats a guard
-   that works.
+   the endpoint removed the hole rather than policing it.
+   Two surfaces still carry the risk, checked differently. The **built site bundle** is scanned
+   with `scanForLeakedValues`, because nothing type-level connects "what was imported" to "what
+   ended up in `dist`". The **round payload** is covered by an explicit response DTO plus a test —
+   the compiler does most of the work there, but note that a `Round` carries `anchor` and
+   `challenger` as full `Player` objects, so returning one directly leaks everything while
+   typechecking cleanly.
 2. **No prefetching of hidden values, not even one round ahead.** Buffering rounds for latency
    would mean several readable answers sitting in memory at all times. Prefetch _display_ data
    only — and do prefetch it: images especially must be loaded ahead of the round they appear in
@@ -164,7 +169,6 @@ present.
 | Artifact               | Destination         | Contents                                                |
 | ---------------------- | ------------------- | ------------------------------------------------------- |
 | `deck.full.json`       | bundled into Worker | ids, all stat values, eligibility                       |
-| `deck.public.json`     | shipped to client   | id, name, country only — **all** players                |
 | `indexes.json`         | Worker              | per stat: players sorted by value, tie groups           |
 | `img/<id>-<hash>.webp` | uploaded to R2      | derivative at display size                              |
 | `credits.json`         | shipped to client   | author, licence and source per image                    |
@@ -180,8 +184,13 @@ licence is not on the allow-list. Stats no longer carry provenance, so this is t
 provenance guard in the pipeline — which makes it the one that matters. A player with no `image`
 block is valid and renders the monogram fallback.
 
-There is no longer a client-bundle leak guard, because no client artifact carries values. If a
-future change reintroduces one, reintroduce the guard with it.
+**No client-bound artifact is emitted**, so there is nothing at build time to police. The leak
+scanner (`scanForLeakedValues`) instead runs against the built site bundle and, from Phase 5,
+against the round payload. It takes text rather than an object deliberately — it must work on a JS
+bundle as readily as on JSON, and it must not trust any object's shape.
+
+Note that **image URLs are display data, not stat values**, and reach the client freely. The
+scanner only looks for numbers.
 
 Band-exempt stats (`clubs`, and any other flagged narrow stat) are matched on tie exclusion alone
 and are **barred from the first 10 rounds** — otherwise a rare stat landing at round 3 ends a run

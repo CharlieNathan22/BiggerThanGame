@@ -1,0 +1,18 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: galston-rhee
+name: Galston Rhee
+country: Marisol
+position: FW
+dob: 1991-04-13
+iconic: true
+stats:
+  club_goals: 265
+  caps: 61
+  apps: 410
+  igoals: 29
+  ct: 9
+  it: 1
+  clubs: 3
+  ig: { value: 165, as_of: 2026-09-01 }
+  fee: { value: 110, year: 2017 }

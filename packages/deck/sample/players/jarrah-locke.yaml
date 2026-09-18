@@ -1,0 +1,17 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: jarrah-locke
+name: Jarrah Locke
+country: Caldera
+position: FW
+dob: 1986-04-13
+stats:
+  club_goals: 188
+  caps: 43
+  apps: 390
+  igoals: 16
+  ct: 5
+  it: 0
+  clubs: 9
+  ig: { value: 22, as_of: 2026-09-01 }
+  fee: { value: 47, year: 2011 }

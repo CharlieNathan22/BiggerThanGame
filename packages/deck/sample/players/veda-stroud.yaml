@@ -1,0 +1,18 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: veda-stroud
+name: Veda Stroud
+country: Esteria
+position: MF
+dob: 1992-03-12
+iconic: true
+stats:
+  club_goals: 85
+  caps: 34
+  apps: 320
+  igoals: 10
+  ct: 3
+  it: 0
+  clubs: 2
+  ig: { value: 74, as_of: 2026-09-01 }
+  fee: { value: 96, year: 2018 }

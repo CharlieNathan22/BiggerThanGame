@@ -1,0 +1,15 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: tavish-glenn
+name: Tavish Glenn
+country: Marisol
+position: GK
+dob: 1971-04-13
+deceased: true
+stats:
+  caps: 118
+  apps: 840
+  ct: 23
+  it: 1
+  clubs: 2
+  fee: { value: 14, year: 1997 }

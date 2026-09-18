@@ -98,8 +98,16 @@ describe("qualifiers", () => {
 
 describe("correlated pairs", () => {
   it("matches in both directions", () => {
-    expect(areCorrelated("caps", "igoals")).toBe(true);
-    expect(areCorrelated("igoals", "caps")).toBe(true);
+    expect(areCorrelated("club_goals", "igoals")).toBe(true);
+    expect(areCorrelated("igoals", "club_goals")).toBe(true);
+  });
+
+  it("pairs goals with goals and appearances with appearances", () => {
+    // The first version of this list was crossed — caps with international
+    // goals, club goals with appearances. viability.md showed the real pairs.
+    expect(areCorrelated("caps", "apps")).toBe(true);
+    expect(areCorrelated("caps", "igoals")).toBe(false);
+    expect(areCorrelated("club_goals", "apps")).toBe(false);
   });
 
   it("does not match unrelated stats", () => {

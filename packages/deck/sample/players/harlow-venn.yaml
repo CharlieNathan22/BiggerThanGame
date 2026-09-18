@@ -1,0 +1,17 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: harlow-venn
+name: Harlow Venn
+country: Marisol
+position: DF
+dob: 1983-03-12
+stats:
+  club_goals: 22
+  caps: 88
+  apps: 690
+  igoals: 3
+  ct: 16
+  it: 1
+  clubs: 2
+  ig: { value: 4, as_of: 2026-09-01 }
+  fee: { value: 24, year: 2007 }

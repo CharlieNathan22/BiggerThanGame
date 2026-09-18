@@ -1,0 +1,18 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: ainsley-vale
+name: Ainsley Vale
+country: Norlandia
+position: FW
+dob: 1979-04-13
+iconic: true
+stats:
+  club_goals: 480
+  caps: 105
+  apps: 640
+  igoals: 62
+  ct: 18
+  it: 2
+  clubs: 4
+  ig: { value: 95, as_of: 2026-09-01 }
+  fee: { value: 72, year: 2004 }

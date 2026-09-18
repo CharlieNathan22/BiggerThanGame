@@ -1,0 +1,17 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: quill-ardent
+name: Quill Ardent
+country: Esteria
+position: DF
+dob: 1987-04-13
+stats:
+  club_goals: 17
+  caps: 66
+  apps: 530
+  igoals: 2
+  ct: 10
+  it: 0
+  clubs: 4
+  ig: { value: 5, as_of: 2026-09-01 }
+  fee: { value: 28, year: 2010 }

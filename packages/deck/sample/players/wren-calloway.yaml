@@ -1,0 +1,16 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: wren-calloway
+name: Wren Calloway
+country: Vantia
+position: FW
+dob: 1975-05-14
+stats:
+  club_goals: 340
+  caps: 109
+  apps: 620
+  igoals: 51
+  ct: 11
+  it: 1
+  clubs: 7
+  fee: { value: 23, year: 1999 }

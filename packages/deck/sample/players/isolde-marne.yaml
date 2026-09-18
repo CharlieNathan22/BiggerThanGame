@@ -1,0 +1,17 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: isolde-marne
+name: Isolde Marne
+country: Caldera
+position: MF
+dob: 1980-04-13
+stats:
+  club_goals: 98
+  caps: 120
+  apps: 730
+  igoals: 19
+  ct: 21
+  it: 3
+  clubs: 5
+  ig: { value: 14, as_of: 2026-09-01 }
+  fee: { value: 38, year: 2005 }

@@ -1,0 +1,18 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: sable-thorne
+name: Sable Thorne
+country: Caldera
+position: FW
+dob: 1978-04-13
+iconic: true
+stats:
+  club_goals: 410
+  caps: 92
+  apps: 580
+  igoals: 48
+  ct: 17
+  it: 2
+  clubs: 5
+  ig: { value: 58, as_of: 2026-09-01 }
+  fee: { value: 62, year: 2002 }

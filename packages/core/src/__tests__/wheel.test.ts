@@ -86,8 +86,17 @@ describe("chooseStat", () => {
       const next = chooseStat({
         current: "caps",
         round: 20,
-        viable: ["igoals", "apps", "ig"],
+        viable: ["apps", "igoals", "ig"],
         rng: createRng(`corr-${i}`),
+      });
+      expect(next).not.toBe("apps");
+    }
+    for (let i = 0; i < 500; i++) {
+      const next = chooseStat({
+        current: "club_goals",
+        round: 20,
+        viable: ["igoals", "caps", "ig"],
+        rng: createRng(`corr2-${i}`),
       });
       expect(next).not.toBe("igoals");
     }
@@ -123,10 +132,10 @@ describe("chooseStat", () => {
     const next = chooseStat({
       current: "caps",
       round: 20,
-      viable: ["igoals"],
+      viable: ["apps"],
       rng: rng(),
     });
-    expect(next).toBe("igoals");
+    expect(next).toBe("apps");
   });
 
   it("returns undefined when nothing at all is viable", () => {

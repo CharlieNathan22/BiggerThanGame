@@ -1,0 +1,15 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: elowen-brisk
+name: Elowen Brisk
+country: Vantia
+position: GK
+dob: 1974-04-13
+stats:
+  caps: 140
+  apps: 820
+  ct: 19
+  it: 1
+  clubs: 3
+  ig: { value: 9, as_of: 2026-09-01 }
+  fee: { value: 26, year: 2001 }

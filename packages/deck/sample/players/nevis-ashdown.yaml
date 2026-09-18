@@ -1,0 +1,18 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: nevis-ashdown
+name: Nevis Ashdown
+country: Caldera
+position: DF
+dob: 1979-05-14
+iconic: true
+stats:
+  club_goals: 41
+  caps: 130
+  apps: 700
+  igoals: 7
+  ct: 20
+  it: 3
+  clubs: 3
+  ig: { value: 26, as_of: 2026-09-01 }
+  fee: { value: 33, year: 2003 }

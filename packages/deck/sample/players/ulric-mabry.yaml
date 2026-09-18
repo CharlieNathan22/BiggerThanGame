@@ -1,0 +1,17 @@
+# SAMPLE DATA — invented players, not real footballers.
+# The real deck lives in the private submodule at data/players/.
+id: ulric-mabry
+name: Ulric Mabry
+country: Norlandia
+position: DF
+dob: 1989-03-12
+stats:
+  club_goals: 28
+  caps: 51
+  apps: 460
+  igoals: 4
+  ct: 8
+  it: 0
+  clubs: 6
+  ig: { value: 8, as_of: 2026-09-01 }
+  fee: { value: 31, year: 2013 }

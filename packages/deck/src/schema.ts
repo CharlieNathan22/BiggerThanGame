@@ -1,0 +1,133 @@
+/**
+ * The player YAML schema.
+ *
+ * Every rule in ARCHITECTURE.md §6's "the build fails on" list lives here or in
+ * `validate.ts`. The split is deliberate: this file catches anything decidable
+ * from a single player in isolation; `validate.ts` catches anything needing the
+ * whole deck (duplicate ids, pool sizes).
+ *
+ * YAML is snake_case to match the docs and to read naturally when hand-entered.
+ * The transform to the engine's camelCase shape happens here, so nothing
+ * downstream has to know the file format.
+ */
+
+import { z } from "zod";
+import type { Player, PlayerStats } from "@bt/core";
+
+/** Licences an image may carry. Anything else fails the build. */
+export const ALLOWED_LICENCES = [
+  "CC0",
+  "PD",
+  "CC-BY-2.0",
+  "CC-BY-2.5",
+  "CC-BY-3.0",
+  "CC-BY-4.0",
+  "CC-BY-SA-2.0",
+  "CC-BY-SA-2.5",
+  "CC-BY-SA-3.0",
+  "CC-BY-SA-4.0",
+] as const;
+
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "must be an ISO date, YYYY-MM-DD")
+  .refine((s) => !Number.isNaN(new Date(`${s}T00:00:00Z`).getTime()), "not a real date");
+
+/**
+ * A plain stat figure.
+ *
+ * Zero is allowed and meaningful — a player can be capped without scoring, or
+ * win no trophies. Absence is expressed by omitting the key, never by a zero.
+ */
+const count = z.number().int("must be a whole number").nonnegative("cannot be negative");
+
+const igValue = z.object({
+  value: z.number().positive("followers must be positive"),
+  as_of: isoDate,
+});
+
+const feeValue = z.object({
+  value: z.number().positive("a fee must be positive"),
+  year: z.number().int().min(1888).max(2100),
+});
+
+/**
+ * `.strict()` is what rejects an unknown stat key. Without it a typo like
+ * `club_gaols` would parse as an absent stat and the player would quietly lose
+ * eligibility rather than failing the build.
+ */
+export const statsSchema = z
+  .object({
+    club_goals: count.optional(),
+    caps: count.optional(),
+    apps: count.optional(),
+    igoals: count.optional(),
+    ct: count.optional(),
+    it: count.optional(),
+    clubs: z.number().int().positive("must have played for at least one club").optional(),
+    ig: igValue.optional(),
+    fee: feeValue.optional(),
+  })
+  .strict();
+
+export const imageSchema = z
+  .object({
+    file: z.string().min(1),
+    author: z.string().min(1, "an image needs an author"),
+    licence: z.enum(ALLOWED_LICENCES),
+    source: z.string().url("must be a source URL"),
+  })
+  .strict();
+
+export const playerSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[a-z0-9-]+$/, "ids are lowercase, digits and hyphens only"),
+    name: z.string().min(1),
+    country: z.string().min(1),
+    position: z.enum(["GK", "DF", "MF", "FW"]),
+    dob: isoDate,
+    deceased: z.boolean().optional(),
+    iconic: z.boolean().optional(),
+    stats: statsSchema,
+    image: imageSchema.optional(),
+  })
+  .strict();
+
+export type RawPlayer = z.infer<typeof playerSchema>;
+export type RawImage = z.infer<typeof imageSchema>;
+
+/**
+ * YAML shape → engine shape. The only place the two spellings meet.
+ *
+ * Built with conditional spreads rather than assignment because
+ * `exactOptionalPropertyTypes` forbids writing `undefined` into an optional
+ * property — an absent stat must be an absent key, which is the same
+ * distinction the deck itself relies on.
+ */
+export function toPlayer(raw: RawPlayer): Player {
+  const s = raw.stats;
+  const stats: PlayerStats = {
+    ...(s.club_goals !== undefined ? { club_goals: s.club_goals } : {}),
+    ...(s.caps !== undefined ? { caps: s.caps } : {}),
+    ...(s.apps !== undefined ? { apps: s.apps } : {}),
+    ...(s.igoals !== undefined ? { igoals: s.igoals } : {}),
+    ...(s.ct !== undefined ? { ct: s.ct } : {}),
+    ...(s.it !== undefined ? { it: s.it } : {}),
+    ...(s.clubs !== undefined ? { clubs: s.clubs } : {}),
+    ...(s.ig !== undefined ? { ig: { value: s.ig.value, asOf: s.ig.as_of } } : {}),
+    ...(s.fee !== undefined ? { fee: { value: s.fee.value, year: s.fee.year } } : {}),
+  };
+
+  return {
+    id: raw.id,
+    name: raw.name,
+    country: raw.country,
+    position: raw.position,
+    dob: raw.dob,
+    ...(raw.deceased !== undefined ? { deceased: raw.deceased } : {}),
+    ...(raw.iconic !== undefined ? { iconic: raw.iconic } : {}),
+    stats,
+  };
+}
