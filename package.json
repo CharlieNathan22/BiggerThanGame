@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter deck build && pnpm --filter web build",
-    "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc -p packages/core && tsc -p packages/deck && tsc -p worker",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/core && tsc -p packages/deck && tsc -p worker && tsc -p tsconfig.json",
     "simulate": "tsx packages/deck/src/simulate.ts",
     "deploy": "pnpm build && wrangler deploy"
   },

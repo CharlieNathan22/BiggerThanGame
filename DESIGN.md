@@ -100,40 +100,48 @@ storage. That is friction, not prevention, and the doc should stay honest about 
 
 ### Friendly Mode
 
-Same randomised sequence style as Endless, minus the clock, the leaderboards and the anti-cheat.
-Fully client-side. It exists for two reasons: a hard 10-second clock excludes players with motor or
-cognitive impairments, and it gives a low-stakes way to learn the game. Because it can never be
-ranked, there is no incentive to abuse it, so it needs no protection.
+Same randomised sequence style as Endless and **the same full deck**, minus the clock, the
+leaderboards and the anti-cheat enforcement. It exists for two reasons: a hard 10-second clock
+excludes players with motor or cognitive impairments, and it gives a low-stakes way to learn the
+game. Because it can never be ranked, there is no incentive to abuse it.
 
 One life still applies.
 
-**Friendly Mode draws from a permanently smaller pool** — roughly the 80 to 100 most recognisable
-names — and that subset is the only part of the deck that ever ships to the browser. Ranked and
-Endless use the full deck, held server-side and revealed one anchor value at a time.
+**Friendly is served per question, like the other modes.** It calls the same endpoint with the same
+payloads; what it skips is the enforcement — no progress tokens, no replay check, no timer, no
+Turnstile. The challenger's value is still withheld until the guess, purely so there is one code
+path rather than two.
 
-The reason is exposure. A client-side mode publishes its entire dataset: permanently, scrapeable,
-archived. That matters more than "the stats are public facts" — public facts are not the problem,
-_our specific values_ are. A bot working from Wikipedia might disagree with the deck on a 35% call
-and get it wrong; a bot working from our shipped deck never does. Slow reconstruction through normal
-play is unavoidable; handing the whole thing over on day one is not.
+The reason is not anti-cheat. It is that **the deck is the asset.** Three hundred players, each
+hand-entered and hand-verified, each with a licence-checked image, is weeks of work and the only
+thing about this game that is genuinely hard to copy. A client-side mode publishes that dataset
+wholesale — permanently, scrapeably, archived — and a competitor lifts it out of the JS bundle in
+thirty seconds.
 
-Framing it as a permanent warm-up pool rather than a temporary restriction means Friendly Mode never
-has to move behind the API later.
+Per-question serving does not make the deck scrape-proof; it makes scraping expensive. Three
+hundred players across ten stats is 3,000 values, and since the caller does not choose the pairing,
+reconstructing it takes tens of thousands of requests. **Rate limiting is what does the real work
+here**, not the request shape.
+
+Note what this deliberately does _not_ claim. Hiding values buys very little against cheating,
+because the stats are public facts — a bot scraping Wikipedia reaches near-perfect accuracy anyway.
+What protects the leaderboards is the token chain, replay prevention, server-owned timing,
+one-attempt enforcement and timing heuristics. None of those depend on the values being secret.
 
 ### Launch order
 
-**Friendly Mode ships first**, publicly, on its permanent 80-to-100 player pool. It is client-side
-and leaderboard-exempt by design, so nothing about it needs reworking when the backend lands.
+**Friendly Mode ships first**, publicly, on whatever the deck holds at the time. It needs one
+stateless endpoint and none of the enforcement machinery — no Durable Object, no D1, no KV, no
+tokens, no Turnstile — so it is still far cheaper than Ranked, and the endpoint it uses is the one
+Phase 5 hardens rather than a throwaway.
 
-**What this does and does not tell you.** Friendly Mode gives real feedback on feel, comprehension,
-the stat switch and whether people share it. It is **not** a reliable test of the difficulty ramp:
-a pool that small exhausts the later bands quickly and will sit permanently in relaxation past the
-mid rounds. Ramp validation comes from `simulation.md` against the full deck, and then from Ranked
-once it is live.
+Because it plays the full deck, Friendly now _does_ give a usable read on the difficulty ramp,
+unlike the small-pool version it replaces. `simulation.md` remains the primary instrument, but
+real play against a real deck is the check on it.
 
-Daily Ranked and Endless follow together, once the backend is complete. Target deck at full launch
-is around 400, with a couple of hundred entered early so simulation has something real to work
-with.
+Daily Ranked and Endless follow together, once enforcement is complete. Target deck at full launch
+is around 300 legends, with a couple of hundred entered early so simulation has something real to
+work with.
 
 ### Why the framing differs
 
@@ -146,7 +154,10 @@ Do not present the Endless board as a fair contest. Copy should make the distinc
 
 ### Connectivity
 
-Server-authoritative play means both modes need a connection for every question. Latency is covered
+**All three modes need a connection for every question.** Friendly gave up offline play when it
+moved behind the endpoint; that was the cost of not shipping the deck. It is a real loss for the
+no-signal case, though a small one for a game people reach through a shared link, and the
+accessibility reason Friendly exists — no clock — is untouched. Latency is covered
 by the existing reveal animation (see section 4) and should not be perceptible on a decent
 connection.
 
@@ -449,6 +460,10 @@ Each player also carries a **position flag** (goalkeeper, defender, midfielder, 
 by majority career position and recorded explicitly with a note where the call is arguable. It
 drives stat eligibility and must never be inferred at runtime.
 
+Players recognisable enough to open a run on are flagged **`iconic`**. Round one is curated rather
+than random (§10), and this is the pool it draws from. The flag previously defined the client-side
+Friendly pool; that pool no longer exists, so the name now says what it actually means.
+
 Store **date of birth**, not age — age is computed, and the player is excluded from the age stat if
 deceased.
 
@@ -619,6 +634,9 @@ a property of the format, not of the anti-cheat. Hence two boards with two diffe
   recently-seen queue and tie exclusion have taken their cut.
 - **Whether "clubs played for" survives** the first playtest. Retained for now, band-exempt.
 - **Endless submission rate limit** numbers. Agreed in principle; set when the endpoint is built.
+- **Friendly endpoint rate limit** numbers. This is the only thing standing between the deck and a
+  determined scraper, so it deserves more thought than the others — tight enough to make
+  reconstruction impractical, loose enough that a fast player never notices.
 
 ### Resolved
 

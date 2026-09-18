@@ -1,4 +1,8 @@
 {
-  "files": [],
-  "include": []
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["*.config.ts"]
 }

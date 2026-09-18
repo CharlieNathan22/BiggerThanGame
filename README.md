@@ -42,9 +42,8 @@ board.
 
 **Endless** — randomised sequence, unlimited attempts. Best single submitted run per day.
 
-**Friendly** — no clock, no leaderboard, smaller pool, runs entirely in your browser. Exists partly
-as a warm-up and partly because a 10-second timer excludes players with motor or cognitive
-impairments.
+**Friendly** — no clock, no leaderboard, same full deck. Exists partly as a warm-up and partly
+because a 10-second timer excludes players with motor or cognitive impairments.
 
 All three modes use one life. One wrong answer ends the run.
 

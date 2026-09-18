@@ -89,11 +89,13 @@ served through a custom domain), `RUN_SECRET` (secret), `TURNSTILE_SECRET` (secr
 
 These four are what make the leaderboard defensible. Everything else is negotiable.
 
-1. **The client never receives a stat value it has not already been shown.** `deck.public.json`
-   contains names and nationalities only — no numbers.
-   The sole exception is `deck.friendly.json`, which carries full values for the Friendly pool
-   (~80–100 players) because that mode runs entirely in the browser. **Nothing outside the Friendly
-   pool may ever appear in a client bundle.** The build must assert this.
+1. **The client never receives a stat value it has not already been shown. No exceptions.**
+   `deck.public.json` carries names and nationalities only — no numbers, for any player, in any
+   mode. Friendly included: it fetches per question like the others.
+   This was previously qualified — Friendly shipped full values for a small pool because it ran in
+   the browser — and the build needed a guard to stop that hole widening. Moving Friendly behind
+   the endpoint removes the hole rather than policing it. A guard you do not need beats a guard
+   that works.
 2. **No prefetching of hidden values, not even one round ahead.** Buffering rounds for latency
    would mean several readable answers sitting in memory at all times. Prefetch _display_ data
    only — and do prefetch it: images especially must be loaded ahead of the round they appear in
@@ -118,7 +120,7 @@ country: France
 position: MF # GK | DF | MF | FW  — drives the goals-stat exclusion
 dob: 1972-06-23
 deceased: false
-friendly: true # in the client-side Friendly pool — full values ship publicly
+iconic: true # recognisable enough to open a run on (DESIGN.md §10)
 stats:
   club_goals: 125
   caps: 108
@@ -163,7 +165,6 @@ present.
 | ---------------------- | ------------------- | ------------------------------------------------------- |
 | `deck.full.json`       | bundled into Worker | ids, all stat values, eligibility                       |
 | `deck.public.json`     | shipped to client   | id, name, country only — **all** players                |
-| `deck.friendly.json`   | shipped to client   | full stat values, **Friendly pool only**                |
 | `indexes.json`         | Worker              | per stat: players sorted by value, tie groups           |
 | `img/<id>-<hash>.webp` | uploaded to R2      | derivative at display size                              |
 | `credits.json`         | shipped to client   | author, licence and source per image                    |
@@ -179,9 +180,8 @@ licence is not on the allow-list. Stats no longer carry provenance, so this is t
 provenance guard in the pipeline — which makes it the one that matters. A player with no `image`
 block is valid and renders the monogram fallback.
 
-It also fails if `deck.friendly.json` contains any player not flagged `friendly: true`, or if the
-Friendly pool exceeds its configured size. This is the guard on the one deliberate data-exposure
-path in the system.
+There is no longer a client-bundle leak guard, because no client artifact carries values. If a
+future change reintroduces one, reintroduce the guard with it.
 
 Band-exempt stats (`clubs`, and any other flagged narrow stat) are matched on tie exclusion alone
 and are **barred from the first 10 rounds** — otherwise a rare stat landing at round 3 ends a run
@@ -256,8 +256,9 @@ affected. Correct, but D1 is regional rather than edge-local, so it adds latency
 ```ts
 type Progress = {
   runId: string;
-  mode: "ranked" | "endless" | "friendly";
+  mode: "ranked" | "endless";
   gameNo: number;
+  // Friendly issues no token — it uses /api/round/next and carries no state.
   round: number;
   streak: number;
   anchorId: string;
@@ -277,6 +278,12 @@ what is already on screen. The challenger's value is never in it.
 **`POST /api/run/start`** → `{ mode, turnstileToken }`
 Verifies Turnstile. For Ranked, checks the signed device-day token and refuses a second run.
 Creates the DO, returns round one's display payload and the first progress token.
+
+**`POST /api/round/next`** → `{ mode: "friendly", runId, round }`
+Friendly only. Stateless: derives the seed from `runId`, replays the sequence to `round`, returns
+the display payload and the anchor's value. No token, no nonce, no timer. **Rate-limited** — this
+endpoint is the only thing between the deck and a determined scraper, so the limit is load-bearing
+rather than hygiene.
 
 **`POST /api/round/guess`** → `{ token, guess }`
 
@@ -388,7 +395,8 @@ later safe.
 - The **3s timer grace** (section 8) absorbs slow rounds so a laggy connection does not cost the
   player their run.
 - **Bank and end** covers a genuine drop.
-- **Friendly Mode is entirely local**, so there is always a mode that works with no connection.
+- There is **no offline mode**. Friendly gave that up when it moved behind the endpoint, which was
+  the price of not shipping the deck to every browser.
 
 Honest summary: Ranked and Endless need a working connection at roughly 50–150ms typical, and the
 animation hides it. They will feel sluggish on genuinely poor mobile, which is what the grace window
@@ -528,16 +536,17 @@ Note that **images are v1 scope**, and licence verification across ~400 players 
 its own right — see `DESIGN.md` §13. Friendly Mode can ship with images for its pool only, which is
 a far smaller verification job and validates the pipeline early.
 
-**Friendly Mode first**, shipped publicly on its permanent 80-to-100 player pool. It is
-client-side, clock-free and leaderboard-exempt, so it needs none of sections 7 to 12 —
-`packages/core`, the Astro shell and the Svelte island only. The Worker never executes; Astro
-builds, Workers serves the files. Nothing about it is rework: when the backend lands, Friendly Mode
-keeps running exactly as built.
+**Friendly Mode first**, shipped publicly on the full deck. It needs `packages/core`, the Astro
+shell, the Svelte island, and **one stateless endpoint** (`/api/round/next`) plus a rate limit. It
+does not need the Durable Object, D1, KV, progress tokens or Turnstile.
 
-That gets feedback on feel and comprehension while the two long poles — hand-entering the deck and
-building the server-authoritative stack — proceed in parallel. It does **not** validate the
-difficulty ramp; see `DESIGN.md` §3. Ramp tuning comes from `simulation.md` run against the full
-deck, which is independent of what ships to the client.
+Building that endpoint is not a detour. It is the same sequence-derivation work Phase 5 needs, and
+Phase 5 hardens it in place rather than replacing a throwaway — so this is less total work than
+building Friendly fully client-side and bolting a server path on afterwards.
+
+That gets feedback on feel, comprehension and the difficulty ramp while the long pole —
+hand-entering the deck — proceeds in parallel. `simulation.md` remains the primary instrument for
+ramp tuning; live Friendly play is the check on it.
 
 Ranked and Endless ship together once the round protocol, Durable Object, D1 schema and moderation
 are complete.
