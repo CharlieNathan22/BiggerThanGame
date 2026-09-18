@@ -1,0 +1,57 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      # Fails in seconds if CI hasn't passed on this exact commit, rather than
+      # after a full install and build.
+      - name: Require a passing CI run for this commit
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head_sha: context.sha,
+              status: 'completed',
+            });
+            const passed = data.workflow_runs.some(
+              (r) => r.name === 'CI' && r.conclusion === 'success',
+            );
+            if (!passed) {
+              core.setFailed(
+                `No successful CI run for ${context.sha}. Push the commit and let CI pass first.`,
+              );
+            }
+
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          ssh-key: ${{ secrets.DECK_DEPLOY_KEY }}
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
