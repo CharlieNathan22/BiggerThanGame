@@ -35,6 +35,10 @@ beforeAll(() => {
   writePng(join(dir, "wide.png"), 6000, 1800);
   writeFileSync(join(dir, "broken.png"), "not an image");
   writePng(join(dir, "orphan.png"), 1800, 1800);
+  // The minimum is on the shortest edge; the long edge is deliberately larger.
+  writePng(join(dir, "at-min.png"), MIN_IMAGE_EDGE, 1500);
+  writePng(join(dir, "below-min.png"), MIN_IMAGE_EDGE - 1, 1500);
+  writePng(join(dir, "commons-2003.png"), 1400, 1750);
 });
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -53,9 +57,27 @@ describe("validateImages", () => {
     expect(problems[0]?.message).toContain("does not exist");
   });
 
-  it("catches an image below the retina minimum", () => {
+  it("catches an image below the minimum edge", () => {
     const problems = validateImages([player("a", "small.png")], dir);
-    expect(problems.some((p) => p.message.includes(String(MIN_IMAGE_EDGE)))).toBe(true);
+    expect(problems.some((p) => p.message.includes(`${MIN_IMAGE_EDGE}px`))).toBe(true);
+  });
+
+  it("sets the minimum at 1200px on the shortest edge", () => {
+    expect(MIN_IMAGE_EDGE).toBe(1200);
+  });
+
+  it("accepts an image exactly at the minimum", () => {
+    expect(validateImages([player("a", "at-min.png")], dir)).toEqual([]);
+  });
+
+  it("rejects an image one pixel under the minimum", () => {
+    const problems = validateImages([player("a", "below-min.png")], dir);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.message).toContain(`${MIN_IMAGE_EDGE - 1}×1500`);
+  });
+
+  it("accepts a typical 1200–1600px Commons photo that the old 1600 limit rejected", () => {
+    expect(validateImages([player("a", "commons-2003.png")], dir)).toEqual([]);
   });
 
   it("catches an extreme aspect ratio", () => {

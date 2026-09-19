@@ -21,14 +21,19 @@ import type { Problem } from "./validate.js";
 /**
  * Shortest edge a source image may have.
  *
- * The card is a full-bleed background on half the viewport — roughly 800 CSS px
- * on a wide desktop. At 2× retina that is 1600px, so anything smaller cannot
- * produce a sharp card and will be upscaled into mush.
+ * Set below the 1600px display width on purpose. Many of the best freely
+ * licensed photos of pre-2005 players are 1200–1600px, and rejecting them would
+ * push those legends onto the monogram. A 1200px source still covers the 800w
+ * rendition with room to spare, so phones stay sharp. The 1600w rendition is
+ * requested with `fit=scale-down`, which never enlarges, so a smaller original
+ * is served at its own size rather than upscaled: large retina screens get a
+ * slightly soft card, which is acceptable for a darkened background layer.
+ * Below 1200 even phones would suffer.
  *
  * This is the *source* minimum. What the browser receives is resized at the
  * edge by Image Transformations; see ARCHITECTURE.md §9.
  */
-export const MIN_IMAGE_EDGE = 1600;
+export const MIN_IMAGE_EDGE = 1200;
 
 /**
  * Widest aspect ratio a source image may have, either orientation.
@@ -105,7 +110,7 @@ export function validateImages(raws: readonly RawPlayer[], imagesDir: string): P
         field: "image.file",
         message:
           `${file} is ${width}×${height} — the shortest edge must be at least ` +
-          `${MIN_IMAGE_EDGE}px to stay sharp on a 2× retina screen`,
+          `${MIN_IMAGE_EDGE}px for the card to stay sharp`,
       });
     }
 

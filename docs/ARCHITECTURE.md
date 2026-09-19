@@ -170,7 +170,7 @@ stats:
 image: # omit entirely if no usable free image exists
   file: zidane-2008.jpg # staged in data/legends/originals/ (gitignored), archived in R2
   author: "Jane Smith"
-  licence: CC-BY-4.0 # CC-BY-* | CC-BY-SA-* | CC0 | PD
+  licence: CC-BY-4.0 # CC-BY-* | CC-BY-SA-* | CC0 | PD, or a port such as CC-BY-3.0-BR
   source: https://commons.wikimedia.org/wiki/File:...
 ```
 
@@ -191,21 +191,31 @@ the engine.
 convenience, so `author`, `licence` and `source` are all required whenever an `image` block is
 present.
 
+**Allowed licences** (`packages/deck/src/licences.ts`): `CC0`, `PD`, `CC-BY-{2.0,2.5,3.0,4.0}`,
+`CC-BY-SA-{2.0,2.5,3.0,4.0}`, and **jurisdiction ports** of CC-BY and CC-BY-SA 2.0, 2.5 and 3.0,
+written as Commons names them with an upper-case two-letter suffix: `CC-BY-3.0-BR`,
+`CC-BY-SA-2.5-ES`. Many good pre-2005 Commons photos carry a port. A port is a different legal
+text from the unported licence, so the credits page links to the port itself
+(`https://creativecommons.org/licenses/by/3.0/br/`); 4.0 has no ports, so `CC-BY-4.0-XX` is
+rejected. The check is on the form of the code, not on a list of jurisdictions, so it doesn't catch
+a code for a port that never existed — copy the code from the Commons file page rather than typing
+it.
+
 ---
 
 ## 6. Build pipeline
 
 `packages/deck/build.ts` runs before the Astro build and emits:
 
-| Artifact                   | Destination                 | Contents                                                                         |
-| -------------------------- | --------------------------- | -------------------------------------------------------------------------------- |
-| `deck.full.json`           | bundled into Worker         | ids, all stat values, eligibility                                                |
-| `dist/images.json`         | bundled into Worker         | id → `{ key, width, height }` for deck players; no source hash                   |
-| `indexes.json`             | Worker                      | per stat: players sorted by value, tie groups                                    |
-| `credits.json`             | read by `/credits` at build | player name, author, licence and source per image; read with `fs`, never bundled |
-| `data/legends/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                             |
-| `viability.md`             | repo, committed             | per stat and gap band, how many valid pairs exist                                |
-| `simulation.md`            | repo, committed             | streak distribution and stat firing rates over 10k runs                          |
+| Artifact                   | Destination                 | Contents                                                                                                      |
+| -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `deck.full.json`           | bundled into Worker         | ids, all stat values, eligibility                                                                             |
+| `dist/images.json`         | bundled into Worker         | id → `{ key, width, height }` for deck players; no source hash                                                |
+| `indexes.json`             | Worker                      | per stat: players sorted by value, tie groups                                                                 |
+| `credits.json`             | read by `/credits` at build | player name, author, licence, licence URL (absent for PD) and source per image; read with `fs`, never bundled |
+| `data/legends/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                                                          |
+| `viability.md`             | repo, committed             | per stat and gap band, how many valid pairs exist                                                             |
+| `simulation.md`            | repo, committed             | streak distribution and stat firing rates over 10k runs                                                       |
 
 **Which deck.** The private deck is used once it holds `MIN_PRIVATE_DECK` (30) schema-valid
 players. Below that the build falls back to the public sample of invented players and logs why
@@ -498,8 +508,16 @@ img.biggerthangame.com/cdn-cgi/image/width=800,quality=80,fit=scale-down,
 - **`srcset` across both widths**, built by `srcsetFor(base, key)`, with `width`/`height` from the
   manifest so the card reserves its box and does not jump.
 
-Sync validates every source before uploading anything: exists, readable, shortest edge ≥ 1600px,
-aspect ≤ 3:1, no two players sharing a file. It is idempotent — unchanged hashes are skipped.
+Sync validates every source before uploading anything: exists, readable, shortest edge ≥ 1200px
+(`MIN_IMAGE_EDGE`), aspect ≤ 3:1, no two players sharing a file. It is idempotent — unchanged hashes
+are skipped.
+
+The minimum sits below the 1600 display width on purpose. Many of the best freely licensed photos of
+pre-2005 players are 1200–1600px, and rejecting them would push those legends onto the monogram. A
+1200px source covers the 800w rendition with room to spare, so phones stay sharp; the 1600w
+rendition uses `fit=scale-down`, which never enlarges, so a smaller original is served at its own
+size rather than upscaled — slightly soft on a large retina screen, acceptable for a darkened
+background layer.
 
 ### Image prefetch — requirement, not optimisation
 

@@ -2,6 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MIN_IMAGE_EDGE } from "../images.js";
 import { loadManifest } from "../manifest.js";
 import { createDryRunUploader, contentTypeFor } from "../upload.js";
 import type { Uploader, UploadItem } from "../upload.js";
@@ -158,7 +159,7 @@ describe("syncImages", () => {
       manifestPath,
       uploader,
     });
-    expect(result.problems.join("\n")).toContain("1600px");
+    expect(result.problems.join("\n")).toContain(`${MIN_IMAGE_EDGE}px`);
     expect(uploader.planned).toHaveLength(0);
     expect(result.processed).toBe(0);
   });

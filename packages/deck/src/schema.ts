@@ -13,20 +13,7 @@
 
 import { z } from "zod";
 import type { Player, PlayerStats } from "@bt/core";
-
-/** Licences an image may carry. Anything else fails the build. */
-export const ALLOWED_LICENCES = [
-  "CC0",
-  "PD",
-  "CC-BY-2.0",
-  "CC-BY-2.5",
-  "CC-BY-3.0",
-  "CC-BY-4.0",
-  "CC-BY-SA-2.0",
-  "CC-BY-SA-2.5",
-  "CC-BY-SA-3.0",
-  "CC-BY-SA-4.0",
-] as const;
+import { LICENCE_RULE, isAllowedLicence } from "./licences.js";
 
 const isoDate = z
   .string()
@@ -74,7 +61,9 @@ export const imageSchema = z
   .object({
     file: z.string().min(1),
     author: z.string().min(1, "an image needs an author"),
-    licence: z.enum(ALLOWED_LICENCES),
+    // Unported licences plus 2.0/2.5/3.0 jurisdiction ports. Anything else
+    // fails the build. See licences.ts.
+    licence: z.string().refine(isAllowedLicence, LICENCE_RULE),
     source: z.string().url("must be a source URL"),
   })
   .strict();

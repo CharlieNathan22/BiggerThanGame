@@ -81,6 +81,35 @@ describe("playerSchema", () => {
     expect(r.success).toBe(false);
   });
 
+  it("accepts a jurisdiction-ported licence", () => {
+    for (const licence of ["CC-BY-3.0-BR", "CC-BY-SA-2.5-ES"]) {
+      const r = playerSchema.safeParse({
+        ...valid,
+        image: {
+          file: "x.jpg",
+          author: "A Photographer",
+          licence,
+          source: "https://commons.wikimedia.org/wiki/File:X",
+        },
+      });
+      expect(r.success, licence).toBe(true);
+    }
+  });
+
+  it("rejects a port of a version that was never ported, with the rule in the message", () => {
+    const r = playerSchema.safeParse({
+      ...valid,
+      image: {
+        file: "x.jpg",
+        author: "A",
+        licence: "CC-BY-4.0-BR",
+        source: "https://example.com/x",
+      },
+    });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toContain("jurisdiction port");
+  });
+
   it("requires an author on an image", () => {
     const r = playerSchema.safeParse({
       ...valid,

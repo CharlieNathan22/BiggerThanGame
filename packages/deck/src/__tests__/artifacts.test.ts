@@ -98,6 +98,47 @@ describe("buildCredits", () => {
   it("carries the player's name for the credits page", () => {
     expect(buildCredits(raws)[0]?.name).toBe("Two");
   });
+
+  describe("licence links", () => {
+    const withLicence = (id: string, licence: string) =>
+      playerSchema.parse({
+        id,
+        name: id,
+        country: "T",
+        position: "FW",
+        dob: "1980-01-01",
+        stats: { club_goals: 100, caps: 50, apps: 300 },
+        image: {
+          file: `${id}.jpg`,
+          author: "A Snapper",
+          licence,
+          source: `https://commons.wikimedia.org/wiki/File:${id}.jpg`,
+        },
+      });
+
+    it("links an unported licence", () => {
+      expect(buildCredits(raws)[0]?.licenceUrl).toBe(
+        "https://creativecommons.org/licenses/by/4.0/",
+      );
+    });
+
+    it("links a jurisdiction port to its own legal text", () => {
+      const credits = buildCredits([
+        withLicence("br", "CC-BY-3.0-BR"),
+        withLicence("es", "CC-BY-SA-2.5-ES"),
+      ]);
+      expect(credits.map((c) => [c.licence, c.licenceUrl])).toEqual([
+        ["CC-BY-3.0-BR", "https://creativecommons.org/licenses/by/3.0/br/"],
+        ["CC-BY-SA-2.5-ES", "https://creativecommons.org/licenses/by-sa/2.5/es/"],
+      ]);
+    });
+
+    it("omits the link for public domain rather than inventing one", () => {
+      const [credit] = buildCredits([withLicence("pd", "PD")]);
+      expect(credit?.licence).toBe("PD");
+      expect(credit).not.toHaveProperty("licenceUrl");
+    });
+  });
 });
 
 describe("buildImages", () => {

@@ -7,7 +7,14 @@
  * `sample/legends/players/` so the repo runs standalone.
  */
 
-export { ALLOWED_LICENCES, playerSchema, statsSchema, imageSchema, toPlayer } from "./schema.js";
+export { playerSchema, statsSchema, imageSchema, toPlayer } from "./schema.js";
+export {
+  ALLOWED_LICENCES,
+  LICENCE_RULE,
+  PORTED_VERSIONS,
+  isAllowedLicence,
+  licenceUrl,
+} from "./licences.js";
 export type { RawImage, RawPlayer } from "./schema.js";
 
 export {

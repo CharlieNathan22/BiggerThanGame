@@ -8,6 +8,7 @@
 
 import { STATS, STAT_KEYS, eligibleStats } from "@bt/core";
 import type { Player, PlayerImage, StatKey } from "@bt/core";
+import { licenceUrl } from "./licences.js";
 import type { Manifest } from "./manifest.js";
 import type { RawPlayer } from "./schema.js";
 
@@ -29,7 +30,14 @@ export interface Credit {
   /** For the credits page, which lists photos by who is in them. */
   readonly name: string;
   readonly author: string;
+  /** The licence code as entered, e.g. `CC-BY-SA-2.5-ES`. */
   readonly licence: string;
+  /**
+   * The exact licence text the photo was released under, including any
+   * jurisdiction port. Absent for public domain, which has no licence to link.
+   * Worked out here so the credits page renders a link and never builds one.
+   */
+  readonly licenceUrl?: string;
   readonly source: string;
 }
 
@@ -73,13 +81,17 @@ export function buildIndexes(players: readonly Player[], now: Date): Indexes {
 export function buildCredits(raws: readonly RawPlayer[]): Credit[] {
   return raws
     .filter((r) => r.image !== undefined)
-    .map((r) => ({
-      playerId: r.id,
-      name: r.name,
-      author: r.image!.author,
-      licence: r.image!.licence,
-      source: r.image!.source,
-    }));
+    .map((r) => {
+      const url = licenceUrl(r.image!.licence);
+      return {
+        playerId: r.id,
+        name: r.name,
+        author: r.image!.author,
+        licence: r.image!.licence,
+        ...(url !== undefined ? { licenceUrl: url } : {}),
+        source: r.image!.source,
+      };
+    });
 }
 
 /** Bundled into the Worker: what each card needs to render its photo. */
