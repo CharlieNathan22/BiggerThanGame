@@ -35,3 +35,7 @@ pnpm-debug.log*
 
 #images
 packages/deck/sample/originals/
+
+# Local design reference, not shipped
+/prototype/
+BUILD_PLAN.md
