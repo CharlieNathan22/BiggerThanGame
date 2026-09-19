@@ -52,3 +52,22 @@ export type { RunOptions } from "./sequence.js";
 
 export { DISPLAY_WIDTHS, IMAGE_QUALITY, imageUrl, originalUrl, srcsetFor } from "./images.js";
 export type { DisplayWidth, PlayerImage } from "./images.js";
+
+export type {
+  AnchorCard,
+  AnswerRequest,
+  AnswerResponse,
+  ApiError,
+  ApiErrorCode,
+  ContinueResponse,
+  EndResponse,
+  Guess,
+  NextRoundRequest,
+  PlayerCard,
+  Reveal,
+  RoundPayload,
+  RunEnd,
+  StartRequest,
+  StartResponse,
+  StatPayload,
+} from "./api.js";

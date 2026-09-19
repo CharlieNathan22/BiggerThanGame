@@ -11,3 +11,22 @@ directory = "./apps/web/dist"
 binding = "ASSETS"
 not_found_handling = "404-page"
 run_worker_first = ["/api/*"]
+# Rate limits for POST /api/round/next, keyed on the IPv4 address or IPv6 /64.
+# The only thing between the deck and a scraper (DESIGN.md §3). Mirrored as
+# RATE_LIMITS in worker/src/rate-limit.ts; a test fails if the two drift.
+# namespace_id must be unique per binding within the Cloudflare account.
+[[ratelimits]]
+name = "ROUND_BURST"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 20
+  period = 10
+
+[[ratelimits]]
+name = "ROUND_SUSTAINED"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 90
+  period = 60
