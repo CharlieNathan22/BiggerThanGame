@@ -50,7 +50,10 @@ Astro is configured for **static output**, not SSR. Every page is prerendered at
 Worker only executes for `/api/*`. No Astro Cloudflare adapter is needed.
 
 **Bindings:** `ASSETS`, `DB` (D1), `BOARDS` (KV), `RUNS` (Durable Object namespace), `RUN_SECRET` (secret),
-`TURNSTILE_SECRET` (secret).
+`TURNSTILE_SECRET` (secret), `ROUND_BURST` and `ROUND_SUSTAINED` (Workers Rate Limiting).
+
+Phase 3 (Friendly) uses only `ASSETS`, `RUN_SECRET` and the two rate limiters. The rest arrive with
+Ranked and Endless.
 
 There is **no R2 binding**. Images are served from R2 through a custom domain
 (`img.biggerthangame.com`) and resized by Image Transformations, so the Worker never touches the
@@ -64,28 +67,40 @@ bucket — see section 9.
 /
 ├── packages/
 │   ├── core/              # framework-free TS — the game
-│   │   ├── prng.ts        # seeded PRNG (xoshiro128**), never Math.random
+│   │   ├── prng.ts        # seeded PRNG (mulberry32), never Math.random
 │   │   ├── engine.ts      # matching engine, eligibility, tie exclusion
 │   │   ├── ramp.ts        # gap bands by round, relaxation order
 │   │   ├── wheel.ts       # tier-weighted stat selection, correlated-pair exclusion
 │   │   ├── sequence.ts    # deterministic round sequence from a seed
+│   │   ├── api.ts         # /api/round/next request and response types, shared with the web app
 │   │   └── types.ts
 │   └── deck/
 │       ├── data/          # private submodule: player YAML + images.json manifest
+│       ├── sample/        # 24 invented players, used until data/ holds MIN_PRIVATE_DECK
 │       ├── schema.ts      # Zod schema
-│       └── build.ts       # validation + precompute → artifacts
+│       ├── build.ts       # validation + precompute → artifacts in dist/
+│       └── dist/          # generated, gitignored: deck.full.json, images.json, credits.json, …
 ├── apps/web/              # Astro + Svelte
 ├── worker/
-│   ├── index.ts           # fetch handler, routing
-│   ├── run-do.ts          # Durable Object
-│   ├── token.ts           # sign / verify progress tokens
-│   └── deck.full.json     # generated, bundled into the Worker
+│   ├── index.ts           # entry: wires the bundled deck into src/app.ts
+│   ├── src/
+│   │   ├── app.ts         # routing, rate limiting, error mapping
+│   │   ├── round.ts       # /api/round/next as a pure function
+│   │   ├── payload.ts     # Round → declared response DTOs
+│   │   └── deck.ts        # the only import of packages/deck/dist
+│   ├── run-do.ts          # Durable Object (Phase 5)
+│   └── token.ts           # sign / verify progress tokens (Phase 5)
 ├── wrangler.toml
-├── DESIGN.md
-└── ARCHITECTURE.md
+└── docs/
+    ├── DESIGN.md
+    └── ARCHITECTURE.md
 ```
 
 `packages/core` must not import anything browser- or Worker-specific. It is pure logic.
+
+The Worker bundles `deck.full.json` and `images.json` from `packages/deck/dist` at build time. It
+never imports `@bt/deck` at runtime — that package reads files with `node:fs` — so `@bt/deck` is for
+Worker tests only. ESLint enforces both this and the web app's ban on importing deck data.
 
 ---
 
@@ -93,11 +108,18 @@ bucket — see section 9.
 
 These four are what make the leaderboard defensible. Everything else is negotiable.
 
-1. **The client never receives a stat value it has not already been shown.** `deck.public.json`
-   contains names and nationalities only — no numbers.
-   The sole exception is `deck.friendly.json`, which carries full values for the Friendly pool
-   (~80–100 players) because that mode runs entirely in the browser. **Nothing outside the Friendly
-   pool may ever appear in a client bundle.** The build must assert this.
+1. **The client never receives a stat value it has not already been shown. No exceptions.**
+   **No client-bound deck artifact exists at all.** Every mode, Friendly included, fetches per
+   question, so the browser's only source of player data is the round payload.
+   This was previously qualified — Friendly shipped full values for a small pool because it ran in
+   the browser — and the build needed a guard to stop that hole widening. Moving Friendly behind
+   the endpoint removed the hole rather than policing it.
+   Two surfaces still carry the risk, checked differently. The **built site bundle** is scanned
+   with `scanForLeakedValues`, because nothing type-level connects "what was imported" to "what
+   ended up in `dist`". The **round payload** is covered by an explicit response DTO plus a test —
+   the compiler does most of the work there, but note that a `Round` carries `anchor` and
+   `challenger` as full `Player` objects, so returning one directly leaks everything while
+   typechecking cleanly.
 2. **No prefetching of hidden values, not even one round ahead.** Buffering rounds for latency
    would mean several readable answers sitting in memory at all times. Prefetch _display_ data
    only — and do prefetch it: images especially must be loaded ahead of the round they appear in
@@ -122,7 +144,7 @@ country: France
 position: MF # GK | DF | MF | FW  — drives the goals-stat exclusion
 dob: 1972-06-23
 deceased: false
-friendly: true # in the client-side Friendly pool — full values ship publicly
+iconic: true # recognisable enough to open a run on (DESIGN.md §10)
 stats:
   club_goals: 125
   caps: 108
@@ -163,16 +185,25 @@ present.
 
 `packages/deck/build.ts` runs before the Astro build and emits:
 
-| Artifact             | Destination         | Contents                                                           |
-| -------------------- | ------------------- | ------------------------------------------------------------------ |
-| `deck.full.json`     | bundled into Worker | ids, all stat values, eligibility                                  |
-| `deck.public.json`   | shipped to client   | id, name, country only — **all** players                           |
-| `deck.friendly.json` | shipped to client   | full stat values, **Friendly pool only**                           |
-| `indexes.json`       | Worker              | per stat: players sorted by value, tie groups                      |
-| `credits.json`       | shipped to client   | author, licence and source per image                               |
-| `images.json`        | read, not written   | id → R2 key and dimensions; written by `images:sync`, checked here |
-| `viability.md`       | repo, committed     | per stat and gap band, how many valid pairs exist                  |
-| `simulation.md`      | repo, committed     | streak distribution and stat firing rates over 10k runs            |
+| Artifact           | Destination                 | Contents                                                                         |
+| ------------------ | --------------------------- | -------------------------------------------------------------------------------- |
+| `deck.full.json`   | bundled into Worker         | ids, all stat values, eligibility                                                |
+| `dist/images.json` | bundled into Worker         | id → `{ key, width, height }` for deck players; no source hash                   |
+| `indexes.json`     | Worker                      | per stat: players sorted by value, tie groups                                    |
+| `credits.json`     | read by `/credits` at build | player name, author, licence and source per image; read with `fs`, never bundled |
+| `data/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                             |
+| `viability.md`     | repo, committed             | per stat and gap band, how many valid pairs exist                                |
+| `simulation.md`    | repo, committed             | streak distribution and stat firing rates over 10k runs                          |
+
+**Which deck.** The private deck is used once it holds `MIN_PRIVATE_DECK` (30) schema-valid
+players. Below that the build falls back to the public sample of invented players and logs why
+(`using sample deck — private deck has 7 of 30 players needed`), printing the private deck's schema
+problems as warnings so half-entered data doesn't hide. The image manifest follows whichever deck
+was chosen. **`images:sync` ignores the minimum:** it works on the private deck as soon as that has
+any player files, since photos are entered alongside the first real players, and falls back to the
+sample only when the private deck is empty. **Production builds pass `--require-private`** (`pnpm build:prod`, used by the deploy
+script and `deploy.yml`) and fail rather than fall back, so invented players never go live. CI and
+local dev keep falling back.
 
 The build **fails** on: a stat value that is negative or non-numeric; a `club_goals` or `igoals`
 value on a goalkeeper; an `ig` entry without `as_of`; a `fee` entry without `year`; an unknown stat
@@ -183,9 +214,13 @@ licence is not on the allow-list. Stats no longer carry provenance, so this is t
 provenance guard in the pipeline — which makes it the one that matters. A player with no `image`
 block is valid and renders the monogram fallback.
 
-It also fails if `deck.friendly.json` contains any player not flagged `friendly: true`, or if the
-Friendly pool exceeds its configured size. This is the guard on the one deliberate data-exposure
-path in the system.
+**No client-bound artifact is emitted**, so there is nothing at build time to police. The leak
+scanner (`scanForLeakedValues`) instead runs against the built site bundle and, from Phase 5,
+against the round payload. It takes text rather than an object deliberately — it must work on a JS
+bundle as readily as on JSON, and it must not trust any object's shape.
+
+Note that **image URLs are display data, not stat values**, and reach the client freely. The
+scanner only looks for numbers.
 
 Band-exempt stats (`clubs`, and any other flagged narrow stat) are matched on tie exclusion alone
 and are **barred from the first 10 rounds** — otherwise a rare stat landing at round 3 ends a run
@@ -210,12 +245,25 @@ ramp and tier weights get tuned — not by guessing.
 ## 7. Sequence derivation
 
 ```
-seed(ranked,  gameNo) = HMAC-SHA256(RUN_SECRET, "ranked:"  + gameNo)
-seed(endless, runId) = HMAC-SHA256(RUN_SECRET, "endless:" + runId)
+seed(ranked,   gameNo) = HMAC-SHA256(RUN_SECRET, "ranked:"   + gameNo)
+seed(endless,  runId)  = HMAC-SHA256(RUN_SECRET, "endless:"  + runId)
+seed(friendly, runId)  = HMAC-SHA256(RUN_SECRET, "friendly:" + runId)
 ```
 
 Ranked's seed depends only on the game number, so **every player gets the same sequence** — that is what
-makes the board comparable. Endless is per-run.
+makes the board comparable. Endless and Friendly are per-run.
+
+**Friendly run ids** are `YYYYMMDD-<uuid>`, minted by the server with the UTC date. The date fixes
+the run's reference `now` (00:00 UTC that day), from which age is computed, so no value moves
+between rounds of one run. The server refuses a run id dated more than one day from its own UTC
+date, so a caller can't choose an arbitrary reference date. The client never sees or chooses a seed.
+
+> **Phase 5 note — seeds collapse to 32 bits.** `createRng` turns the seed string into the
+> generator's state through `hashSeed` (FNV-1a, 32-bit), so however strong the HMAC, there are at
+> most 2³² distinct runs. That is fine for Friendly. For Ranked and Endless, someone holding the deck
+> could brute-force the state from the first few observed rounds and read the rest of the sequence
+> — not the hidden values, which are public facts anyway, but the upcoming pairings. Decide in
+> Phase 5 whether that matters; widening the state changes every golden fingerprint.
 
 `sequence.ts` takes a seed and a round number and replays the engine deterministically from round
 one. Twenty rounds is well under a millisecond, so the server recomputes rather than storing.
@@ -260,8 +308,9 @@ affected. Correct, but D1 is regional rather than edge-local, so it adds latency
 ```ts
 type Progress = {
   runId: string;
-  mode: "ranked" | "endless" | "friendly";
+  mode: "ranked" | "endless";
   gameNo: number;
+  // Friendly issues no token — it uses /api/round/next and carries no state.
   round: number;
   streak: number;
   anchorId: string;
@@ -281,6 +330,45 @@ what is already on screen. The challenger's value is never in it.
 **`POST /api/run/start`** → `{ mode, turnstileToken }`
 Verifies Turnstile. For Ranked, checks the signed device-day token and refuses a second run.
 Creates the DO, returns round one's display payload and the first progress token.
+
+**`POST /api/round/next`** — Friendly, Phase 3. Stateless: no storage, no token, no nonce, no
+timer. Types live in `packages/core/src/api.ts`, shared by the Worker and the web app.
+
+```jsonc
+// start
+→ { "mode": "friendly" }
+← { "runId": "20260919-<uuid>", "round": RoundPayload }            // round 1
+
+// answer
+→ { "mode": "friendly", "runId": "…", "round": 7, "guess": "higher" | "lower" }
+← { "reveal": { "round": 7, "value": 88, "display": "88m", "qualifier"?: "…", "correct": true },
+    "next": RoundPayload }                                          // correct, run continues
+← { "reveal": { … }, "end": "wrong" | "deck-exhausted" }            // run over
+```
+
+`RoundPayload` is `{ index, stat: { key, label, tier, statChanged }, anchor, challenger }`. The
+anchor carries `id, name, country, position, image?` plus its `value`, `display` and `qualifier?`;
+the challenger carries **only** `id, name, country, position, image?`. The challenger's qualifier
+(fee year, follower snapshot date) is stat-derived, so it is withheld with the value and arrives in
+`reveal`. `display` is always `STATS[key].format(value)`.
+
+Each request derives the seed from `runId` (§7), replays the run to one round past the one answered,
+and **decides correctness server-side**. A run that reaches `MAX_ROUNDS` (60) — or can deal no next
+round — ends with `deck-exhausted`. Every response is an explicitly declared DTO built field by field
+in `worker/src/payload.ts`; a `Round` is never returned. Requests are validated strictly — unknown
+mode, extra keys, malformed or out-of-range `runId`, a `round` that isn't an integer in 1–60, or a
+bad guess are all `400` — and every `/api/*` response is `cache-control: no-store`.
+
+Because it is stateless, anyone can mint run ids or ask any round of a run. Each request still
+reveals at most one hidden value, so the **rate limit** does the real work (DESIGN.md §3): it is the
+only thing between the deck and a determined scraper, so it is load-bearing rather than hygiene.
+Numbers in §12.
+
+**Phase 5 hardens this same endpoint** rather than replacing it: Ranked and Endless add the progress
+token (signed, spent once via the Durable Object), the server-owned timer and Turnstile on top of
+the same payloads — the round, reveal and end shapes stay as they are. How the token sits alongside
+`runId` and `round` in the request is settled in Phase 5. `/api/run/start` and `/api/round/guess`
+below describe the enforcement that hardening adds.
 
 **`POST /api/round/guess`** → `{ token, guess }`
 
@@ -406,9 +494,11 @@ the same 640ms window and is the one thing that would actually make the game fee
 Images are _display_ data, and the next round's display payload arrives with the current answer.
 So:
 
-1. **The moment a round response lands, preload the next two cards' images** — the same URL the
-   `srcset` will pick, or the browser fetches twice. The player spends several seconds thinking
-   while the fetch completes, and the image is in cache before it is needed.
+1. **The moment a round response lands, preload the one new card's image** — the next challenger.
+   Each response introduces exactly one new player: the next round's anchor is the challenger just
+   revealed, already on screen with its image loaded. Preload the same URL the `srcset` will pick
+   (same `srcset` and `sizes`), or the browser fetches twice. The player spends several seconds
+   thinking while the fetch completes, and the image is in cache before it is needed.
 2. **Serve R2 through a custom domain**, never `r2.dev` — it is rate-limited and unsupported for
    production, and Transformations need a hostname on the zone.
 3. **Resized at the edge, not HD originals.** An 800w AVIF of a portrait is typically well under
@@ -421,7 +511,8 @@ So:
 - The **3s timer grace** (section 8) absorbs slow rounds so a laggy connection does not cost the
   player their run.
 - **Bank and end** covers a genuine drop.
-- **Friendly Mode is entirely local**, so there is always a mode that works with no connection.
+- There is **no offline mode**. Friendly gave that up when it moved behind the endpoint, which was
+  the price of not shipping the deck to every browser.
 
 Honest summary: Ranked and Endless need a working connection at roughly 50–150ms typical, and the
 animation hides it. They will feel sluggish on genuinely poor mobile, which is what the grace window
@@ -479,6 +570,16 @@ path entirely — the board is the same for everyone, so it should be served fro
 
 - **Turnstile** on run start and on submission.
 - **Rate limits** per device and per IP: Endless run starts, submissions, error reports.
+- **Friendly (`/api/round/next`)** is limited by two Workers Rate Limiting bindings, keyed on the
+  IPv4 address or the IPv6 /64 (a subscriber is usually handed a whole /64 and could otherwise
+  rotate through it): `ROUND_BURST` **20 per 10s** and `ROUND_SUSTAINED` **90 per 60s**. A fast
+  honest player makes about one request every two seconds, nearer one a second with reduced
+  motion, so neither is visible in play. Over the limit is `429` with `retry-after`, and the UI shows
+  a calm "slow down" state rather than ending the run. Cloudflare advises against IP keys because
+  addresses are shared (CGNAT, offices); a stateless endpoint has nothing else to key on, which is
+  why the numbers are generous. Counters are per location and approximate — a speed bump that makes
+  reconstructing the deck take many IP-hours, not a wall. The numbers live in `wrangler.toml` and
+  are mirrored by `RATE_LIMITS` in `worker/src/rate-limit.ts`; a test fails if they drift.
 - **Nicknames:** default to a generated name (adjective + football noun + number); most people keep
   the suggestion, which shrinks the moderation surface to the minority who type their own.
   Validation normalises first — strip zero-width characters, fold unicode homoglyphs to ASCII,
@@ -538,8 +639,12 @@ knife-edge bands is a second signal.
 - **Determinism:** the same seed must produce an identical sequence in the browser, the Worker and
   Node. Assert this explicitly; it is the foundation of Daily Ranked.
 - **Simulation:** 10,000-run harness producing `simulation.md`. Run it on every deck change.
-- **Worker:** Miniflare/workerd integration tests covering token forgery, replay, timer expiry and
-  the ranked one-attempt rule.
+- **Worker, Phase 3:** vitest in Node. Handler logic is pure functions (request → response, given
+  deck, secret and clock), and routing is tested through `createApp` with mocked bindings. The
+  **response-shape test** walks many complete runs and asserts no response carries a hidden value or
+  any part of a `Player`, with `scanForLeakedValues` as a backstop.
+- **Worker, Phase 5:** Miniflare/workerd integration tests covering token forgery, replay, timer
+  expiry and the ranked one-attempt rule, and the determinism test run under workerd.
 - **Latency:** test the reveal under artificial delay (0ms, 200ms, 800ms, 3s). The count-up must
   hold and settle rather than snap or freeze, and no image fetch may occur inside the reveal window.
 
@@ -560,19 +665,20 @@ current numbers against Cloudflare's pricing page before launch.
 ## 17. Build order
 
 Note that **images are v1 scope**, and licence verification across ~400 players is a long pole in
-its own right — see `DESIGN.md` §13. Friendly Mode can ship with images for its pool only, which is
-a far smaller verification job and validates the pipeline early.
+its own right — see `DESIGN.md` §13. Friendly Mode ships on whatever the deck holds; players without a
+verified image render the monogram fallback.
 
-**Friendly Mode first**, shipped publicly on its permanent 80-to-100 player pool. It is
-client-side, clock-free and leaderboard-exempt, so it needs none of sections 7 to 12 —
-`packages/core`, the Astro shell and the Svelte island only. The Worker never executes; Astro
-builds, Workers serves the files. Nothing about it is rework: when the backend lands, Friendly Mode
-keeps running exactly as built.
+**Friendly Mode first**, shipped publicly on the full deck. It needs `packages/core`, the Astro
+shell, the Svelte island, and **one stateless endpoint** (`/api/round/next`) plus a rate limit. It
+does not need the Durable Object, D1, KV, progress tokens or Turnstile.
 
-That gets feedback on feel and comprehension while the two long poles — hand-entering the deck and
-building the server-authoritative stack — proceed in parallel. It does **not** validate the
-difficulty ramp; see `DESIGN.md` §3. Ramp tuning comes from `simulation.md` run against the full
-deck, which is independent of what ships to the client.
+Building that endpoint is not a detour. It is the same sequence-derivation work Phase 5 needs, and
+Phase 5 hardens it in place rather than replacing a throwaway — so this is less total work than
+building Friendly fully client-side and bolting a server path on afterwards.
+
+That gets feedback on feel, comprehension and the difficulty ramp while the long pole —
+hand-entering the deck — proceeds in parallel. `simulation.md` remains the primary instrument for
+ramp tuning; live Friendly play is the check on it.
 
 Ranked and Endless ship together once the round protocol, Durable Object, D1 schema and moderation
 are complete.

@@ -4,8 +4,9 @@ Working notes for Claude Code in this repo.
 
 **This file is about how to work here. It is not the spec.**
 
-- **[DESIGN.md](DESIGN.md)** — what the game is. Modes, stats, ramp, matching engine, decisions.
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — how it's built. Deployment, round protocol, latency,
+- **[DESIGN.md](docs/DESIGN.md)** — what the game is. Modes, stats, ramp, matching engine,
+  decisions.
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how it's built. Deployment, round protocol, latency,
   anti-cheat.
 
 Read both before starting anything non-trivial. Where this file and those disagree, **they win** —
@@ -18,16 +19,19 @@ accident.
 
 Breaking any of these silently breaks the leaderboard. They are not preferences.
 
-1. **The client never receives a stat value it hasn't already been shown.** `deck.public.json` is
-   names and nationalities only. The one exception is `deck.friendly.json`, which carries full
-   values for the ~80–100 player Friendly pool because that mode runs entirely in the browser.
-   Nothing outside that pool may ever reach a client bundle.
+1. **The client never receives a stat value it hasn't already been shown. No exceptions.** No
+   client-bound deck artifact exists: every mode, Friendly included, gets player data per question
+   from `/api/round/next`. `apps/web` never imports `@bt/deck`, `deck.full.json` or anything under
+   `packages/deck/{dist,data}` (ESLint enforces it; the leak scan of the built site is the
+   backstop). Round responses are explicitly declared DTOs — never return a `Round`, whose
+   `anchor` and `challenger` are full `Player` objects.
 2. **Never prefetch hidden values** — not one round ahead, not ever. Display data (names, images)
    _must_ be prefetched; values must not.
 3. **The round sequence is a pure function of the seed** and must not depend on player answers.
    This is what makes Daily Ranked identical for everyone and lets the server recompute any round.
-4. **A progress token is spent once.** The Durable Object nonce check is what prevents replay. Do
-   not "optimise" it away — without it a player can resubmit a round with the other answer.
+4. **A progress token is spent once** (Phase 5, Ranked and Endless; Friendly issues no token).
+   The Durable Object nonce check is what prevents replay. Do not "optimise" it away — without it a
+   player can resubmit a round with the other answer.
 5. **Seeded PRNG only.** `Math.random` anywhere in `packages/core` is a bug.
 6. **Never fetch an image at reveal time.** See ARCHITECTURE.md §9.
 7. **The server owns the clock.** Client-reported timings are telemetry, never trusted.
@@ -39,11 +43,14 @@ If a change seems to require breaking one of these, stop and ask.
 ## Commands
 
 ```bash
-pnpm dev          # Friendly Mode against the sample deck
-pnpm test         # unit tests (vitest)
+pnpm dev          # the site (Astro dev server)
+pnpm dev:api      # builds the deck, then the Worker on :8787 (wrangler dev, secret from .dev.vars)
+pnpm test         # unit tests (vitest) — core, deck and Worker
 pnpm simulate     # 10k-run difficulty simulation → simulation.md
-pnpm build        # validates deck, emits artifacts, builds site
-pnpm typecheck
+pnpm build        # validates deck, emits artifacts, builds site (sample deck allowed)
+pnpm build:prod   # same, but refuses the sample deck — production and deploy only
+pnpm typecheck    # needs the deck artifacts: run a deck build first on a clean checkout
+pnpm lint
 ```
 
 `pnpm build` fails on invalid deck data by design. A failing build usually means a data problem,
@@ -57,8 +64,13 @@ not a code problem — read the error before changing code.
 packages/core/    framework-free TypeScript. The game.
 packages/deck/    schema, validation, build pipeline. Data is a private submodule.
 apps/web/         Astro + Svelte
-worker/           fetch handler, Durable Object, token signing
+worker/           fetch handler and /api/round/next; Durable Object and tokens arrive in Phase 5
 ```
+
+**The Worker bundles the deck from `packages/deck/dist` via `worker/src/deck.ts` and nothing else.**
+It never imports `@bt/deck` at runtime — that package reads files with `node:fs`. `@bt/deck` is for
+Worker tests only. Handler logic lives in pure functions under `worker/src/`; `worker/index.ts` is
+wiring.
 
 **`packages/core` imports nothing browser- or Worker-specific.** No `window`, no `fetch`, no
 Cloudflare types. It runs in three places — browser, Worker, Node tests — and server-side
@@ -87,8 +99,10 @@ an `if` about game rules inside a `.svelte` file, it's in the wrong place.
   relaxation order are pure and should be covered properly.
 - **Determinism is a test, not an assumption.** The same seed must produce an identical sequence in
   browser, Worker and Node. Assert it.
-- Worker changes get Miniflare/workerd tests covering token forgery, replay, timer expiry and the
-  ranked one-attempt rule.
+- Worker changes get tests. In Phase 3 they are vitest in Node against the pure handler functions
+  and `createApp` with mocked bindings — including the response-shape test, which must never be
+  weakened. **Miniflare/workerd tests arrive in Phase 5**, covering token forgery, replay, timer
+  expiry and the ranked one-attempt rule, and the determinism test runs under workerd there.
 - Run `pnpm simulate` after any change to the deck, the ramp or the wheel, and mention what moved.
 
 ---
@@ -118,18 +132,27 @@ overlooked. Don't scaffold them speculatively.
 
 ## Build order
 
-Friendly Mode ships first — client-side, clock-free, leaderboard-exempt. It needs `packages/core`,
-the Astro shell and the Svelte island, and none of the round protocol, Durable Object, D1 or KV.
-Don't build backend machinery until Friendly Mode is done.
+Friendly Mode ships first — clock-free, leaderboard-exempt, on the full deck. It needs
+`packages/core`, the Astro shell, the Svelte island, and **one stateless, rate-limited endpoint**
+(`POST /api/round/next`). It needs none of the Durable Object, D1, KV, progress tokens or
+Turnstile. Don't build that enforcement machinery until Friendly Mode is done; Phase 5 hardens
+`/api/round/next` in place rather than replacing it.
 
 ---
 
 ## Data
 
-The deck is a **private submodule**; a small sample deck is committed so the repo runs standalone.
+The deck is a **private submodule**; a 24-player sample of invented players is committed so the
+repo runs standalone. The private deck is used only once it holds **`MIN_PRIVATE_DECK` (30)**
+schema-valid players; until then dev and CI fall back to the sample and say so in the build log.
+Production builds (`pnpm build:prod`, the deploy script, `deploy.yml`) pass `--require-private` and
+fail instead, so invented players can never go live. `images:sync` ignores the minimum and uses the
+private deck whenever it has any player files.
 
-Every figure carries `source` and `as_of`. Never add a number without both — the build rejects it,
-and the provenance is what makes corrections tractable when someone disputes a value.
+Stat figures are plain numbers with no per-stat source (DESIGN.md §11). Instagram followers carry
+`as_of` and the transfer fee carries `year`, because both are shown on the card. **Images keep full
+provenance** — `author`, `licence` and `source` are required, and the build rejects an image block
+without them.
 
 Figures in the original HTML prototype are approximate and from memory. **Do not copy them into the
 deck.** They exist to test the feel of the game, nothing else.
