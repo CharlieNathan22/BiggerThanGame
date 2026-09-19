@@ -80,6 +80,14 @@ describe("structure", () => {
     }
   });
 
+  it("draws the opening anchor from the whole iconic pool, not its first member", () => {
+    const iconic = fixtureDeck.filter((p) => p.iconic === true).map((p) => p.id);
+    const openers = new Set<string>();
+    for (let i = 0; i < 60; i++) openers.add(run(`opener-${i}`, 1)[0]!.anchor.id);
+    expect(openers.size).toBeGreaterThan(1);
+    expect([...openers].sort()).toEqual([...iconic].sort());
+  });
+
   it("opens on an easy, banded stat", () => {
     for (const seed of ["a", "b", "c", "d", "e"]) {
       const first = run(seed)[0];

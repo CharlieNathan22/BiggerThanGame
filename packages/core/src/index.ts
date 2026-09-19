@@ -47,7 +47,7 @@ export type { Match, MatchContext } from "./engine.js";
 export { DWELL_MAX, DWELL_MIN, chooseStat, nextDwell, weightedPick } from "./wheel.js";
 export type { WheelOptions } from "./wheel.js";
 
-export { buildRun, labelFor, roundAt } from "./sequence.js";
+export { MAX_ROUNDS, buildRun, labelFor, roundAt } from "./sequence.js";
 export type { RunOptions } from "./sequence.js";
 
 export { DISPLAY_WIDTHS, IMAGE_QUALITY, imageUrl, originalUrl, srcsetFor } from "./images.js";

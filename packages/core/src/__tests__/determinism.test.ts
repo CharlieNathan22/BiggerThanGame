@@ -44,13 +44,13 @@ describe("golden fingerprints", () => {
 
   it("a ranked run is stable", () => {
     expect(fingerprint("ranked:1")).toMatchInlineSnapshot(
-      `"1:caps:alpha>foxtrot|2:caps:foxtrot>hotel|3:caps:hotel>echo|4:caps:echo>juliet|5:caps:juliet>kilo|6:ig:kilo>india|7:ig:india>charlie|8:club_goals:charlie>lima|9:club_goals:lima>bravo|10:club_goals:bravo>golf|11:club_goals:golf>delta|12:club_goals:delta>india|13:club_goals:india>alpha|14:club_goals:alpha>charlie|15:club_goals:charlie>juliet|16:club_goals:juliet>foxtrot|17:club_goals:foxtrot>juliet|18:club_goals:juliet>golf|19:club_goals:golf>hotel|20:club_goals:hotel>golf|21:club_goals:golf>hotel|22:club_goals:hotel>india|23:club_goals:india>hotel|24:club_goals:hotel>kilo|25:club_goals:kilo>charlie"`,
+      `"1:caps:hotel>foxtrot|2:caps:foxtrot>lima|3:ig:lima>echo|4:ig:echo>alpha|5:ig:alpha>delta|6:ig:delta>kilo|7:club_goals:kilo>juliet|8:club_goals:juliet>bravo|9:club_goals:bravo>golf|10:club_goals:golf>charlie|11:ig:charlie>india|12:ig:india>foxtrot|13:ig:foxtrot>delta|14:ig:delta>juliet|15:ig:juliet>delta|16:ig:delta>foxtrot|17:ig:foxtrot>india|18:ig:india>echo|19:ig:echo>kilo|20:ig:kilo>echo|21:ig:echo>lima|22:ig:lima>echo|23:ig:echo>bravo|24:ig:bravo>alpha|25:ig:alpha>kilo"`,
     );
   });
 
   it("a second ranked run is stable", () => {
     expect(fingerprint("ranked:2")).toMatchInlineSnapshot(
-      `"1:caps:alpha>foxtrot|2:caps:foxtrot>hotel|3:igoals:hotel>golf|4:igoals:golf>lima|5:ig:lima>kilo|6:ig:kilo>delta|7:club_goals:delta>bravo|8:club_goals:bravo>juliet|9:club_goals:juliet>india|10:club_goals:india>charlie|11:clubs:charlie>echo|12:clubs:echo>kilo|13:clubs:kilo>charlie|14:clubs:charlie>echo|15:clubs:echo>golf|16:clubs:golf>delta|17:clubs:delta>bravo|18:clubs:bravo>echo|19:clubs:echo>juliet|20:clubs:juliet>golf|21:clubs:golf>alpha|22:clubs:alpha>foxtrot|23:clubs:foxtrot>hotel|24:clubs:hotel>alpha|25:clubs:alpha>charlie"`,
+      `"1:caps:alpha>foxtrot|2:caps:foxtrot>kilo|3:caps:kilo>hotel|4:ig:hotel>delta|5:ig:delta>bravo|6:ig:bravo>lima|7:ig:lima>echo|8:ig:echo>juliet|9:club_goals:juliet>charlie|10:club_goals:charlie>golf|11:club_goals:golf>india|12:club_goals:india>delta|13:club_goals:delta>hotel|14:club_goals:hotel>foxtrot|15:club_goals:foxtrot>lima|16:club_goals:lima>delta|17:club_goals:delta>foxtrot|18:club_goals:foxtrot>hotel|19:club_goals:hotel>foxtrot|20:club_goals:foxtrot>charlie|21:club_goals:charlie>bravo|22:club_goals:bravo>india|23:club_goals:india>golf|24:club_goals:golf>charlie|25:club_goals:charlie>delta"`,
     );
   });
 });

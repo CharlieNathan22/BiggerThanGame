@@ -11,6 +11,7 @@
  */
 
 import { createRng } from "./prng.js";
+import type { Rng } from "./prng.js";
 import { isEligible } from "./eligibility.js";
 import { candidates, remember, selectChallenger } from "./engine.js";
 import { bandFor, statAllowedAtRound } from "./ramp.js";
@@ -23,9 +24,12 @@ export interface RunOptions {
   readonly seed: string;
   /** Reference date — age is derived from it, so it must be fixed per run. */
   readonly now: Date;
-  /** Hard cap on rounds generated. */
+  /** Hard cap on rounds generated. Defaults to `MAX_ROUNDS`. */
   readonly maxRounds?: number;
 }
+
+/** Default cap on a run's length. A run that reaches it has exhausted the deck. */
+export const MAX_ROUNDS = 60;
 
 /** Stats that could open a run: basic tier, banded, genuinely easy to read. */
 const OPENING_STATS: readonly StatKey[] = ["club_goals", "ig", "caps"];
@@ -34,16 +38,29 @@ const OPENING_STATS: readonly StatKey[] = ["club_goals", "ig", "caps"];
  * Most people who open the link play one run and never come back, so round one
  * is curated rather than random: a recognisable name and a question they can
  * answer. The `iconic` flag marks the names recognisable enough to open on.
+ *
+ * Drawn with the run's PRNG from every iconic player who can actually be dealt
+ * a round-one pair, so different seeds open on different names. Falls back to
+ * any dealable player only when no iconic one is.
  */
-function openingAnchor(deck: readonly Player[], stat: StatKey, now: Date): Player | undefined {
-  const eligible = deck.filter((p) => isEligible(p, stat, now));
-  const famous = eligible.filter((p) => p.iconic === true);
-  return famous[0] ?? eligible[0];
+function openingAnchor(
+  deck: readonly Player[],
+  stat: StatKey,
+  now: Date,
+  rng: Rng,
+): Player | undefined {
+  const band = bandFor(stat, 1);
+  const dealable = deck.filter(
+    (p) =>
+      isEligible(p, stat, now) && candidates(p, stat, band, { deck, now, seen: [] }).length > 0,
+  );
+  const famous = dealable.filter((p) => p.iconic === true);
+  return rng.pick(famous.length > 0 ? famous : dealable);
 }
 
 export function buildRun(opts: RunOptions): Round[] {
   const { deck, seed, now } = opts;
-  const maxRounds = opts.maxRounds ?? 60;
+  const maxRounds = opts.maxRounds ?? MAX_ROUNDS;
   const rng = createRng(seed);
 
   let stat: StatKey | undefined;
@@ -51,14 +68,8 @@ export function buildRun(opts: RunOptions): Round[] {
 
   // Opening round: curated anchor on an easy stat.
   for (const candidateStat of rng.shuffle(OPENING_STATS)) {
-    const pick = openingAnchor(deck, candidateStat, now);
-    if (pick === undefined) continue;
-    const pool = candidates(pick, candidateStat, bandFor(candidateStat, 1), {
-      deck,
-      now,
-      seen: [],
-    });
-    if (pool.length > 0) {
+    const pick = openingAnchor(deck, candidateStat, now, rng);
+    if (pick !== undefined) {
       stat = candidateStat;
       anchor = pick;
       break;
