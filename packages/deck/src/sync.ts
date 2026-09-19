@@ -19,7 +19,8 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { imageSize } from "image-size";
-import { validateImages } from "./images.js";
+import { imageSizeWarnings, validateImages } from "./images.js";
+import type { ImageWarning } from "./images.js";
 import { DECK } from "./load.js";
 import { loadManifest, saveManifest } from "./manifest.js";
 import type { Manifest, ManifestEntry } from "./manifest.js";
@@ -88,12 +89,18 @@ export interface SyncResult {
   readonly skipped: number;
   readonly uploaded: number;
   readonly problems: readonly string[];
+  /**
+   * Every image, synced this run or not, that passes but is under
+   * `RECOMMENDED_IMAGE_EDGE`. Informational: warnings never fail the sync.
+   */
+  readonly warnings: readonly ImageWarning[];
   readonly manifest: Manifest;
 }
 
 export async function syncImages(opts: SyncOptions): Promise<SyncResult> {
   const log = opts.log ?? (() => {});
   const withImages = opts.raws.filter((r) => r.image !== undefined);
+  const warnings = imageSizeWarnings(opts.raws, opts.sourceDir);
 
   // Validate before doing any work — a bad image should stop the run, not
   // surface after twenty uploads.
@@ -104,6 +111,7 @@ export async function syncImages(opts: SyncOptions): Promise<SyncResult> {
       skipped: 0,
       uploaded: 0,
       problems: formatProblems(problems).split("\n"),
+      warnings,
       manifest: loadManifest(opts.manifestPath),
     };
   }
@@ -146,5 +154,5 @@ export async function syncImages(opts: SyncOptions): Promise<SyncResult> {
   };
   if (opts.write !== false) saveManifest(opts.manifestPath, manifest);
 
-  return { processed, skipped, uploaded, problems: [], manifest };
+  return { processed, skipped, uploaded, problems: [], warnings, manifest };
 }

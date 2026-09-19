@@ -162,6 +162,10 @@ Stat figures are plain numbers with no per-stat source (DESIGN.md §11). Instagr
 provenance** — `author`, `licence` and `source` are required, and the build rejects an image block
 without them.
 
+Image size is checked by `images:sync` on the **shortest edge**: under `MIN_IMAGE_EDGE` (800px) the
+sync fails; from 800 up to `RECOMMENDED_IMAGE_EDGE` (1200px) the image passes but is listed as a
+warning to upgrade. Warnings never fail the sync. See ARCHITECTURE.md §9.
+
 Figures in the original HTML prototype are approximate and from memory. **Do not copy them into the
 deck.** They exist to test the feel of the game, nothing else.
 

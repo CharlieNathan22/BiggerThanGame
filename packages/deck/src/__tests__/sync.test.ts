@@ -1,13 +1,15 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MIN_IMAGE_EDGE } from "../images.js";
+import { deckDirFor } from "../load.js";
 import { loadManifest } from "../manifest.js";
 import { createDryRunUploader, contentTypeFor } from "../upload.js";
 import type { Uploader, UploadItem } from "../upload.js";
 import { displayedSize, hashBytes, originalKeyFor, shortHash, syncImages } from "../sync.js";
 import { playerSchema } from "../schema.js";
+import { runSync } from "../sync-cli.js";
 import { writePng } from "./helpers/png.js";
 
 let dir: string;
@@ -188,5 +190,96 @@ describe("syncImages", () => {
     expect(result.processed).toBe(2);
     expect(uploader.planned).toHaveLength(2);
     expect(existsSync(path)).toBe(false);
+  });
+});
+
+describe("size warnings", () => {
+  // Between MIN_IMAGE_EDGE and RECOMMENDED_IMAGE_EDGE: usable, flagged for upgrade.
+  const soft = () => player("soft", "soft.png");
+
+  beforeAll(() => {
+    writePng(join(sourceDir, "soft.png"), 1000, 1250, 0, 4);
+  });
+
+  it("syncs a soft image and reports it, without failing", async () => {
+    const bucket = fakeBucket();
+    const result = await syncImages({
+      raws: [player("one", "one.png"), soft()],
+      sourceDir,
+      manifestPath: join(dir, "warn.json"),
+      uploader: bucket,
+    });
+    expect(result.problems).toEqual([]);
+    expect(result.processed).toBe(2);
+    expect(result.manifest.entries.soft).toBeDefined();
+    expect(result.warnings).toEqual([
+      { playerId: "soft", file: "soft.png", width: 1000, height: 1250 },
+    ]);
+  });
+
+  it("reports nothing when every image meets the recommendation", async () => {
+    const result = await syncImages({
+      raws: both(),
+      sourceDir,
+      manifestPath: join(dir, "warn-none.json"),
+      uploader: createDryRunUploader(),
+      write: false,
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("still reports warnings when a real problem stops the sync", async () => {
+    const result = await syncImages({
+      raws: [soft(), player("tiny", "tiny.png")],
+      sourceDir,
+      manifestPath: join(dir, "warn-fail.json"),
+      uploader: createDryRunUploader(),
+      write: false,
+    });
+    expect(result.problems.length).toBeGreaterThan(0);
+    expect(result.warnings.map((w) => w.playerId)).toEqual(["soft"]);
+  });
+
+  it("makes images:sync print the list and still exit 0", async () => {
+    const root = mkdtempSync(join(tmpdir(), "bt-sync-cli-"));
+    try {
+      const deck = deckDirFor(root, "data");
+      mkdirSync(join(deck, "players"), { recursive: true });
+      mkdirSync(join(deck, "originals"), { recursive: true });
+      writePng(join(deck, "originals", "soft.png"), 1000, 1250);
+      writeFileSync(
+        join(deck, "players", "soft.yaml"),
+        [
+          "id: soft",
+          "name: Soft Photo",
+          "country: Testland",
+          "position: FW",
+          "dob: 1980-01-01",
+          "stats:",
+          "  club_goals: 300",
+          "  caps: 90",
+          "  apps: 500",
+          "image:",
+          "  file: soft.png",
+          "  author: A Snapper",
+          "  licence: CC-BY-3.0-BR",
+          "  source: https://commons.wikimedia.org/wiki/File:Soft.png",
+        ].join("\n"),
+      );
+
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        expect(await runSync(["--dry-run"], root)).toBe(0);
+        const printed = warn.mock.calls.map((c) => String(c[0])).join("\n");
+        expect(printed).toContain("usable, upgrade if a larger free image exists");
+        expect(printed).toContain("soft: soft.png (1000×1250)");
+      } finally {
+        log.mockRestore();
+        warn.mockRestore();
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -19,21 +19,38 @@ import type { RawPlayer } from "./schema.js";
 import type { Problem } from "./validate.js";
 
 /**
- * Shortest edge a source image may have.
+ * Shortest edge a source image may have. Below this, sync fails.
  *
- * Set below the 1600px display width on purpose. Many of the best freely
- * licensed photos of pre-2005 players are 1200–1600px, and rejecting them would
- * push those legends onto the monogram. A 1200px source still covers the 800w
- * rendition with room to spare, so phones stay sharp. The 1600w rendition is
- * requested with `fit=scale-down`, which never enlarges, so a smaller original
- * is served at its own size rather than upscaled: large retina screens get a
- * slightly soft card, which is acceptable for a darkened background layer.
- * Below 1200 even phones would suffer.
+ * Measured on the **shortest** edge, so a tall portrait can't sneak through on
+ * its height. Set at the smaller display width (800) on purpose: many of the
+ * best freely licensed photos of pre-2005 players are small, and rejecting them
+ * would push those legends onto the monogram. An 800px source exactly covers
+ * the 800w rendition, so it is never upscaled. The 1600w rendition is requested
+ * with `fit=scale-down`, which never enlarges, so a smaller original is served
+ * at its own size: 3× phones and retina screens get a soft card, acceptable for
+ * a darkened, desaturated background that must never compete with the number.
+ *
+ * Between this and `RECOMMENDED_IMAGE_EDGE` an image passes but sync warns, so
+ * the soft ones stay on a list to upgrade.
  *
  * This is the *source* minimum. What the browser receives is resized at the
  * edge by Image Transformations; see ARCHITECTURE.md §9.
  */
-export const MIN_IMAGE_EDGE = 1200;
+export const MIN_IMAGE_EDGE = 800;
+
+/**
+ * Shortest edge below which an image is usable but worth replacing. Sync lists
+ * every image under it as a warning; warnings never fail the sync.
+ */
+export const RECOMMENDED_IMAGE_EDGE = 1200;
+
+/** An image that passes validation but is below `RECOMMENDED_IMAGE_EDGE`. */
+export interface ImageWarning {
+  readonly playerId: string;
+  readonly file: string;
+  readonly width: number;
+  readonly height: number;
+}
 
 /**
  * Widest aspect ratio a source image may have, either orientation.
@@ -127,6 +144,47 @@ export function validateImages(raws: readonly RawPlayer[], imagesDir: string): P
   }
 
   return problems;
+}
+
+/**
+ * Images that pass validation but whose shortest edge is under
+ * `RECOMMENDED_IMAGE_EDGE`: usable, and worth upgrading if a larger free image
+ * exists. Missing, unreadable and too-small files are problems, reported by
+ * `validateImages`, so they never appear here.
+ */
+export function imageSizeWarnings(raws: readonly RawPlayer[], imagesDir: string): ImageWarning[] {
+  const warnings: ImageWarning[] = [];
+  for (const raw of raws) {
+    if (raw.image === undefined) continue;
+    const { file } = raw.image;
+    const path = join(imagesDir, file);
+    if (!existsSync(path)) continue;
+
+    let width: number | undefined;
+    let height: number | undefined;
+    try {
+      ({ width, height } = imageSize(readFileSync(path)));
+    } catch {
+      continue;
+    }
+    if (width === undefined || height === undefined) continue;
+
+    const shortest = Math.min(width, height);
+    if (shortest >= MIN_IMAGE_EDGE && shortest < RECOMMENDED_IMAGE_EDGE) {
+      warnings.push({ playerId: raw.id, file, width, height });
+    }
+  }
+  return warnings;
+}
+
+/** The warning block `images:sync` prints. Empty when there is nothing to say. */
+export function formatImageWarnings(warnings: readonly ImageWarning[]): string[] {
+  if (warnings.length === 0) return [];
+  return [
+    `${warnings.length} image(s) under ${RECOMMENDED_IMAGE_EDGE}px on the shortest edge — ` +
+      "usable, upgrade if a larger free image exists:",
+    ...warnings.map((w) => `  ${w.playerId}: ${w.file} (${w.width}×${w.height})`),
+  ];
 }
 
 /**

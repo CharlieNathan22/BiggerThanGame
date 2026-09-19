@@ -30,7 +30,16 @@ export {
 } from "./load.js";
 export type { DeckSource, LoadedDeck } from "./load.js";
 
-export { MAX_ASPECT_RATIO, MIN_IMAGE_EDGE, orphanedImages, validateImages } from "./images.js";
+export {
+  MAX_ASPECT_RATIO,
+  MIN_IMAGE_EDGE,
+  RECOMMENDED_IMAGE_EDGE,
+  formatImageWarnings,
+  imageSizeWarnings,
+  orphanedImages,
+  validateImages,
+} from "./images.js";
+export type { ImageWarning } from "./images.js";
 
 export { EMPTY_MANIFEST, checkManifest, loadManifest, saveManifest } from "./manifest.js";
 export type { Manifest, ManifestEntry } from "./manifest.js";

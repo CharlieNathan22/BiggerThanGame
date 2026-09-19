@@ -14,6 +14,7 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DECK, imagesDirFor, loadDeckForSync, manifestPathFor } from "./load.js";
+import { formatImageWarnings } from "./images.js";
 import { syncImages } from "./sync.js";
 import { createDryRunUploader, createR2Uploader, r2ConfigFromEnv } from "./upload.js";
 import type { Uploader } from "./upload.js";
@@ -84,6 +85,15 @@ export async function runSync(
     write: !dryRun,
     log: (line) => console.log(line),
   });
+
+  // Printed before any failure, and never a reason to fail: a soft photo is
+  // still better than the monogram.
+  const warningLines = formatImageWarnings(result.warnings);
+  if (warningLines.length > 0) {
+    console.warn(`\nsync: warning — ${warningLines[0]}`);
+    for (const line of warningLines.slice(1)) console.warn(line);
+    console.warn("");
+  }
 
   if (result.problems.length > 0) {
     console.error(`\nsync: image problems — nothing uploaded\n`);

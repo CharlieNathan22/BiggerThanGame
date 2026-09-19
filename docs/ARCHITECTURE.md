@@ -508,16 +508,23 @@ img.biggerthangame.com/cdn-cgi/image/width=800,quality=80,fit=scale-down,
 - **`srcset` across both widths**, built by `srcsetFor(base, key)`, with `width`/`height` from the
   manifest so the card reserves its box and does not jump.
 
-Sync validates every source before uploading anything: exists, readable, shortest edge ≥ 1200px
+Sync validates every source before uploading anything: exists, readable, shortest edge ≥ 800px
 (`MIN_IMAGE_EDGE`), aspect ≤ 3:1, no two players sharing a file. It is idempotent — unchanged hashes
 are skipped.
 
-The minimum sits below the 1600 display width on purpose. Many of the best freely licensed photos of
-pre-2005 players are 1200–1600px, and rejecting them would push those legends onto the monogram. A
-1200px source covers the 800w rendition with room to spare, so phones stay sharp; the 1600w
-rendition uses `fit=scale-down`, which never enlarges, so a smaller original is served at its own
-size rather than upscaled — slightly soft on a large retina screen, acceptable for a darkened
-background layer.
+**Two size thresholds, both on the shortest edge**, so a wide landscape can't pass on its width:
+
+- **Minimum, 800px (`MIN_IMAGE_EDGE`) — hard.** Below it, sync fails. It sits at the smaller display
+  width on purpose: many of the best freely licensed photos of pre-2005 players are small, and
+  rejecting them would push those legends onto the monogram. An 800px source exactly covers the
+  800w rendition, so nothing is ever upscaled; the 1600w rendition uses `fit=scale-down`, which
+  never enlarges, so a smaller original is served at its own size — soft on 3× phones and retina
+  screens, acceptable for a darkened, desaturated background layer. A test keeps the minimum at or
+  above the smallest display width.
+- **Recommended, 1200px (`RECOMMENDED_IMAGE_EDGE`) — soft.** Images from 800 up to 1199px pass, but
+  sync lists every one of them as a warning — "usable, upgrade if a larger free image exists" — on
+  every run, synced this time or not, so the list doubles as a to-do. **Warnings never fail the
+  sync.**
 
 ### Image prefetch — requirement, not optimisation
 
