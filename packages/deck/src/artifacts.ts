@@ -7,7 +7,8 @@
  */
 
 import { STATS, STAT_KEYS, eligibleStats } from "@bt/core";
-import type { Player, StatKey } from "@bt/core";
+import type { Player, PlayerImage, StatKey } from "@bt/core";
+import type { Manifest } from "./manifest.js";
 import type { RawPlayer } from "./schema.js";
 
 /** Bundled into the Worker. Everything. */
@@ -25,6 +26,8 @@ export interface Indexes {
 
 export interface Credit {
   readonly playerId: string;
+  /** For the credits page, which lists photos by who is in them. */
+  readonly name: string;
   readonly author: string;
   readonly licence: string;
   readonly source: string;
@@ -72,10 +75,29 @@ export function buildCredits(raws: readonly RawPlayer[]): Credit[] {
     .filter((r) => r.image !== undefined)
     .map((r) => ({
       playerId: r.id,
+      name: r.name,
       author: r.image!.author,
       licence: r.image!.licence,
       source: r.image!.source,
     }));
+}
+
+/** Bundled into the Worker: what each card needs to render its photo. */
+export type ImageMap = Readonly<Record<string, PlayerImage>>;
+
+/**
+ * The manifest cut down to the `PlayerImage` part, for players in the deck.
+ * The source hash stays behind — it is sync bookkeeping, not display data.
+ */
+export function buildImages(players: readonly Player[], manifest: Manifest): ImageMap {
+  const images: Record<string, PlayerImage> = {};
+  for (const p of players) {
+    const entry = manifest.entries[p.id];
+    if (entry !== undefined) {
+      images[p.id] = { key: entry.key, width: entry.width, height: entry.height };
+    }
+  }
+  return images;
 }
 
 /**

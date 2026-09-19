@@ -13,12 +13,29 @@ import { playerSchema, toPlayer } from "./schema.js";
 import type { RawPlayer } from "./schema.js";
 import type { Player } from "@bt/core";
 
+/**
+ * The private deck is used only once it holds this many schema-valid players.
+ * Below it, dev and CI fall back to the 24-player sample rather than switching
+ * to a deck of three the moment real entry starts. Production builds refuse
+ * the fallback (`--require-private`) so invented players can't go live.
+ */
+export const MIN_PRIVATE_DECK = 30;
+
 export interface LoadedDeck {
   readonly raws: readonly RawPlayer[];
   readonly players: readonly Player[];
   /** Which directory the deck came from, for the build log. */
   readonly source: "data" | "sample";
+  /** Problems in the deck that was used. Any at all fails the build. */
   readonly problems: readonly string[];
+  /** Schema-valid players in the private deck, whichever deck was used. */
+  readonly privateCount: number;
+  /**
+   * Problems in the private deck when it was passed over for the sample. They
+   * don't fail the build — the deck isn't in use — but they're printed, so
+   * mistakes in half-entered data don't hide behind the fallback.
+   */
+  readonly privateProblems: readonly string[];
 }
 
 /**
@@ -52,20 +69,69 @@ function yamlFilesIn(dir: string): string[] {
 }
 
 /**
- * Prefers the private deck, falls back to the sample.
+ * Prefers the private deck once it holds `MIN_PRIVATE_DECK` valid players;
+ * falls back to the sample until then.
  *
  * Deliberately not configurable by env var: a build that silently reads a
  * different deck depending on the environment is a build you cannot reason
- * about. The source is reported so the log always says which one ran.
+ * about. The source is reported so the log always says which one ran. The one
+ * switch is `--require-private` on the build, which only ever makes it stricter.
  */
 export function loadDeck(root: string): LoadedDeck {
+  const privateDeck = readPlayers(join(root, "data", "players"));
+  const privateCount = privateDeck.raws.length;
+
+  if (privateCount >= MIN_PRIVATE_DECK) {
+    return { ...privateDeck, source: "data", privateCount, privateProblems: [] };
+  }
+
+  const sample = readPlayers(join(root, "sample", "players"));
+  return {
+    ...sample,
+    source: "sample",
+    privateCount,
+    privateProblems: privateDeck.problems,
+  };
+}
+
+/**
+ * The deck `images:sync` works on: the private deck as soon as it has any
+ * player files at all, ignoring `MIN_PRIVATE_DECK`. Photos are entered
+ * alongside the first real players, long before there are thirty of them, and
+ * syncing the sample in the meantime would upload nothing useful. Falls back to
+ * the sample only when the private deck is empty.
+ *
+ * Broken files still count as "has players": their problems come back in
+ * `problems`, so sync stops and asks for them to be fixed rather than quietly
+ * switching to the sample.
+ */
+export function loadDeckForSync(root: string): LoadedDeck {
   const dataDir = join(root, "data", "players");
-  const sampleDir = join(root, "sample", "players");
+  if (yamlFilesIn(dataDir).length > 0) {
+    const privateDeck = readPlayers(dataDir);
+    return {
+      ...privateDeck,
+      source: "data",
+      privateCount: privateDeck.raws.length,
+      privateProblems: [],
+    };
+  }
+  return {
+    ...readPlayers(join(root, "sample", "players")),
+    source: "sample",
+    privateCount: 0,
+    privateProblems: [],
+  };
+}
 
-  const useData = yamlFilesIn(dataDir).length > 0;
-  const dir = useData ? dataDir : sampleDir;
+/** Why the sample was used, for the build log. Undefined when it wasn't. */
+export function fallbackNotice(deck: LoadedDeck): string | undefined {
+  if (deck.source !== "sample") return undefined;
+  return `using sample deck — private deck has ${deck.privateCount} of ${MIN_PRIVATE_DECK} players needed`;
+}
+
+function readPlayers(dir: string): Pick<LoadedDeck, "raws" | "players" | "problems"> {
   const files = yamlFilesIn(dir);
-
   const raws: RawPlayer[] = [];
   const problems: string[] = [];
 
@@ -90,10 +156,5 @@ export function loadDeck(root: string): LoadedDeck {
     raws.push(result.data);
   }
 
-  return {
-    raws,
-    players: raws.map(toPlayer),
-    source: useData ? "data" : "sample",
-    problems,
-  };
+  return { raws, players: raws.map(toPlayer), problems };
 }

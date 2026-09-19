@@ -13,7 +13,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { imagesDirFor, loadDeck, manifestPathFor } from "./load.js";
+import { imagesDirFor, loadDeckForSync, manifestPathFor } from "./load.js";
 import { syncImages } from "./sync.js";
 import { createDryRunUploader, createR2Uploader, r2ConfigFromEnv } from "./upload.js";
 import type { Uploader } from "./upload.js";
@@ -33,19 +33,23 @@ function loadLocalEnv(): void {
   if (existsSync(path)) process.loadEnvFile(path);
 }
 
-export async function runSync(argv: readonly string[]): Promise<number> {
+export async function runSync(
+  argv: readonly string[],
+  root: string = packageRoot,
+): Promise<number> {
   const dryRun = argv.includes("--dry-run");
   const force = argv.includes("--force");
 
-  const loaded = loadDeck(packageRoot);
+  // Private deck whenever it has any players, regardless of MIN_PRIVATE_DECK.
+  const loaded = loadDeckForSync(root);
   if (loaded.problems.length > 0) {
     console.error("\nsync: schema errors — fix the deck first\n");
     for (const p of loaded.problems) console.error(`  ${p}`);
     return 1;
   }
 
-  const sourceDir = imagesDirFor(packageRoot, loaded.source);
-  const manifestPath = manifestPathFor(packageRoot, loaded.source);
+  const sourceDir = imagesDirFor(root, loaded.source);
+  const manifestPath = manifestPathFor(root, loaded.source);
   const withImages = loaded.raws.filter((r) => r.image !== undefined).length;
 
   console.log(`sync: ${withImages} of ${loaded.raws.length} players have an image block`);

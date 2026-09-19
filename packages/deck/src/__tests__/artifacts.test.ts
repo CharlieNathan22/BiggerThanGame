@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildCredits, buildFullDeck, buildIndexes, scanForLeakedValues } from "../artifacts.js";
+import {
+  buildCredits,
+  buildFullDeck,
+  buildImages,
+  buildIndexes,
+  scanForLeakedValues,
+} from "../artifacts.js";
+import type { Manifest } from "../manifest.js";
 import { playerSchema, toPlayer } from "../schema.js";
 import type { Player } from "@bt/core";
 
@@ -86,6 +93,45 @@ describe("buildCredits", () => {
     expect(credits).toHaveLength(1);
     expect(credits[0]?.playerId).toBe("two");
     expect(credits[0]?.licence).toBe("CC-BY-4.0");
+  });
+
+  it("carries the player's name for the credits page", () => {
+    expect(buildCredits(raws)[0]?.name).toBe("Two");
+  });
+});
+
+describe("buildImages", () => {
+  const manifest: Manifest = {
+    version: 1,
+    generatedAt: NOW.toISOString(),
+    entries: {
+      two: {
+        key: "originals/two.0123456789abcdef.jpg",
+        width: 1600,
+        height: 2000,
+        sourceSha256: "f".repeat(64),
+      },
+      departed: {
+        key: "originals/departed.fedcba9876543210.jpg",
+        width: 1600,
+        height: 1600,
+        sourceSha256: "e".repeat(64),
+      },
+    },
+  };
+
+  it("maps each deck player with a synced photo to its PlayerImage", () => {
+    expect(buildImages(players, manifest)).toEqual({
+      two: { key: "originals/two.0123456789abcdef.jpg", width: 1600, height: 2000 },
+    });
+  });
+
+  it("leaves the source hash behind", () => {
+    expect(JSON.stringify(buildImages(players, manifest))).not.toContain("sourceSha256");
+  });
+
+  it("ignores manifest entries for players not in the deck", () => {
+    expect(buildImages(players, manifest)).not.toHaveProperty("departed");
   });
 });
 

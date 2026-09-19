@@ -12,9 +12,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildCredits, buildFullDeck, buildIndexes } from "./artifacts.js";
+import { buildCredits, buildFullDeck, buildImages, buildIndexes } from "./artifacts.js";
 import { checkManifest, loadManifest } from "./manifest.js";
-import { loadDeck, manifestPathFor } from "./load.js";
+import { MIN_PRIVATE_DECK, fallbackNotice, loadDeck, manifestPathFor } from "./load.js";
+import type { LoadedDeck } from "./load.js";
 import { simulate, simulationReport } from "./simulate.js";
 import { formatProblems, validateDeck } from "./validate.js";
 import { viabilityReport } from "./viability.js";
@@ -35,6 +36,20 @@ export interface BuildOptions {
   /** Skip the simulation, which is the slow part. */
   readonly skipSimulation?: boolean;
   readonly simulationRuns?: number;
+  /**
+   * Fail rather than fall back to the sample. Production builds pass this
+   * (`--require-private`) so invented players can never go live.
+   */
+  readonly requirePrivate?: boolean;
+}
+
+/** The `--require-private` refusal, or undefined when the build may proceed. */
+export function requirePrivateError(deck: LoadedDeck, requirePrivate: boolean): string | undefined {
+  if (!requirePrivate || deck.source === "data") return undefined;
+  return (
+    `--require-private: the private deck has ${deck.privateCount} of ${MIN_PRIVATE_DECK} ` +
+    `valid players needed, and production never builds on the sample`
+  );
 }
 
 export function runBuild(opts: BuildOptions = {}): number {
@@ -44,8 +59,17 @@ export function runBuild(opts: BuildOptions = {}): number {
   const loaded = loadDeck(packageRoot);
   console.log(`  ${loaded.players.length} players from ${loaded.source}/`);
 
-  if (loaded.source === "sample") {
-    console.log("  note: using the public sample deck — the private submodule is empty");
+  const notice = fallbackNotice(loaded);
+  if (notice !== undefined) console.log(`  ${notice}`);
+  if (loaded.privateProblems.length > 0) {
+    console.warn("  private deck problems (not fatal while the sample is in use):");
+    for (const p of loaded.privateProblems) console.warn(`    ${p}`);
+  }
+
+  const refusal = requirePrivateError(loaded, opts.requirePrivate === true);
+  if (refusal !== undefined) {
+    console.error(`\ndeck: ${refusal}\n`);
+    return 1;
   }
 
   if (loaded.problems.length > 0) {
@@ -79,6 +103,7 @@ export function runBuild(opts: BuildOptions = {}): number {
   const full = buildFullDeck(loaded.players, now);
   const indexes = buildIndexes(loaded.players, now);
   const credits = buildCredits(loaded.raws);
+  const images = buildImages(loaded.players, manifest);
 
   // No client-bound artifact is emitted: under per-question serving the browser
   // gets its data from the Worker, so there is nothing here to leak. The leak
@@ -87,6 +112,7 @@ export function runBuild(opts: BuildOptions = {}): number {
   write(join(outDir, "deck.full.json"), JSON.stringify(full));
   write(join(outDir, "indexes.json"), JSON.stringify(indexes));
   write(join(outDir, "credits.json"), JSON.stringify(credits));
+  write(join(outDir, "images.json"), JSON.stringify(images));
 
   console.log("deck: viability report");
   write(join(packageRoot, "viability.md"), viabilityReport(loaded.players, now));
@@ -112,6 +138,8 @@ const invokedDirectly =
   resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (invokedDirectly) {
-  const skipSimulation = process.argv.includes("--no-sim");
-  process.exitCode = runBuild(skipSimulation ? { skipSimulation } : {});
+  process.exitCode = runBuild({
+    ...(process.argv.includes("--no-sim") ? { skipSimulation: true } : {}),
+    ...(process.argv.includes("--require-private") ? { requirePrivate: true } : {}),
+  });
 }
