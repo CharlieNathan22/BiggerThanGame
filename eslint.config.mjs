@@ -1,6 +1,7 @@
 // @ts-check
 import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
+import svelte from "eslint-plugin-svelte";
 import tseslint from "typescript-eslint";
 
 // Globals that don't exist identically in browser, Worker and Node.
@@ -28,6 +29,15 @@ export default defineConfig(
   {
     files: ["**/*.{js,mjs,cjs,ts,mts,cts}"],
     extends: [js.configs.recommended, tseslint.configs.recommended],
+  },
+
+  // Svelte components, with TypeScript in <script lang="ts">. TypeScript and
+  // svelte-check own undefined-name checking, as typescript-eslint advises.
+  {
+    files: ["**/*.svelte", "**/*.svelte.ts", "**/*.svelte.js"],
+    extends: [tseslint.configs.recommended, svelte.configs.recommended],
+    languageOptions: { parserOptions: { parser: tseslint.parser } },
+    rules: { "no-undef": "off" },
   },
 
   // CLAUDE.md invariant 5: seeded PRNG only. Applies to tests too — a test
@@ -68,6 +78,51 @@ export default defineConfig(
               regex: /^(?!\.\.?\/)/.source,
               message:
                 "packages/core stays dependency- and platform-free. Relative imports only; ask before adding a dependency.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // The Worker bundles its deck from packages/deck/dist (worker/src/deck.ts).
+  // @bt/deck reads files with node:fs and must never reach the Worker bundle;
+  // it is for Worker tests only.
+  {
+    files: ["worker/**/*.ts"],
+    ignores: ["worker/src/__tests__/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: /^@bt\/deck(\/|$)/.source,
+              message: "@bt/deck uses node:fs. Worker runtime code gets the deck from src/deck.ts.",
+            },
+            {
+              regex: /^node:/.source,
+              message: "Worker runtime code runs in workerd, not Node.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // ARCHITECTURE.md §4, invariant 1: no deck data in the client, ever. The
+  // leak scan of apps/web/dist is the backstop; this stops it at the import.
+  {
+    files: ["apps/web/**/*.{js,mjs,ts,svelte}", "apps/web/**/*.svelte.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: /^@bt\/deck(\/|$)|deck\.full\.json$|packages\/deck\/(dist|data)(\/|$)/.source,
+              message:
+                "apps/web must never import deck data (ARCHITECTURE.md §4). Player data comes from /api/round/next.",
             },
           ],
         },

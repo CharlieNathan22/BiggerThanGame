@@ -1,7 +1,13 @@
 ---
-import '../styles/tokens.css';
-interface Props { title: string; description?: string; }
-const { title, description = 'The football higher or lower game. Two legends, one stat — guess higher or lower.' } = Astro.props;
+import "../styles/tokens.css";
+interface Props {
+  title: string;
+  description?: string;
+}
+const {
+  title,
+  description = "The football higher or lower game. Two legends, one stat — guess higher or lower.",
+} = Astro.props;
 ---
 
 <!doctype html>

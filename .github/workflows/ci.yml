@@ -26,6 +26,11 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      # The Worker imports the deck build's artifacts, which are gitignored, so
+      # they must exist before typecheck. CI falls back to the sample deck.
+      - run: pnpm --filter @bt/deck build --no-sim
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

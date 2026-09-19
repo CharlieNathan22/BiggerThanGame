@@ -6,3 +6,7 @@ pnpm-lock.yaml
 
 # Private deck submodule: formatting belongs in its own repo.
 packages/deck/data/
+
+# Generated reports — rewritten by every deck build, never hand-edited.
+packages/deck/viability.md
+packages/deck/simulation.md
