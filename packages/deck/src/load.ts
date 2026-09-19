@@ -1,9 +1,11 @@
 /**
  * Reading the deck off disk.
  *
- * The real deck lives in a private submodule at `data/players/`. A small public
- * sample lives at `sample/players/` so the repo runs standalone — cloned
- * without access to the private repo, `pnpm dev` still works.
+ * Decks are organised by type: `<source>/<DECK>/` holds `players/`,
+ * `originals/` and `images.json`. The real deck lives in the private submodule
+ * at `data/legends/`. A small public sample lives at `sample/legends/` so the
+ * repo runs standalone — cloned without access to the private repo, `pnpm dev`
+ * still works.
  */
 
 import { readdirSync, readFileSync, existsSync } from "node:fs";
@@ -21,11 +23,26 @@ import type { Player } from "@bt/core";
  */
 export const MIN_PRIVATE_DECK = 30;
 
+/**
+ * The deck type this build works on. Every deck path, and the R2 key prefix
+ * for its photos, is scoped by it, so a second deck (managers, say) can sit
+ * alongside with the same shape and the same person in two decks can't
+ * collide. Only one deck exists today; nothing here selects between decks.
+ */
+export const DECK = "legends";
+
+export type DeckSource = "data" | "sample";
+
+/** `<root>/<source>/<DECK>` — the folder holding one deck's players, photos and manifest. */
+export function deckDirFor(root: string, source: DeckSource): string {
+  return join(root, source, DECK);
+}
+
 export interface LoadedDeck {
   readonly raws: readonly RawPlayer[];
   readonly players: readonly Player[];
   /** Which directory the deck came from, for the build log. */
-  readonly source: "data" | "sample";
+  readonly source: DeckSource;
   /** Problems in the deck that was used. Any at all fails the build. */
   readonly problems: readonly string[];
   /** Schema-valid players in the private deck, whichever deck was used. */
@@ -44,13 +61,17 @@ export interface LoadedDeck {
  * Gitignored — originals go to R2, never into git. Only `images:sync` reads
  * this; the ordinary build never touches it.
  */
-export function imagesDirFor(root: string, source: "data" | "sample"): string {
-  return join(root, source, "originals");
+export function imagesDirFor(root: string, source: DeckSource): string {
+  return join(deckDirFor(root, source), "originals");
 }
 
 /** The committed image manifest, which lives with the deck it describes. */
-export function manifestPathFor(root: string, source: "data" | "sample"): string {
-  return join(root, source, "images.json");
+export function manifestPathFor(root: string, source: DeckSource): string {
+  return join(deckDirFor(root, source), "images.json");
+}
+
+function playersDirFor(root: string, source: DeckSource): string {
+  return join(deckDirFor(root, source), "players");
 }
 
 /** Image files in a directory, for the orphan check. Empty if it does not exist. */
@@ -78,14 +99,14 @@ function yamlFilesIn(dir: string): string[] {
  * switch is `--require-private` on the build, which only ever makes it stricter.
  */
 export function loadDeck(root: string): LoadedDeck {
-  const privateDeck = readPlayers(join(root, "data", "players"));
+  const privateDeck = readPlayers(playersDirFor(root, "data"));
   const privateCount = privateDeck.raws.length;
 
   if (privateCount >= MIN_PRIVATE_DECK) {
     return { ...privateDeck, source: "data", privateCount, privateProblems: [] };
   }
 
-  const sample = readPlayers(join(root, "sample", "players"));
+  const sample = readPlayers(playersDirFor(root, "sample"));
   return {
     ...sample,
     source: "sample",
@@ -106,7 +127,7 @@ export function loadDeck(root: string): LoadedDeck {
  * switching to the sample.
  */
 export function loadDeckForSync(root: string): LoadedDeck {
-  const dataDir = join(root, "data", "players");
+  const dataDir = playersDirFor(root, "data");
   if (yamlFilesIn(dataDir).length > 0) {
     const privateDeck = readPlayers(dataDir);
     return {
@@ -117,7 +138,7 @@ export function loadDeckForSync(root: string): LoadedDeck {
     };
   }
   return {
-    ...readPlayers(join(root, "sample", "players")),
+    ...readPlayers(playersDirFor(root, "sample")),
     source: "sample",
     privateCount: 0,
     privateProblems: [],

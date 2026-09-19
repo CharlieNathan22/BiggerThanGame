@@ -106,13 +106,13 @@ describe("buildImages", () => {
     generatedAt: NOW.toISOString(),
     entries: {
       two: {
-        key: "originals/two.0123456789abcdef.jpg",
+        key: "legends/originals/two.0123456789abcdef.jpg",
         width: 1600,
         height: 2000,
         sourceSha256: "f".repeat(64),
       },
       departed: {
-        key: "originals/departed.fedcba9876543210.jpg",
+        key: "legends/originals/departed.fedcba9876543210.jpg",
         width: 1600,
         height: 1600,
         sourceSha256: "e".repeat(64),
@@ -122,7 +122,7 @@ describe("buildImages", () => {
 
   it("maps each deck player with a synced photo to its PlayerImage", () => {
     expect(buildImages(players, manifest)).toEqual({
-      two: { key: "originals/two.0123456789abcdef.jpg", width: 1600, height: 2000 },
+      two: { key: "legends/originals/two.0123456789abcdef.jpg", width: 1600, height: 2000 },
     });
   });
 

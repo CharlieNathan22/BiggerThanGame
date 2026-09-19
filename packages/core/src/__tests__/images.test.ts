@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { DISPLAY_WIDTHS, imageUrl, originalUrl, srcsetFor } from "../images.js";
 
 const base = "https://img.biggerthangame.com";
-const key = "originals/a.0123456789abcdef.jpg";
+const key = "legends/originals/a.0123456789abcdef.jpg";
 
 describe("imageUrl", () => {
   it("builds a transformation URL on the image host", () => {
     expect(imageUrl(base, key, 800)).toBe(
       "https://img.biggerthangame.com/cdn-cgi/image/" +
         "width=800,quality=80,fit=scale-down,format=auto,onerror=redirect/" +
-        "originals/a.0123456789abcdef.jpg",
+        "legends/originals/a.0123456789abcdef.jpg",
     );
   });
 
@@ -48,6 +48,8 @@ describe("srcsetFor", () => {
 
 describe("originalUrl", () => {
   it("joins base and key", () => {
-    expect(originalUrl(`${base}/`, "originals/a.jpg")).toBe(`${base}/originals/a.jpg`);
+    expect(originalUrl(`${base}/`, "legends/originals/a.jpg")).toBe(
+      `${base}/legends/originals/a.jpg`,
+    );
   });
 });

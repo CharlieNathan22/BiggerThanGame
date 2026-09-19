@@ -111,7 +111,7 @@ export function fakeImages(deck: readonly Player[]): ImageLookup {
   return Object.fromEntries(
     deck.map((p) => [
       p.id,
-      { key: `originals/${p.id}.0123456789abcdef.jpg`, width: 1600, height: 2000 },
+      { key: `legends/originals/${p.id}.0123456789abcdef.jpg`, width: 1600, height: 2000 },
     ]),
   );
 }

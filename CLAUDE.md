@@ -149,6 +149,14 @@ Production builds (`pnpm build:prod`, the deploy script, `deploy.yml`) pass `--r
 fail instead, so invented players can never go live. `images:sync` ignores the minimum and uses the
 private deck whenever it has any player files.
 
+**Decks are organised by type.** `DECK` (`"legends"`, in `packages/deck/src/load.ts`) scopes every
+path: `packages/deck/data/legends/{players,originals,images.json,image-log.csv}` in the submodule
+and `packages/deck/sample/legends/players/` in the sample. R2 keys are
+`legends/originals/<id>.<hash16><ext>`, so the same person in two decks can't collide. Use the
+path helpers (`deckDirFor`, `imagesDirFor`, `manifestPathFor`) rather than joining paths by hand.
+Only one deck exists; don't build deck selection until a second one is actually needed. **Never
+create or edit files inside the `packages/deck/data` submodule from this repo.**
+
 Stat figures are plain numbers with no per-stat source (DESIGN.md §11). Instagram followers carry
 `as_of` and the transfer fee carries `year`, because both are shown on the card. **Images keep full
 provenance** — `author`, `licence` and `source` are required, and the build rejects an image block

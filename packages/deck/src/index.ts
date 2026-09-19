@@ -1,16 +1,19 @@
 /**
  * @bt/deck — schema, validation and the build pipeline.
  *
- * The player data itself is not here. It lives in a private submodule at
- * `data/players/`, with a public synthetic sample at `sample/players/` so the
- * repo runs standalone.
+ * The player data itself is not here. Decks are organised by type (`DECK`,
+ * currently "legends"): the real deck lives in a private submodule at
+ * `data/legends/players/`, with a public synthetic sample at
+ * `sample/legends/players/` so the repo runs standalone.
  */
 
 export { ALLOWED_LICENCES, playerSchema, statsSchema, imageSchema, toPlayer } from "./schema.js";
 export type { RawImage, RawPlayer } from "./schema.js";
 
 export {
+  DECK,
   MIN_PRIVATE_DECK,
+  deckDirFor,
   fallbackNotice,
   imageFilesIn,
   imagesDirFor,
@@ -18,7 +21,7 @@ export {
   loadDeckForSync,
   manifestPathFor,
 } from "./load.js";
-export type { LoadedDeck } from "./load.js";
+export type { DeckSource, LoadedDeck } from "./load.js";
 
 export { MAX_ASPECT_RATIO, MIN_IMAGE_EDGE, orphanedImages, validateImages } from "./images.js";
 

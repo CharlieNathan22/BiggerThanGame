@@ -13,7 +13,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { imagesDirFor, loadDeckForSync, manifestPathFor } from "./load.js";
+import { DECK, imagesDirFor, loadDeckForSync, manifestPathFor } from "./load.js";
 import { syncImages } from "./sync.js";
 import { createDryRunUploader, createR2Uploader, r2ConfigFromEnv } from "./upload.js";
 import type { Uploader } from "./upload.js";
@@ -53,6 +53,7 @@ export async function runSync(
   const withImages = loaded.raws.filter((r) => r.image !== undefined).length;
 
   console.log(`sync: ${withImages} of ${loaded.raws.length} players have an image block`);
+  console.log(`  deck     ${loaded.source}/${DECK}`);
   console.log(`  sources  ${sourceDir}`);
   console.log(`  manifest ${manifestPath}`);
 

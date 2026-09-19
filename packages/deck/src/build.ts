@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 import { buildCredits, buildFullDeck, buildImages, buildIndexes } from "./artifacts.js";
 import { checkManifest, loadManifest } from "./manifest.js";
-import { MIN_PRIVATE_DECK, fallbackNotice, loadDeck, manifestPathFor } from "./load.js";
+import { DECK, MIN_PRIVATE_DECK, fallbackNotice, loadDeck, manifestPathFor } from "./load.js";
 import type { LoadedDeck } from "./load.js";
 import { simulate, simulationReport } from "./simulate.js";
 import { formatProblems, validateDeck } from "./validate.js";
@@ -57,7 +57,7 @@ export function runBuild(opts: BuildOptions = {}): number {
 
   console.log("deck: loading");
   const loaded = loadDeck(packageRoot);
-  console.log(`  ${loaded.players.length} players from ${loaded.source}/`);
+  console.log(`  ${loaded.players.length} players from ${loaded.source}/${DECK}/`);
 
   const notice = fallbackNotice(loaded);
   if (notice !== undefined) console.log(`  ${notice}`);

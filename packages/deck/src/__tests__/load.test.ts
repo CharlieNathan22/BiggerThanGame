@@ -5,8 +5,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requirePrivateError } from "../build.js";
 import {
+  DECK,
   MIN_PRIVATE_DECK,
+  deckDirFor,
   fallbackNotice,
+  imagesDirFor,
   loadDeck,
   loadDeckForSync,
   manifestPathFor,
@@ -57,23 +60,59 @@ describe("minimum private deck size", () => {
       "  apps: 500",
     ].join("\n");
 
-  /** A deck root with a two-player sample and `valid` good private players. */
+  /**
+   * A deck root with a two-player sample and `valid` good private players, in
+   * the `<source>/<DECK>/players/` layout. With `valid` and `broken` both zero
+   * the private deck folder isn't created at all — the submodule's state before
+   * `data/legends/` exists.
+   */
   function makeRoot(valid: number, broken = 0): string {
     const root = mkdtempSync(join(tmpdir(), "bt-deck-"));
     roots.push(root);
-    mkdirSync(join(root, "sample", "players"), { recursive: true });
-    mkdirSync(join(root, "data", "players"), { recursive: true });
+    const samplePlayers = join(deckDirFor(root, "sample"), "players");
+    const dataPlayers = join(deckDirFor(root, "data"), "players");
+    mkdirSync(samplePlayers, { recursive: true });
+    mkdirSync(join(root, "data"), { recursive: true });
+    if (valid + broken > 0) mkdirSync(dataPlayers, { recursive: true });
     for (const id of ["sample-a", "sample-b"]) {
-      writeFileSync(join(root, "sample", "players", `${id}.yaml`), player(id));
+      writeFileSync(join(samplePlayers, `${id}.yaml`), player(id));
     }
     for (let i = 0; i < valid; i++) {
-      writeFileSync(join(root, "data", "players", `real-${i}.yaml`), player(`real-${i}`));
+      writeFileSync(join(dataPlayers, `real-${i}.yaml`), player(`real-${i}`));
     }
     for (let i = 0; i < broken; i++) {
-      writeFileSync(join(root, "data", "players", `broken-${i}.yaml`), "id: broken\nname: 7\n");
+      writeFileSync(join(dataPlayers, `broken-${i}.yaml`), "id: broken\nname: 7\n");
     }
     return root;
   }
+
+  describe("deck layout", () => {
+    it("scopes every deck path by DECK", () => {
+      const root = makeRoot(0);
+      expect(DECK).toBe("legends");
+      expect(deckDirFor(root, "data")).toBe(join(root, "data", "legends"));
+      expect(imagesDirFor(root, "data")).toBe(join(root, "data", "legends", "originals"));
+      expect(manifestPathFor(root, "sample")).toBe(join(root, "sample", "legends", "images.json"));
+    });
+
+    it("falls back to the sample while data/legends/ doesn't exist yet", () => {
+      const root = makeRoot(0);
+      expect(loadDeck(root).source).toBe("sample");
+      expect(loadDeckForSync(root).source).toBe("sample");
+      expect(loadDeck(root).problems).toEqual([]);
+    });
+
+    it("ignores players left at the pre-deck location data/players/", () => {
+      const root = makeRoot(0);
+      const legacy = join(root, "data", "players");
+      mkdirSync(legacy, { recursive: true });
+      for (let i = 0; i < MIN_PRIVATE_DECK; i++) {
+        writeFileSync(join(legacy, `old-${i}.yaml`), player(`old-${i}`));
+      }
+      expect(loadDeck(root).source).toBe("sample");
+      expect(loadDeckForSync(root).source).toBe("sample");
+    });
+  });
 
   it("falls back to the sample when the private deck is empty", () => {
     const deck = loadDeck(makeRoot(0));
@@ -145,8 +184,8 @@ describe("minimum private deck size", () => {
       try {
         expect(await runSync(["--dry-run"], root)).toBe(0);
         const lines = log.mock.calls.map((c) => String(c[0]));
-        expect(lines).toContain(`  manifest ${join(root, "data", "images.json")}`);
-        expect(lines).toContain(`  sources  ${join(root, "data", "originals")}`);
+        expect(lines).toContain(`  manifest ${join(root, "data", "legends", "images.json")}`);
+        expect(lines).toContain(`  sources  ${join(root, "data", "legends", "originals")}`);
       } finally {
         log.mockRestore();
       }
@@ -157,9 +196,11 @@ describe("minimum private deck size", () => {
     const small = makeRoot(3);
     const full = makeRoot(MIN_PRIVATE_DECK);
     expect(manifestPathFor(small, loadDeck(small).source)).toBe(
-      join(small, "sample", "images.json"),
+      join(small, "sample", "legends", "images.json"),
     );
-    expect(manifestPathFor(full, loadDeck(full).source)).toBe(join(full, "data", "images.json"));
+    expect(manifestPathFor(full, loadDeck(full).source)).toBe(
+      join(full, "data", "legends", "images.json"),
+    );
   });
 });
 

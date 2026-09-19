@@ -13,7 +13,7 @@
 
 /** What a card needs to render a photo. Straight from the manifest entry. */
 export interface PlayerImage {
-  /** R2 key of the original, e.g. `originals/zidane-zinedine.a3f9c21e0b1d4e7f.jpg`. */
+  /** R2 key of the original, e.g. `legends/originals/zidane-zinedine.a3f9c21e0b1d4e7f.jpg`. */
   readonly key: string;
   /** Intrinsic size of the original, so the card reserves its box. */
   readonly width: number;
@@ -41,7 +41,7 @@ export const IMAGE_QUALITY = 80;
  * The transformation URL for one width.
  *
  *   https://img.biggerthangame.com/cdn-cgi/image/width=800,quality=80,
- *     fit=scale-down,format=auto,onerror=redirect/originals/zidane.a3f9….jpg
+ *     fit=scale-down,format=auto,onerror=redirect/legends/originals/zidane.a3f9….jpg
  *
  * - `format=auto` serves AVIF or WebP by the browser's Accept header, and
  *   counts as **one** transformation however many formats it produces.

@@ -75,8 +75,14 @@ bucket — see section 9.
 │   │   ├── api.ts         # /api/round/next request and response types, shared with the web app
 │   │   └── types.ts
 │   └── deck/
-│       ├── data/          # private submodule: player YAML + images.json manifest
-│       ├── sample/        # 24 invented players, used until data/ holds MIN_PRIVATE_DECK
+│       ├── data/          # private submodule, organised by deck type
+│       │   └── legends/   # DECK = "legends"
+│       │       ├── players/        # one YAML file per player
+│       │       ├── originals/      # source photos, staged locally, gitignored
+│       │       ├── images.json     # manifest, written by images:sync, committed
+│       │       └── image-log.csv   # kept by hand; not read by the build or sync
+│       ├── sample/
+│       │   └── legends/players/    # 24 invented players, used until data/ holds MIN_PRIVATE_DECK
 │       ├── schema.ts      # Zod schema
 │       ├── build.ts       # validation + precompute → artifacts in dist/
 │       └── dist/          # generated, gitignored: deck.full.json, images.json, credits.json, …
@@ -97,6 +103,11 @@ bucket — see section 9.
 ```
 
 `packages/core` must not import anything browser- or Worker-specific. It is pure logic.
+
+**Decks are organised by type.** `DECK` (`"legends"`, in `packages/deck/src/load.ts`) scopes every
+deck path — `<data|sample>/<DECK>/{players,originals,images.json}` — and the R2 key prefix for its
+photos (§9), so a second deck such as managers can sit alongside with the same shape. Only one deck
+exists; nothing yet selects between decks, and `dist/` is not per-deck.
 
 The Worker bundles `deck.full.json` and `images.json` from `packages/deck/dist` at build time. It
 never imports `@bt/deck` at runtime — that package reads files with `node:fs` — so `@bt/deck` is for
@@ -135,7 +146,8 @@ These four are what make the leaderboard defensible. Everything else is negotiab
 
 ## 5. The deck
 
-One YAML file per player, in the private submodule at `packages/deck/data/players/`:
+One YAML file per player, in the private submodule at `packages/deck/data/legends/players/` (the
+per-deck layout is in §3):
 
 ```yaml
 id: zidane-zinedine
@@ -156,7 +168,7 @@ stats:
   ig: { value: 41.2, as_of: 2026-09-17 } # snapshot date is shown on the card
   fee: { value: 77.5, year: 2001 } # year is shown on the card
 image: # omit entirely if no usable free image exists
-  file: zidane-2008.jpg # staged in data/originals/ (gitignored), archived in R2
+  file: zidane-2008.jpg # staged in data/legends/originals/ (gitignored), archived in R2
   author: "Jane Smith"
   licence: CC-BY-4.0 # CC-BY-* | CC-BY-SA-* | CC0 | PD
   source: https://commons.wikimedia.org/wiki/File:...
@@ -185,15 +197,15 @@ present.
 
 `packages/deck/build.ts` runs before the Astro build and emits:
 
-| Artifact           | Destination                 | Contents                                                                         |
-| ------------------ | --------------------------- | -------------------------------------------------------------------------------- |
-| `deck.full.json`   | bundled into Worker         | ids, all stat values, eligibility                                                |
-| `dist/images.json` | bundled into Worker         | id → `{ key, width, height }` for deck players; no source hash                   |
-| `indexes.json`     | Worker                      | per stat: players sorted by value, tie groups                                    |
-| `credits.json`     | read by `/credits` at build | player name, author, licence and source per image; read with `fs`, never bundled |
-| `data/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                             |
-| `viability.md`     | repo, committed             | per stat and gap band, how many valid pairs exist                                |
-| `simulation.md`    | repo, committed             | streak distribution and stat firing rates over 10k runs                          |
+| Artifact                   | Destination                 | Contents                                                                         |
+| -------------------------- | --------------------------- | -------------------------------------------------------------------------------- |
+| `deck.full.json`           | bundled into Worker         | ids, all stat values, eligibility                                                |
+| `dist/images.json`         | bundled into Worker         | id → `{ key, width, height }` for deck players; no source hash                   |
+| `indexes.json`             | Worker                      | per stat: players sorted by value, tie groups                                    |
+| `credits.json`             | read by `/credits` at build | player name, author, licence and source per image; read with `fs`, never bundled |
+| `data/legends/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                             |
+| `viability.md`             | repo, committed             | per stat and gap band, how many valid pairs exist                                |
+| `simulation.md`            | repo, committed             | streak distribution and stat firing rates over 10k runs                          |
 
 **Which deck.** The private deck is used once it holds `MIN_PRIVATE_DECK` (30) schema-valid
 players. Below that the build falls back to the public sample of invented players and logs why
@@ -450,26 +462,29 @@ anything to depend on it, since it only fires on a switch.
 **Originals only, resized at the edge.** Nothing is resized at build or sync time.
 
 ```
-data/originals/zidane-zinedine.jpg      local staging, gitignored
+data/legends/originals/zidane-zinedine.jpg      local staging, gitignored
         │
         │  pnpm images:sync   (occasional — needs R2 credentials)
         ▼
-  validate → hash → upload original → write data/images.json (committed)
+  validate → hash → upload original → write data/legends/images.json (committed)
         │
         ▼
-R2  originals/zidane-zinedine.a3f9c21e0b1d4e7f.jpg    immutable, year-long cache
+R2  legends/originals/zidane-zinedine.a3f9c21e0b1d4e7f.jpg    immutable, year-long cache
         │
         │  served via custom domain img.biggerthangame.com
         ▼
 img.biggerthangame.com/cdn-cgi/image/width=800,quality=80,fit=scale-down,
-                       format=auto,onerror=redirect/originals/zidane-….jpg
+                       format=auto,onerror=redirect/legends/originals/zidane-….jpg
 ```
 
 - **R2 is the archive.** Originals never enter git; they stage locally, go to R2 at full resolution,
   and the staging folder can be cleared.
-- **Keys are content-hashed** (`originals/<id>.<sha256[0:16]><ext>`). A replaced photo gets a new
-  key, so immutable cache headers are safe and there is never a stale object to purge.
-- **`images.json` is committed in the deck submodule** and maps id → key, width, height and source
+- **Keys are content-hashed and deck-scoped** (`<DECK>/originals/<id>.<sha256[0:16]><ext>`, e.g.
+  `legends/originals/…`). A replaced photo gets a new key, so immutable cache headers are safe and
+  there is never a stale object to purge. The deck prefix means the same person in two decks — a
+  legend who also appears as a manager — can't collide.
+- **`images.json` is committed in the deck submodule**, one per deck (`data/legends/images.json`),
+  and maps id → key, width, height and source
   hash. It stores keys, never URLs — the domain comes from config. It exists so `pnpm build` stays
   offline: the build checks that deck and manifest agree and never touches the network.
 - **Image Transformations** (enabled on the `biggerthangame.com` zone, sources restricted to that

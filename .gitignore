@@ -34,7 +34,7 @@ npm-debug.log*
 pnpm-debug.log*
 
 #images
-packages/deck/sample/originals/
+packages/deck/sample/*/originals/
 
 # Local design reference, not shipped
 /prototype/

@@ -27,7 +27,7 @@ const player = (id: string, withImage: boolean) =>
   });
 
 const entry = (id: string): ManifestEntry => ({
-  key: `originals/${id}.0123456789abcdef.jpg`,
+  key: `legends/originals/${id}.0123456789abcdef.jpg`,
   width: 2400,
   height: 3000,
   sourceSha256: "abc",

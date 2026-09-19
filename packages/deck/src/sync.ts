@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { imageSize } from "image-size";
 import { validateImages } from "./images.js";
+import { DECK } from "./load.js";
 import { loadManifest, saveManifest } from "./manifest.js";
 import type { Manifest, ManifestEntry } from "./manifest.js";
 import type { RawPlayer } from "./schema.js";
@@ -37,15 +38,17 @@ export function shortHash(sha256: string): string {
 }
 
 /**
- * R2 key for an original: `originals/<id>.<hash16><ext>`.
+ * R2 key for an original: `<DECK>/originals/<id>.<hash16><ext>`, e.g.
+ * `legends/originals/zidane-zinedine.a3f9c21e0b1d4e7f.jpg`.
  *
  * Content-hashed, so replacing a photo produces a new key and a new URL. That
  * is what makes an immutable, year-long cache header safe — there is never a
  * stale object at an old URL to purge. The id stays in the key so the bucket is
- * browsable by eye.
+ * browsable by eye, and the deck prefix keeps the same person in two decks from
+ * colliding.
  */
 export function originalKeyFor(playerId: string, sha256: string, ext: string): string {
-  return `originals/${playerId}.${shortHash(sha256)}${ext.toLowerCase()}`;
+  return `${DECK}/originals/${playerId}.${shortHash(sha256)}${ext.toLowerCase()}`;
 }
 
 /**

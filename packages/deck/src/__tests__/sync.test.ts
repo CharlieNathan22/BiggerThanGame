@@ -56,7 +56,7 @@ describe("keys", () => {
   it("are content-hashed and keep the player id readable", () => {
     const sha = hashBytes(Buffer.from("x"));
     expect(originalKeyFor("zidane-zinedine", sha, ".JPG")).toBe(
-      `originals/zidane-zinedine.${shortHash(sha)}.jpg`,
+      `legends/originals/zidane-zinedine.${shortHash(sha)}.jpg`,
     );
   });
 
@@ -100,13 +100,13 @@ describe("syncImages", () => {
     expect(result.problems).toEqual([]);
     expect(result.processed).toBe(2);
     expect(result.uploaded).toBe(2);
-    expect([...bucket.objects.keys()].every((k) => k.startsWith("originals/"))).toBe(true);
+    expect([...bucket.objects.keys()].every((k) => k.startsWith("legends/originals/"))).toBe(true);
     expect(Object.keys(result.manifest.entries).sort()).toEqual(["one", "two"]);
   });
 
   it("writes a manifest that round-trips from disk", () => {
     const one = loadManifest(manifestPath).entries.one;
-    expect(one?.key).toMatch(/^originals\/one\.[0-9a-f]{16}\.png$/);
+    expect(one?.key).toMatch(/^legends\/originals\/one\.[0-9a-f]{16}\.png$/);
     expect(one?.width).toBe(2400);
     expect(one?.height).toBe(3000);
     expect(one?.sourceSha256).toBe(hashBytes(readFileSync(join(sourceDir, "one.png"))));
