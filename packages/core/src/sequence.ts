@@ -35,11 +35,7 @@ const OPENING_STATS: readonly StatKey[] = ["club_goals", "ig", "caps"];
  * is curated rather than random: a recognisable name and a question they can
  * answer. The `iconic` flag marks the names recognisable enough to open on.
  */
-function openingAnchor(
-  deck: readonly Player[],
-  stat: StatKey,
-  now: Date,
-): Player | undefined {
+function openingAnchor(deck: readonly Player[], stat: StatKey, now: Date): Player | undefined {
   const eligible = deck.filter((p) => isEligible(p, stat, now));
   const famous = eligible.filter((p) => p.iconic === true);
   return famous[0] ?? eligible[0];
@@ -57,12 +53,11 @@ export function buildRun(opts: RunOptions): Round[] {
   for (const candidateStat of rng.shuffle(OPENING_STATS)) {
     const pick = openingAnchor(deck, candidateStat, now);
     if (pick === undefined) continue;
-    const pool = candidates(
-      pick,
-      candidateStat,
-      bandFor(candidateStat, 1),
-      { deck, now, seen: [] },
-    );
+    const pool = candidates(pick, candidateStat, bandFor(candidateStat, 1), {
+      deck,
+      now,
+      seen: [],
+    });
     if (pool.length > 0) {
       stat = candidateStat;
       anchor = pick;
@@ -85,8 +80,7 @@ export function buildRun(opts: RunOptions): Round[] {
         if (!isEligible(anchor as Player, key, now)) return false;
         if (!statAllowedAtRound(key, index)) return false;
         return (
-          candidates(anchor as Player, key, bandFor(key, index), { deck, now, seen })
-            .length > 0
+          candidates(anchor as Player, key, bandFor(key, index), { deck, now, seen }).length > 0
         );
       });
       const next = chooseStat({ current: stat, round: index, viable, rng });

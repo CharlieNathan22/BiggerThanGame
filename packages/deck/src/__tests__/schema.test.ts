@@ -28,9 +28,9 @@ describe("playerSchema", () => {
   });
 
   it("rejects a negative stat", () => {
-    expect(
-      playerSchema.safeParse({ ...valid, stats: { ...valid.stats, caps: -1 } }).success,
-    ).toBe(false);
+    expect(playerSchema.safeParse({ ...valid, stats: { ...valid.stats, caps: -1 } }).success).toBe(
+      false,
+    );
   });
 
   it("accepts a legitimate zero", () => {

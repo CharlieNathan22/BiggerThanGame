@@ -43,10 +43,14 @@ describe("golden fingerprints", () => {
   });
 
   it("a ranked run is stable", () => {
-    expect(fingerprint("ranked:1")).toMatchInlineSnapshot(`"1:caps:alpha>foxtrot|2:caps:foxtrot>hotel|3:caps:hotel>echo|4:caps:echo>juliet|5:caps:juliet>kilo|6:ig:kilo>india|7:ig:india>charlie|8:club_goals:charlie>lima|9:club_goals:lima>bravo|10:club_goals:bravo>golf|11:club_goals:golf>delta|12:club_goals:delta>india|13:club_goals:india>alpha|14:club_goals:alpha>charlie|15:club_goals:charlie>juliet|16:club_goals:juliet>foxtrot|17:club_goals:foxtrot>juliet|18:club_goals:juliet>golf|19:club_goals:golf>hotel|20:club_goals:hotel>golf|21:club_goals:golf>hotel|22:club_goals:hotel>india|23:club_goals:india>hotel|24:club_goals:hotel>kilo|25:club_goals:kilo>charlie"`);
+    expect(fingerprint("ranked:1")).toMatchInlineSnapshot(
+      `"1:caps:alpha>foxtrot|2:caps:foxtrot>hotel|3:caps:hotel>echo|4:caps:echo>juliet|5:caps:juliet>kilo|6:ig:kilo>india|7:ig:india>charlie|8:club_goals:charlie>lima|9:club_goals:lima>bravo|10:club_goals:bravo>golf|11:club_goals:golf>delta|12:club_goals:delta>india|13:club_goals:india>alpha|14:club_goals:alpha>charlie|15:club_goals:charlie>juliet|16:club_goals:juliet>foxtrot|17:club_goals:foxtrot>juliet|18:club_goals:juliet>golf|19:club_goals:golf>hotel|20:club_goals:hotel>golf|21:club_goals:golf>hotel|22:club_goals:hotel>india|23:club_goals:india>hotel|24:club_goals:hotel>kilo|25:club_goals:kilo>charlie"`,
+    );
   });
 
   it("a second ranked run is stable", () => {
-    expect(fingerprint("ranked:2")).toMatchInlineSnapshot(`"1:caps:alpha>foxtrot|2:caps:foxtrot>hotel|3:igoals:hotel>golf|4:igoals:golf>lima|5:ig:lima>kilo|6:ig:kilo>delta|7:club_goals:delta>bravo|8:club_goals:bravo>juliet|9:club_goals:juliet>india|10:club_goals:india>charlie|11:clubs:charlie>echo|12:clubs:echo>kilo|13:clubs:kilo>charlie|14:clubs:charlie>echo|15:clubs:echo>golf|16:clubs:golf>delta|17:clubs:delta>bravo|18:clubs:bravo>echo|19:clubs:echo>juliet|20:clubs:juliet>golf|21:clubs:golf>alpha|22:clubs:alpha>foxtrot|23:clubs:foxtrot>hotel|24:clubs:hotel>alpha|25:clubs:alpha>charlie"`);
+    expect(fingerprint("ranked:2")).toMatchInlineSnapshot(
+      `"1:caps:alpha>foxtrot|2:caps:foxtrot>hotel|3:igoals:hotel>golf|4:igoals:golf>lima|5:ig:lima>kilo|6:ig:kilo>delta|7:club_goals:delta>bravo|8:club_goals:bravo>juliet|9:club_goals:juliet>india|10:club_goals:india>charlie|11:clubs:charlie>echo|12:clubs:echo>kilo|13:clubs:kilo>charlie|14:clubs:charlie>echo|15:clubs:echo>golf|16:clubs:golf>delta|17:clubs:delta>bravo|18:clubs:bravo>echo|19:clubs:echo>juliet|20:clubs:juliet>golf|21:clubs:golf>alpha|22:clubs:alpha>foxtrot|23:clubs:foxtrot>hotel|24:clubs:hotel>alpha|25:clubs:alpha>charlie"`,
+    );
   });
 });

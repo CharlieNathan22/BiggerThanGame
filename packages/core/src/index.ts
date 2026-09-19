@@ -24,14 +24,7 @@ export type {
 export { createRng, hashSeed } from "./prng.js";
 export type { Rng } from "./prng.js";
 
-export {
-  STATS,
-  STAT_KEYS,
-  TIER_WEIGHT,
-  CORRELATED_PAIRS,
-  areCorrelated,
-  ageAt,
-} from "./stats.js";
+export { STATS, STAT_KEYS, TIER_WEIGHT, CORRELATED_PAIRS, areCorrelated, ageAt } from "./stats.js";
 export type { StatDef } from "./stats.js";
 
 export { isEligible, eligibleStats, buildEligibilityMap } from "./eligibility.js";
@@ -56,3 +49,6 @@ export type { WheelOptions } from "./wheel.js";
 
 export { buildRun, labelFor, roundAt } from "./sequence.js";
 export type { RunOptions } from "./sequence.js";
+
+export { DISPLAY_WIDTHS, IMAGE_QUALITY, imageUrl, originalUrl, srcsetFor } from "./images.js";
+export type { DisplayWidth, PlayerImage } from "./images.js";

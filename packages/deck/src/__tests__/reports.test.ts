@@ -40,7 +40,11 @@ describe("statViability", () => {
       ...players,
       toPlayer(
         playerSchema.parse({
-          id: "g", name: "G", country: "T", position: "FW", dob: "1985-06-15",
+          id: "g",
+          name: "G",
+          country: "T",
+          position: "FW",
+          dob: "1985-06-15",
           stats: { club_goals: 400, caps: 5, apps: 50 },
         }),
       ),

@@ -39,11 +39,7 @@ function valuesFor(players: readonly Player[], key: StatKey, now: Date): Array<[
   return out;
 }
 
-export function statViability(
-  players: readonly Player[],
-  key: StatKey,
-  now: Date,
-): StatViability {
+export function statViability(players: readonly Player[], key: StatKey, now: Date): StatViability {
   const values = valuesFor(players, key, now);
   const pairsByBand: Record<string, number> = {};
   for (const b of REPORT_BANDS) pairsByBand[b.label] = 0;
@@ -139,16 +135,18 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
   lines.push("");
   lines.push(`Generated ${now.toISOString().slice(0, 10)} from ${players.length} players.`);
   lines.push("");
-  lines.push(
-    "Counts are **unordered pairs that clear the band**, before the recently-seen",
-  );
-  lines.push(
-    "queue takes its cut. A stat showing 0 at a band cannot be dealt there and will",
-  );
+  lines.push("Counts are **unordered pairs that clear the band**, before the recently-seen");
+  lines.push("queue takes its cut. A stat showing 0 at a band cannot be dealt there and will");
   lines.push("force relaxation every time the wheel picks it.");
   lines.push("");
 
-  const header = ["Stat", "Eligible", "Distinct", "Tied pairs", ...REPORT_BANDS.map((b) => b.label)];
+  const header = [
+    "Stat",
+    "Eligible",
+    "Distinct",
+    "Tied pairs",
+    ...REPORT_BANDS.map((b) => b.label),
+  ];
   lines.push(`| ${header.join(" | ")} |`);
   lines.push(`|${header.map(() => "---").join("|")}|`);
 
@@ -165,7 +163,9 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
     lines.push(`| ${cells.join(" | ")} |`);
   }
   lines.push("");
-  lines.push("`*` band-exempt — matched on tie exclusion alone, so every band shows the same count.");
+  lines.push(
+    "`*` band-exempt — matched on tie exclusion alone, so every band shows the same count.",
+  );
   lines.push("");
 
   // Anything that cannot be dealt somewhere is the headline finding.
@@ -173,11 +173,15 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
   for (const row of rows) {
     for (const b of REPORT_BANDS) {
       if ((row.pairsByBand[b.label] ?? 0) === 0) {
-        dead.push(`- **${STATS[row.stat].label}** has no valid pair at the ${b.label} band (${b.rounds}).`);
+        dead.push(
+          `- **${STATS[row.stat].label}** has no valid pair at the ${b.label} band (${b.rounds}).`,
+        );
       }
     }
     if (row.eligible < 2) {
-      dead.push(`- **${STATS[row.stat].label}** has fewer than two eligible players — it can never fire.`);
+      dead.push(
+        `- **${STATS[row.stat].label}** has fewer than two eligible players — it can never fire.`,
+      );
     }
   }
   lines.push("## Problems");
@@ -187,12 +191,8 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
 
   lines.push("## Stat correlation");
   lines.push("");
-  lines.push(
-    "Spearman rank correlation. A high value means the two stats order players the",
-  );
-  lines.push(
-    "same way, so switching between them asks the same question twice — which is what",
-  );
+  lines.push("Spearman rank correlation. A high value means the two stats order players the");
+  lines.push("same way, so switching between them asks the same question twice — which is what");
   lines.push("the correlated-pair exclusion in `wheel.ts` exists to prevent.");
   lines.push("");
   lines.push("| Pair | ρ | |");

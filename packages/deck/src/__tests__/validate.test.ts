@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { playerSchema, toPlayer } from "../schema.js";
-import { MIN_ELIGIBLE_STATS, validateDeck } from "../validate.js";
+import { validateDeck } from "../validate.js";
 
 const NOW = new Date("2026-09-18T00:00:00Z");
 
@@ -15,8 +15,7 @@ const make = (over: Record<string, unknown> = {}) =>
     ...over,
   });
 
-const check = (raws: ReturnType<typeof make>[]) =>
-  validateDeck(raws, raws.map(toPlayer), NOW);
+const check = (raws: ReturnType<typeof make>[]) => validateDeck(raws, raws.map(toPlayer), NOW);
 
 describe("validateDeck", () => {
   it("passes a clean deck", () => {
@@ -58,14 +57,19 @@ describe("validateDeck", () => {
 
   it("catches a follower snapshot dated in the future", () => {
     const problems = check([
-      make({ stats: { caps: 50, apps: 300, club_goals: 10, ig: { value: 5, as_of: "2030-01-01" } } }),
+      make({
+        stats: { caps: 50, apps: 300, club_goals: 10, ig: { value: 5, as_of: "2030-01-01" } },
+      }),
     ]);
     expect(problems.some((p) => p.field === "stats.ig.as_of")).toBe(true);
   });
 
   it("catches a fee year before the player turned fifteen", () => {
     const problems = check([
-      make({ dob: "1990-01-01", stats: { caps: 50, apps: 300, club_goals: 10, fee: { value: 5, year: 1999 } } }),
+      make({
+        dob: "1990-01-01",
+        stats: { caps: 50, apps: 300, club_goals: 10, fee: { value: 5, year: 1999 } },
+      }),
     ]);
     expect(problems.some((p) => p.field === "stats.fee.year")).toBe(true);
   });
@@ -73,7 +77,10 @@ describe("validateDeck", () => {
   it("accepts a plausible fee year", () => {
     expect(
       check([
-        make({ dob: "1990-01-01", stats: { caps: 50, apps: 300, club_goals: 10, fee: { value: 5, year: 2010 } } }),
+        make({
+          dob: "1990-01-01",
+          stats: { caps: 50, apps: 300, club_goals: 10, fee: { value: 5, year: 2010 } },
+        }),
       ]),
     ).toEqual([]);
   });
@@ -90,10 +97,7 @@ describe("validateDeck", () => {
   });
 
   it("collects every problem rather than stopping at the first", () => {
-    const problems = check([
-      make({ id: "dup", dob: "2030-01-01" }),
-      make({ id: "dup" }),
-    ]);
+    const problems = check([make({ id: "dup", dob: "2030-01-01" }), make({ id: "dup" })]);
     expect(problems.length).toBeGreaterThan(1);
   });
 });

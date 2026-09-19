@@ -21,6 +21,29 @@ export interface LoadedDeck {
   readonly problems: readonly string[];
 }
 
+/**
+ * Local staging folder for source photographs, matching whichever deck loaded.
+ *
+ * Gitignored — originals go to R2, never into git. Only `images:sync` reads
+ * this; the ordinary build never touches it.
+ */
+export function imagesDirFor(root: string, source: "data" | "sample"): string {
+  return join(root, source, "originals");
+}
+
+/** The committed image manifest, which lives with the deck it describes. */
+export function manifestPathFor(root: string, source: "data" | "sample"): string {
+  return join(root, source, "images.json");
+}
+
+/** Image files in a directory, for the orphan check. Empty if it does not exist. */
+export function imageFilesIn(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /\.(jpe?g|png|webp|avif)$/i.test(f))
+    .sort();
+}
+
 function yamlFilesIn(dir: string): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)

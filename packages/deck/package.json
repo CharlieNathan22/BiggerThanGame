@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "@bt/core": "workspace:*",
-    "zod": "^4",
-    "yaml": "^2"
+    "aws4fetch": "^1.0.20",
+    "image-size": "^2.0.4",
+    "yaml": "^2",
+    "zod": "^4"
   },
   "devDependencies": {
     "@types/node": "^26.6.1"

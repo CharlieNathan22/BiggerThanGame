@@ -9,16 +9,7 @@
 
 /** The ten stats. `age` is derived from `dob`, not stored. */
 export type StatKey =
-  | "club_goals"
-  | "caps"
-  | "apps"
-  | "ig"
-  | "fee"
-  | "igoals"
-  | "ct"
-  | "it"
-  | "clubs"
-  | "age";
+  "club_goals" | "caps" | "apps" | "ig" | "fee" | "igoals" | "ct" | "it" | "clubs" | "age";
 
 /** Majority career position. Drives stat eligibility; never inferred at runtime. */
 export type Position = "GK" | "DF" | "MF" | "FW";

@@ -14,14 +14,6 @@ build/
 .dev.vars
 .dev.vars.*
 
-# generated deck artifacts
-packages/deck/dist/
-deck.full.json
-deck.public.json
-deck.friendly.json
-indexes.json
-credits.json
-
 # env & secrets
 .env
 .env.*
@@ -40,3 +32,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+#images
+packages/deck/sample/originals/

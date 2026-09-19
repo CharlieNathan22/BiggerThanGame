@@ -81,9 +81,7 @@ export const imageSchema = z
 
 export const playerSchema = z
   .object({
-    id: z
-      .string()
-      .regex(/^[a-z0-9-]+$/, "ids are lowercase, digits and hyphens only"),
+    id: z.string().regex(/^[a-z0-9-]+$/, "ids are lowercase, digits and hyphens only"),
     name: z.string().min(1),
     country: z.string().min(1),
     position: z.enum(["GK", "DF", "MF", "FW"]),

@@ -13,7 +13,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildCredits, buildFullDeck, buildIndexes } from "./artifacts.js";
-import { loadDeck } from "./load.js";
+import { checkManifest, loadManifest } from "./manifest.js";
+import { loadDeck, manifestPathFor } from "./load.js";
 import { simulate, simulationReport } from "./simulate.js";
 import { formatProblems, validateDeck } from "./validate.js";
 import { viabilityReport } from "./viability.js";
@@ -55,7 +56,13 @@ export function runBuild(opts: BuildOptions = {}): number {
   }
 
   console.log("deck: validating");
-  const problems = validateDeck(loaded.raws, loaded.players, now);
+  // Image *files* are not checked here — the build is offline and never sees
+  // them. What it checks is that the committed manifest and the deck agree.
+  const manifest = loadManifest(manifestPathFor(packageRoot, loaded.source));
+  const problems = [
+    ...validateDeck(loaded.raws, loaded.players, now),
+    ...checkManifest(loaded.raws, manifest),
+  ];
   if (problems.length > 0) {
     console.error(`\ndeck: ${problems.length} validation error(s)\n`);
     console.error(formatProblems(problems));
@@ -63,6 +70,9 @@ export function runBuild(opts: BuildOptions = {}): number {
     return 1;
   }
   console.log("  ok");
+
+  const imageCount = Object.keys(manifest.entries).length;
+  console.log(`  ${imageCount} player(s) with synced images`);
 
   console.log("deck: emitting artifacts");
   const outDir = join(packageRoot, "dist");
@@ -89,10 +99,7 @@ export function runBuild(opts: BuildOptions = {}): number {
     const started = Date.now();
     const result = simulate({ deck: loaded.players, now, runs });
     console.log(`  ${((Date.now() - started) / 1000).toFixed(1)}s`);
-    write(
-      join(packageRoot, "simulation.md"),
-      simulationReport(result, loaded.players.length, now),
-    );
+    write(join(packageRoot, "simulation.md"), simulationReport(result, loaded.players.length, now));
   }
 
   console.log("deck: done");
@@ -101,7 +108,8 @@ export function runBuild(opts: BuildOptions = {}): number {
 
 // Only run when invoked directly, so tests can import the module freely.
 const invokedDirectly =
-  process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (invokedDirectly) {
   const skipSimulation = process.argv.includes("--no-sim");

@@ -12,7 +12,7 @@
  */
 
 import { STATS, STAT_KEYS, buildRun, createRng, valueOf } from "@bt/core";
-import type { Player, Relaxation, Round, StatKey } from "@bt/core";
+import type { Player, Relaxation, Round } from "@bt/core";
 
 /**
  * Modelled probability that a player answers a round correctly.
@@ -157,12 +157,8 @@ export function simulationReport(result: SimResult, deckSize: number, now: Date)
       `generated ${now.toISOString().slice(0, 10)}.`,
   );
   lines.push("");
-  lines.push(
-    "> Streaks come from a **modelled** player: correct with probability rising from",
-  );
-  lines.push(
-    "> 0.5 at no gap to 0.95 at a blowout. That model is an assumption. The shape is",
-  );
+  lines.push("> Streaks come from a **modelled** player: correct with probability rising from");
+  lines.push("> 0.5 at no gap to 0.95 at a blowout. That model is an assumption. The shape is");
   lines.push("> informative; the absolute numbers are not, until real play replaces them.");
   lines.push("");
 
@@ -197,9 +193,7 @@ export function simulationReport(result: SimResult, deckSize: number, now: Date)
 
   lines.push("## Stat firing rates");
   lines.push("");
-  lines.push(
-    "What the wheel actually produced, after tie exclusion and band filtering had",
-  );
+  lines.push("What the wheel actually produced, after tie exclusion and band filtering had");
   lines.push("their say. Compare against the intended 17.5 / 11 / 2 per stat.");
   lines.push("");
   lines.push("| Stat | Tier | Share | Intended |");
@@ -216,12 +210,8 @@ export function simulationReport(result: SimResult, deckSize: number, now: Date)
 
   lines.push("## Relaxation");
   lines.push("");
-  lines.push(
-    "`band` means the pool was too sparse and the band had to be widened — the deck",
-  );
-  lines.push(
-    "is thin in the tails. `seen` means the band was fine but every eligible opponent",
-  );
+  lines.push("`band` means the pool was too sparse and the band had to be widened — the deck");
+  lines.push("is thin in the tails. `seen` means the band was fine but every eligible opponent");
   lines.push("was recently used — the deck is simply too small. They need different fixes.");
   lines.push("");
   const total = Math.max(result.roundsDealt, 1);
@@ -242,18 +232,14 @@ export function simulationReport(result: SimResult, deckSize: number, now: Date)
 
   lines.push("## Engine reach");
   lines.push("");
-  lines.push(
-    `Longest run the engine could construct: **${result.maxConstructible} rounds**.`,
-  );
+  lines.push(`Longest run the engine could construct: **${result.maxConstructible} rounds**.`);
   lines.push(
     `Runs that ended because the engine ran out rather than the player failing: ` +
       `**${((result.exhausted / Math.max(runs, 1)) * 100).toFixed(1)}%**.`,
   );
   lines.push("");
   if (result.exhausted / Math.max(runs, 1) > 0.01) {
-    lines.push(
-      "> A non-trivial share of runs hit the end of what the deck can produce. That is a",
-    );
+    lines.push("> A non-trivial share of runs hit the end of what the deck can produce. That is a");
     lines.push("> deck-size finding, not a difficulty finding — add players before tuning bands.");
     lines.push("");
   }

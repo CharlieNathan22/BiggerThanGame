@@ -1,6 +1,6 @@
 # Deck viability
 
-Generated 2026-09-18 from 24 players.
+Generated 2026-09-19 from 24 players.
 
 Counts are **unordered pairs that clear the band**, before the recently-seen
 queue takes its cut. A stat showing 0 at a band cannot be dealt there and will

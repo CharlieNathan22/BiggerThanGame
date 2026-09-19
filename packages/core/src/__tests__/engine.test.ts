@@ -79,12 +79,7 @@ describe("candidates", () => {
   });
 
   it("excludes players ineligible for the stat", () => {
-    const pool = candidates(
-      byId("alpha"),
-      "club_goals",
-      { floor: 0, ceiling: null },
-      ctx(),
-    );
+    const pool = candidates(byId("alpha"), "club_goals", { floor: 0, ceiling: null }, ctx());
     expect(pool.map((p) => p.id)).not.toContain("echo"); // goalkeeper
   });
 
@@ -105,15 +100,27 @@ describe("selectChallenger", () => {
     // Two players 10x apart on caps. Round 43 wants 30-80%, which is
     // unreachable, so the only possible pair is a relaxed one.
     const near: Player = {
-      id: "near", name: "Near", country: "T", position: "FW",
-      dob: "1990-01-01", stats: { caps: 10 },
+      id: "near",
+      name: "Near",
+      country: "T",
+      position: "FW",
+      dob: "1990-01-01",
+      stats: { caps: 10 },
     };
     const far: Player = {
-      id: "far", name: "Far", country: "T", position: "FW",
-      dob: "1990-01-01", stats: { caps: 100 },
+      id: "far",
+      name: "Far",
+      country: "T",
+      position: "FW",
+      dob: "1990-01-01",
+      stats: { caps: 100 },
     };
     const match = selectChallenger(
-      near, "caps", 43, { deck: [near, far], now: NOW, seen: [] }, createRng("relax"),
+      near,
+      "caps",
+      43,
+      { deck: [near, far], now: NOW, seen: [] },
+      createRng("relax"),
     );
     expect(match).toBeDefined();
     expect(match!.challenger.id).toBe("far");
@@ -128,7 +135,13 @@ describe("selectChallenger", () => {
 
   it("still deals when everyone has been seen", () => {
     const seen = fixtureDeck.map((p) => p.id);
-    const match = selectChallenger(byId("alpha"), "caps", 1, { deck: fixtureDeck, now: NOW, seen }, createRng("all-seen"));
+    const match = selectChallenger(
+      byId("alpha"),
+      "caps",
+      1,
+      { deck: fixtureDeck, now: NOW, seen },
+      createRng("all-seen"),
+    );
     expect(match).toBeDefined();
   });
 

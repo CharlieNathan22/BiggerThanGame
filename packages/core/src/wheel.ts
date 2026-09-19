@@ -87,8 +87,6 @@ export function chooseStat(opts: WheelOptions): StatKey | undefined {
 
   // Nothing but a correlated stat is available — better a correlated switch
   // than no switch at all, but still never a band-exempt stat too early.
-  const fallback = viable.filter(
-    (key) => key !== current && statAllowedAtRound(key, round),
-  );
+  const fallback = viable.filter((key) => key !== current && statAllowedAtRound(key, round));
   return weightedPick(fallback, rng);
 }

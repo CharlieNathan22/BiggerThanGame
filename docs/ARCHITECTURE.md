@@ -49,8 +49,12 @@ Request
 Astro is configured for **static output**, not SSR. Every page is prerendered at build time; the
 Worker only executes for `/api/*`. No Astro Cloudflare adapter is needed.
 
-**Bindings:** `ASSETS`, `DB` (D1), `BOARDS` (KV), `RUNS` (Durable Object namespace), `IMAGES` (R2,
-served through a custom domain), `RUN_SECRET` (secret), `TURNSTILE_SECRET` (secret).
+**Bindings:** `ASSETS`, `DB` (D1), `BOARDS` (KV), `RUNS` (Durable Object namespace), `RUN_SECRET` (secret),
+`TURNSTILE_SECRET` (secret).
+
+There is **no R2 binding**. Images are served from R2 through a custom domain
+(`img.biggerthangame.com`) and resized by Image Transformations, so the Worker never touches the
+bucket — see section 9.
 
 ---
 
@@ -67,7 +71,7 @@ served through a custom domain), `RUN_SECRET` (secret), `TURNSTILE_SECRET` (secr
 │   │   ├── sequence.ts    # deterministic round sequence from a seed
 │   │   └── types.ts
 │   └── deck/
-│       ├── data/          # private submodule: player YAML + image originals
+│       ├── data/          # private submodule: player YAML + images.json manifest
 │       ├── schema.ts      # Zod schema
 │       └── build.ts       # validation + precompute → artifacts
 ├── apps/web/              # Astro + Svelte
@@ -89,18 +93,11 @@ served through a custom domain), `RUN_SECRET` (secret), `TURNSTILE_SECRET` (secr
 
 These four are what make the leaderboard defensible. Everything else is negotiable.
 
-1. **The client never receives a stat value it has not already been shown. No exceptions.**
-   **No client-bound deck artifact exists at all.** Every mode, Friendly included, fetches per
-   question, so the browser's only source of player data is the round payload.
-   This was previously qualified — Friendly shipped full values for a small pool because it ran in
-   the browser — and the build needed a guard to stop that hole widening. Moving Friendly behind
-   the endpoint removed the hole rather than policing it.
-   Two surfaces still carry the risk, checked differently. The **built site bundle** is scanned
-   with `scanForLeakedValues`, because nothing type-level connects "what was imported" to "what
-   ended up in `dist`". The **round payload** is covered by an explicit response DTO plus a test —
-   the compiler does most of the work there, but note that a `Round` carries `anchor` and
-   `challenger` as full `Player` objects, so returning one directly leaks everything while
-   typechecking cleanly.
+1. **The client never receives a stat value it has not already been shown.** `deck.public.json`
+   contains names and nationalities only — no numbers.
+   The sole exception is `deck.friendly.json`, which carries full values for the Friendly pool
+   (~80–100 players) because that mode runs entirely in the browser. **Nothing outside the Friendly
+   pool may ever appear in a client bundle.** The build must assert this.
 2. **No prefetching of hidden values, not even one round ahead.** Buffering rounds for latency
    would mean several readable answers sitting in memory at all times. Prefetch _display_ data
    only — and do prefetch it: images especially must be loaded ahead of the round they appear in
@@ -125,7 +122,7 @@ country: France
 position: MF # GK | DF | MF | FW  — drives the goals-stat exclusion
 dob: 1972-06-23
 deceased: false
-iconic: true # recognisable enough to open a run on (DESIGN.md §10)
+friendly: true # in the client-side Friendly pool — full values ship publicly
 stats:
   club_goals: 125
   caps: 108
@@ -137,7 +134,7 @@ stats:
   ig: { value: 41.2, as_of: 2026-09-17 } # snapshot date is shown on the card
   fee: { value: 77.5, year: 2001 } # year is shown on the card
 image: # omit entirely if no usable free image exists
-  file: zidane-2008.jpg # original, under packages/deck/images/
+  file: zidane-2008.jpg # staged in data/originals/ (gitignored), archived in R2
   author: "Jane Smith"
   licence: CC-BY-4.0 # CC-BY-* | CC-BY-SA-* | CC0 | PD
   source: https://commons.wikimedia.org/wiki/File:...
@@ -166,14 +163,16 @@ present.
 
 `packages/deck/build.ts` runs before the Astro build and emits:
 
-| Artifact               | Destination         | Contents                                                |
-| ---------------------- | ------------------- | ------------------------------------------------------- |
-| `deck.full.json`       | bundled into Worker | ids, all stat values, eligibility                       |
-| `indexes.json`         | Worker              | per stat: players sorted by value, tie groups           |
-| `img/<id>-<hash>.webp` | uploaded to R2      | derivative at display size                              |
-| `credits.json`         | shipped to client   | author, licence and source per image                    |
-| `viability.md`         | repo, committed     | per stat and gap band, how many valid pairs exist       |
-| `simulation.md`        | repo, committed     | streak distribution and stat firing rates over 10k runs |
+| Artifact             | Destination         | Contents                                                           |
+| -------------------- | ------------------- | ------------------------------------------------------------------ |
+| `deck.full.json`     | bundled into Worker | ids, all stat values, eligibility                                  |
+| `deck.public.json`   | shipped to client   | id, name, country only — **all** players                           |
+| `deck.friendly.json` | shipped to client   | full stat values, **Friendly pool only**                           |
+| `indexes.json`       | Worker              | per stat: players sorted by value, tie groups                      |
+| `credits.json`       | shipped to client   | author, licence and source per image                               |
+| `images.json`        | read, not written   | id → R2 key and dimensions; written by `images:sync`, checked here |
+| `viability.md`       | repo, committed     | per stat and gap band, how many valid pairs exist                  |
+| `simulation.md`      | repo, committed     | streak distribution and stat firing rates over 10k runs            |
 
 The build **fails** on: a stat value that is negative or non-numeric; a `club_goals` or `igoals`
 value on a goalkeeper; an `ig` entry without `as_of`; a `fee` entry without `year`; an unknown stat
@@ -184,13 +183,9 @@ licence is not on the allow-list. Stats no longer carry provenance, so this is t
 provenance guard in the pipeline — which makes it the one that matters. A player with no `image`
 block is valid and renders the monogram fallback.
 
-**No client-bound artifact is emitted**, so there is nothing at build time to police. The leak
-scanner (`scanForLeakedValues`) instead runs against the built site bundle and, from Phase 5,
-against the round payload. It takes text rather than an object deliberately — it must work on a JS
-bundle as readily as on JSON, and it must not trust any object's shape.
-
-Note that **image URLs are display data, not stat values**, and reach the client freely. The
-scanner only looks for numbers.
+It also fails if `deck.friendly.json` contains any player not flagged `friendly: true`, or if the
+Friendly pool exceeds its configured size. This is the guard on the one deliberate data-exposure
+path in the system.
 
 Band-exempt stats (`clubs`, and any other flagged narrow stat) are matched on tie exclusion alone
 and are **barred from the first 10 rounds** — otherwise a rare stat landing at round 3 ends a run
@@ -265,9 +260,8 @@ affected. Correct, but D1 is regional rather than edge-local, so it adds latency
 ```ts
 type Progress = {
   runId: string;
-  mode: "ranked" | "endless";
+  mode: "ranked" | "endless" | "friendly";
   gameNo: number;
-  // Friendly issues no token — it uses /api/round/next and carries no state.
   round: number;
   streak: number;
   anchorId: string;
@@ -287,12 +281,6 @@ what is already on screen. The challenger's value is never in it.
 **`POST /api/run/start`** → `{ mode, turnstileToken }`
 Verifies Turnstile. For Ranked, checks the signed device-day token and refuses a second run.
 Creates the DO, returns round one's display payload and the first progress token.
-
-**`POST /api/round/next`** → `{ mode: "friendly", runId, round }`
-Friendly only. Stateless: derives the seed from `runId`, replays the sequence to `round`, returns
-the display payload and the anchor's value. No token, no nonce, no timer. **Rate-limited** — this
-endpoint is the only thing between the deck and a determined scraper, so the limit is load-bearing
-rather than hygiene.
 
 **`POST /api/round/guess`** → `{ token, guess }`
 
@@ -371,13 +359,44 @@ anything to depend on it, since it only fires on a switch.
 
 ### Image pipeline
 
-Originals live in `packages/deck/images/`, committed. The build produces derivatives — **WebP and
-AVIF at display size, 30–50KB**, content-hashed filenames — and uploads them to R2. Transformation
-happens at build time, not per request: the deck changes twice a year, so on-the-fly resizing would
-be paying repeatedly for work done once.
+**Originals only, resized at the edge.** Nothing is resized at build or sync time.
 
-R2 is served through a **custom domain** so Cloudflare's CDN caches at the edge. Hashed filenames
-allow immutable cache headers, so a returning player accumulates the deck locally.
+```
+data/originals/zidane-zinedine.jpg      local staging, gitignored
+        │
+        │  pnpm images:sync   (occasional — needs R2 credentials)
+        ▼
+  validate → hash → upload original → write data/images.json (committed)
+        │
+        ▼
+R2  originals/zidane-zinedine.a3f9c21e0b1d4e7f.jpg    immutable, year-long cache
+        │
+        │  served via custom domain img.biggerthangame.com
+        ▼
+img.biggerthangame.com/cdn-cgi/image/width=800,quality=80,fit=scale-down,
+                       format=auto,onerror=redirect/originals/zidane-….jpg
+```
+
+- **R2 is the archive.** Originals never enter git; they stage locally, go to R2 at full resolution,
+  and the staging folder can be cleared.
+- **Keys are content-hashed** (`originals/<id>.<sha256[0:16]><ext>`). A replaced photo gets a new
+  key, so immutable cache headers are safe and there is never a stale object to purge.
+- **`images.json` is committed in the deck submodule** and maps id → key, width, height and source
+  hash. It stores keys, never URLs — the domain comes from config. It exists so `pnpm build` stays
+  offline: the build checks that deck and manifest agree and never touches the network.
+- **Image Transformations** (enabled on the `biggerthangame.com` zone, sources restricted to that
+  zone) resize and convert on first request and cache the result at the edge. `format=auto` serves
+  AVIF or WebP by `Accept` header and counts as **one** transformation. `fit=scale-down` never
+  enlarges. `onerror=redirect` falls back to the original rather than a broken image.
+- **Two widths only: 800 and 1600.** Every distinct URL is a separate transformation against the
+  free allowance of 5,000 a month; 300 players × 2 widths is 600. Widths are fixed constants
+  (`DISPLAY_WIDTHS`), **never computed per device**. Past the allowance, new transformations fail
+  and `onerror=redirect` serves the original — slower, never broken, never billed on the free plan.
+- **`srcset` across both widths**, built by `srcsetFor(base, key)`, with `width`/`height` from the
+  manifest so the card reserves its box and does not jump.
+
+Sync validates every source before uploading anything: exists, readable, shortest edge ≥ 1600px,
+aspect ≤ 3:1, no two players sharing a file. It is idempotent — unchanged hashes are skipped.
 
 ### Image prefetch — requirement, not optimisation
 
@@ -387,25 +406,22 @@ the same 640ms window and is the one thing that would actually make the game fee
 Images are _display_ data, and the next round's display payload arrives with the current answer.
 So:
 
-1. **The moment a guess response lands, preload the next two cards' images.** The player then spends
-   several seconds thinking while the fetch completes in the background, and the image is in cache
-   before it is needed.
-2. **Serve R2 through a custom domain** so Cloudflare's CDN caches at the edge rather than hitting
-   the bucket on every request.
-3. **WebP or AVIF at display size, 30–50KB per image** — not HD originals.
-4. **Immutable cache headers with hashed filenames.** A returning player accumulates most of the
-   deck locally; 400 players at 40KB is roughly 16MB total, which builds up over a few sessions.
-
-This holds regardless of whether images ship in v1 — it is the constraint that makes adding them
-later safe.
+1. **The moment a round response lands, preload the next two cards' images** — the same URL the
+   `srcset` will pick, or the browser fetches twice. The player spends several seconds thinking
+   while the fetch completes, and the image is in cache before it is needed.
+2. **Serve R2 through a custom domain**, never `r2.dev` — it is rate-limited and unsupported for
+   production, and Transformations need a hostname on the zone.
+3. **Resized at the edge, not HD originals.** An 800w AVIF of a portrait is typically well under
+   100KB.
+4. **Immutable cache headers with hashed keys.** A returning player accumulates most of the deck
+   locally over a few sessions.
 
 ### Degradation
 
 - The **3s timer grace** (section 8) absorbs slow rounds so a laggy connection does not cost the
   player their run.
 - **Bank and end** covers a genuine drop.
-- There is **no offline mode**. Friendly gave that up when it moved behind the endpoint, which was
-  the price of not shipping the deck to every browser.
+- **Friendly Mode is entirely local**, so there is always a mode that works with no connection.
 
 Honest summary: Ranked and Endless need a working connection at roughly 50–150ms typical, and the
 animation hides it. They will feel sluggish on genuinely poor mobile, which is what the grace window
@@ -534,7 +550,9 @@ knife-edge bands is a second signal.
 Static asset requests are unbilled. At 10,000 plays a day averaging a dozen questions you are
 around 120k Worker requests daily plus the same in DO messages — one of each per question, since
 the answer and the next round's display payload travel in a single response — just past the free tier and well
-inside the $5/month plan's included requests. D1 and KV usage at this scale is negligible. Verify
+inside the $5/month plan's included requests. D1 and KV usage at this scale is negligible. R2
+storage for ~300 originals is a few hundred MB, inside the free 10GB, and R2 egress is free. Image
+Transformations use ~600 of the free 5,000 unique transformations a month. Verify
 current numbers against Cloudflare's pricing page before launch.
 
 ---
@@ -545,17 +563,16 @@ Note that **images are v1 scope**, and licence verification across ~400 players 
 its own right — see `DESIGN.md` §13. Friendly Mode can ship with images for its pool only, which is
 a far smaller verification job and validates the pipeline early.
 
-**Friendly Mode first**, shipped publicly on the full deck. It needs `packages/core`, the Astro
-shell, the Svelte island, and **one stateless endpoint** (`/api/round/next`) plus a rate limit. It
-does not need the Durable Object, D1, KV, progress tokens or Turnstile.
+**Friendly Mode first**, shipped publicly on its permanent 80-to-100 player pool. It is
+client-side, clock-free and leaderboard-exempt, so it needs none of sections 7 to 12 —
+`packages/core`, the Astro shell and the Svelte island only. The Worker never executes; Astro
+builds, Workers serves the files. Nothing about it is rework: when the backend lands, Friendly Mode
+keeps running exactly as built.
 
-Building that endpoint is not a detour. It is the same sequence-derivation work Phase 5 needs, and
-Phase 5 hardens it in place rather than replacing a throwaway — so this is less total work than
-building Friendly fully client-side and bolting a server path on afterwards.
-
-That gets feedback on feel, comprehension and the difficulty ramp while the long pole —
-hand-entering the deck — proceeds in parallel. `simulation.md` remains the primary instrument for
-ramp tuning; live Friendly play is the check on it.
+That gets feedback on feel and comprehension while the two long poles — hand-entering the deck and
+building the server-authoritative stack — proceed in parallel. It does **not** validate the
+difficulty ramp; see `DESIGN.md` §3. Ramp tuning comes from `simulation.md` run against the full
+deck, which is independent of what ships to the client.
 
 Ranked and Endless ship together once the round protocol, Durable Object, D1 schema and moderation
 are complete.

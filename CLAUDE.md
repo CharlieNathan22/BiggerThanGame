@@ -23,7 +23,7 @@ Breaking any of these silently breaks the leaderboard. They are not preferences.
    values for the ~80–100 player Friendly pool because that mode runs entirely in the browser.
    Nothing outside that pool may ever reach a client bundle.
 2. **Never prefetch hidden values** — not one round ahead, not ever. Display data (names, images)
-   *must* be prefetched; values must not.
+   _must_ be prefetched; values must not.
 3. **The round sequence is a pure function of the seed** and must not depend on player answers.
    This is what makes Daily Ranked identical for everyone and lets the server recompute any round.
 4. **A progress token is spent once.** The Durable Object nonce check is what prevents replay. Do

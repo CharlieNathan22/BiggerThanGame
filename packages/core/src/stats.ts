@@ -150,7 +150,5 @@ export const CORRELATED_PAIRS: ReadonlyArray<readonly [StatKey, StatKey]> = [
 ];
 
 export function areCorrelated(a: StatKey, b: StatKey): boolean {
-  return CORRELATED_PAIRS.some(
-    ([x, y]) => (x === a && y === b) || (x === b && y === a),
-  );
+  return CORRELATED_PAIRS.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
 }

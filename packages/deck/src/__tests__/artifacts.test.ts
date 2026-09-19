@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildCredits,
-  buildFullDeck,
-  buildIndexes,
-  scanForLeakedValues,
-} from "../artifacts.js";
+import { buildCredits, buildFullDeck, buildIndexes, scanForLeakedValues } from "../artifacts.js";
 import { playerSchema, toPlayer } from "../schema.js";
 import type { Player } from "@bt/core";
 
@@ -12,16 +7,33 @@ const NOW = new Date("2026-09-18T07:38:18.000Z");
 
 const raws = [
   {
-    id: "one", name: "One", country: "T", position: "FW", dob: "1985-06-15",
+    id: "one",
+    name: "One",
+    country: "T",
+    position: "FW",
+    dob: "1985-06-15",
     stats: { club_goals: 400, caps: 100, apps: 600, igoals: 50 },
   },
   {
-    id: "two", name: "Two", country: "T", position: "MF", dob: "1988-01-01",
+    id: "two",
+    name: "Two",
+    country: "T",
+    position: "MF",
+    dob: "1988-01-01",
     stats: { club_goals: 200, caps: 100, apps: 500, igoals: 25 },
-    image: { file: "two.jpg", author: "A Snapper", licence: "CC-BY-4.0", source: "https://example.com/two" },
+    image: {
+      file: "two.jpg",
+      author: "A Snapper",
+      licence: "CC-BY-4.0",
+      source: "https://example.com/two",
+    },
   },
   {
-    id: "three", name: "Three", country: "T", position: "DF", dob: "1990-01-01",
+    id: "three",
+    name: "Three",
+    country: "T",
+    position: "DF",
+    dob: "1990-01-01",
     stats: { club_goals: 20, caps: 40, apps: 450, igoals: 2 },
   },
 ].map((r) => playerSchema.parse(r));
@@ -55,7 +67,11 @@ describe("buildIndexes", () => {
   it("omits players with no value for a stat", () => {
     const gk = toPlayer(
       playerSchema.parse({
-        id: "keeper", name: "Keeper", country: "T", position: "GK", dob: "1980-01-01",
+        id: "keeper",
+        name: "Keeper",
+        country: "T",
+        position: "GK",
+        dob: "1980-01-01",
         stats: { caps: 90, apps: 700, ct: 5 },
       }),
     );
@@ -84,7 +100,11 @@ describe("scanForLeakedValues", () => {
     // those as real values must not trigger a false positive.
     const tricky = toPlayer(
       playerSchema.parse({
-        id: "tricky", name: "Tricky", country: "T", position: "FW", dob: "1990-01-01",
+        id: "tricky",
+        name: "Tricky",
+        country: "T",
+        position: "FW",
+        dob: "1990-01-01",
         stats: { club_goals: 38, caps: 18, apps: 380 },
       }),
     );
@@ -120,7 +140,11 @@ describe("scanForLeakedValues", () => {
   it("ignores values below the threshold as too ambiguous", () => {
     const small = toPlayer(
       playerSchema.parse({
-        id: "small", name: "Small", country: "T", position: "FW", dob: "1990-01-01",
+        id: "small",
+        name: "Small",
+        country: "T",
+        position: "FW",
+        dob: "1990-01-01",
         stats: { club_goals: 2, caps: 3, apps: 400 },
       }),
     );

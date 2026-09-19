@@ -1,0 +1,8 @@
+# Prettier also reads .gitignore; these are the extra paths it must not touch.
+pnpm-lock.yaml
+**/dist/
+**/.astro/
+**/.wrangler/
+
+# Private deck submodule: formatting belongs in its own repo.
+packages/deck/data/

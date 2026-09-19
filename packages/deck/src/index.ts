@@ -9,8 +9,26 @@
 export { ALLOWED_LICENCES, playerSchema, statsSchema, imageSchema, toPlayer } from "./schema.js";
 export type { RawImage, RawPlayer } from "./schema.js";
 
-export { loadDeck } from "./load.js";
+export { imageFilesIn, imagesDirFor, loadDeck, manifestPathFor } from "./load.js";
 export type { LoadedDeck } from "./load.js";
+
+export { MAX_ASPECT_RATIO, MIN_IMAGE_EDGE, orphanedImages, validateImages } from "./images.js";
+
+export { EMPTY_MANIFEST, checkManifest, loadManifest, saveManifest } from "./manifest.js";
+export type { Manifest, ManifestEntry } from "./manifest.js";
+
+export {
+  CONTENT_TYPES,
+  contentTypeFor,
+  createDryRunUploader,
+  createR2Uploader,
+  r2ConfigFromEnv,
+} from "./upload.js";
+export type { R2Config, UploadItem, Uploader } from "./upload.js";
+
+export { displayedSize, hashBytes, originalKeyFor, shortHash, syncImages } from "./sync.js";
+export { runSync } from "./sync-cli.js";
+export type { SyncOptions, SyncResult } from "./sync.js";
 
 export { MIN_ELIGIBLE_STATS, formatProblems, validateDeck } from "./validate.js";
 export type { Problem } from "./validate.js";
