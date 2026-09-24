@@ -1,0 +1,73 @@
+---
+import Page from "../layouts/Page.astro";
+import { loadCredits } from "../lib/credits";
+
+const credits = loadCredits();
+---
+
+<Page
+  title="Photo credits — Bigger Than Game"
+  description="Credits for every player photo on Bigger Than: the photographer, the licence and where the image came from."
+>
+  <h1>
+    Photo <em>credits</em>
+  </h1>
+  <p>
+    Every player photo on Bigger Than is freely licensed. Here's who took each one, the licence it's
+    shared under and where it came from.
+  </p>
+
+  {credits.length === 0 ? (
+    <p class="empty">
+      No photos yet. For now every player appears with their initial. When a photo is added, its
+      credit will be listed here.
+    </p>
+  ) : (
+    <ul class="credits">
+      {credits.map((credit) => (
+        <li>
+          <strong>{credit.name}</strong>
+          <p>
+            Photo by {credit.author} ·{" "}
+            {credit.licenceUrl !== undefined ? (
+              <a href={credit.licenceUrl} rel="license">
+                {credit.licence}
+              </a>
+            ) : credit.licence === "PD" ? (
+              "Public domain"
+            ) : (
+              credit.licence
+            )}{" "}
+            · <a href={credit.source}>Source</a>
+          </p>
+        </li>
+      ))}
+    </ul>
+  )}
+</Page>
+
+<style>
+  .credits {
+    list-style: none;
+    padding-left: 0;
+    margin-top: 28px;
+  }
+  .credits li {
+    padding: 14px 0;
+    border-top: var(--border) solid var(--rule);
+  }
+  .credits li + li {
+    margin-top: 0;
+  }
+  .credits strong {
+    font-size: var(--fs-body);
+  }
+  .credits p {
+    margin-top: 4px;
+  }
+  .empty {
+    margin-top: 28px;
+    padding-top: 16px;
+    border-top: var(--border) solid var(--rule);
+  }
+</style>

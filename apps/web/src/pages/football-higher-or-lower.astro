@@ -1,0 +1,86 @@
+---
+import { STATS, STAT_KEYS } from "@bt/core";
+import Page from "../layouts/Page.astro";
+
+const labels = STAT_KEYS.map((key) => STATS[key].label);
+---
+
+<Page
+  title="Football Higher or Lower — Bigger Than Game"
+  description="A free football higher or lower game with retired legends. Guess whether the hidden stat is higher or lower — and watch out, because the stat keeps changing."
+>
+  <h1>
+    Football <em>higher or lower</em>
+  </h1>
+  <p>
+    Bigger Than is a free football higher or lower game. Two football legends appear side by side
+    with a stat between them. You can see one player's number; guess whether the other's is higher
+    or lower. There's nothing to sign up for or download, and it plays in the browser on a phone or
+    a computer.
+  </p>
+  <a class="cta" href="/">
+    Play now
+  </a>
+
+  <h2>How it works</h2>
+  <p>
+    Each round shows two retired players. A wheel lands on a stat, the first player's figure is
+    revealed, and you pick <strong>Higher</strong> or <strong>Lower</strong> for the second. Get it
+    right and the player you just guessed stays on to face someone new. Get it wrong and the run is
+    over. Your score is how many you got right in a row.
+  </p>
+
+  <h2>The stat keeps changing</h2>
+  <p>
+    Most higher or lower games ask the same question all the way through. Bigger Than switches stat
+    every few rounds. You beat someone on international caps, and the next question is about
+    Instagram followers, where a veteran defender loses to a winger with a boot deal. Knowing which
+    players were great is only half of it; you also need to know what they were great at.
+  </p>
+  <p>The stats are:</p>
+  <ul>
+    {labels.map((label) => (
+      <li>{label}</li>
+    ))}
+  </ul>
+  <p>
+    Each one is defined on the <a href="/about">about page</a>, including exactly what counts as a
+    club trophy.
+  </p>
+
+  <h2>Legends only</h2>
+  <p>
+    Every player is retired. Their caps, goals, trophies and transfer fees are settled, so the
+    answers don't change from one week to the next. The game is for people who follow football
+    rather than casual quizzers, so expect defenders, goalkeepers and midfielders from past decades,
+    not only the famous strikers.
+  </p>
+
+  <h2>No timer</h2>
+  <p>
+    Friendly Mode has no clock. Take as long as you like over each answer. It uses every player and
+    every stat, and nothing is ranked.
+  </p>
+
+  <h2>Tips</h2>
+  <ul>
+    <li>Read the plaque before you pick. When the wheel spins, the question has changed.</li>
+    <li>
+      Club goals and international goals are counted separately. A great club scorer can have a thin
+      international record.
+    </li>
+    <li>
+      Transfer fees are shown with the year and aren't adjusted for inflation, so a record fee from
+      decades ago can still lose to an ordinary modern one.
+    </li>
+    <li>
+      Instagram followers reward global fame, not career achievement. Some of the greatest players
+      have the smallest followings.
+    </li>
+    <li>Goalkeepers are never asked about goals, but they are asked about appearances.</li>
+  </ul>
+
+  <a class="cta" href="/">
+    Start a run
+  </a>
+</Page>

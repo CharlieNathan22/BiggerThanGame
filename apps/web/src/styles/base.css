@@ -1,0 +1,77 @@
+/*
+ * Global base: reset, body, shared utility classes, focus and reduced motion.
+ * Ported from prototype/index.html. Values come from tokens.css.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--night);
+  color: var(--chalk);
+  font-family: var(--font-ui);
+  font-variation-settings: var(--fv-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+a {
+  color: var(--gold);
+  text-underline-offset: 3px;
+}
+
+/* The page frame: title bar, content, footer. Other pages scroll normally and
+   the footer sits at the bottom of short ones. */
+.frame {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The game (`/` only) is a fixed-height screen that never scrolls. */
+body.game {
+  overflow: hidden;
+}
+body.game .frame {
+  height: 100dvh;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-variation-settings: var(--fv-num);
+  letter-spacing: var(--tracking-num);
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+:focus-visible {
+  outline: var(--focus-ring-thin) solid var(--gold);
+  outline-offset: var(--focus-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

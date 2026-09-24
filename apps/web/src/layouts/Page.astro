@@ -1,0 +1,23 @@
+---
+// Static pages: title bar, a column of text, footer. Scrolls normally.
+import "../styles/prose.css";
+import Base from "./Base.astro";
+import TitleBar from "../components/TitleBar.svelte";
+import Footer from "../components/Footer.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  canonical?: boolean;
+}
+
+const { title, description, canonical = true } = Astro.props;
+---
+
+<Base title={title} description={description} canonical={canonical}>
+  <TitleBar home />
+  <main class="prose">
+    <slot />
+  </main>
+  <Footer />
+</Base>

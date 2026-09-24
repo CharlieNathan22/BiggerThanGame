@@ -1,28 +1,150 @@
 ---
 import Base from "../layouts/Base.astro";
-import TitleBar from "../components/TitleBar.astro";
+import TitleBar from "../components/TitleBar.svelte";
+import Footer from "../components/Footer.astro";
+
+// Static shell in the game's layout. The Svelte island (M3) replaces the
+// title bar and the pitch, and brings these styles with it.
 ---
 
-<Base title="Bigger Than Game — Football Legends">
-  <div class="shell">
-    <TitleBar />
-    <main>
-      <p>Phase 0 — scaffolding works.</p>
-    </main>
-  </div>
+<Base
+  title="Bigger Than Game — Football Legends Higher or Lower"
+  description="The football higher or lower game where the stat keeps changing. Two legends, one stat: is the hidden number higher or lower? Free, no sign-up."
+  game
+>
+  <TitleBar scores={{ streak: 0, best: 0 }} />
+  <main class="pitch">
+    <div class="side a"></div>
+    <div class="side b"></div>
+    <div class="plaque" aria-hidden="true"></div>
+
+    <div class="veil">
+      <div class="panel">
+        <h1>
+          Bigger<em>Than</em>
+        </h1>
+        <div class="sublegend">Football Legends</div>
+        <p>
+          Two legends, one stat. Guess whether the hidden number is higher or lower. The stat
+          changes as you go — watch the plaque before you pick.
+        </p>
+        <button class="cta" disabled>
+          Start the run
+        </button>
+        <noscript>
+          <p>Bigger Than needs JavaScript to deal the cards.</p>
+        </noscript>
+      </div>
+    </div>
+  </main>
+  <Footer />
 </Base>
 
 <style>
-  .shell {
-    height: 100dvh;
+  .pitch {
+    flex: 1;
     display: flex;
     flex-direction: column;
+    position: relative;
+    min-height: 0;
   }
-  main {
+  @media (min-width: 780px) {
+    .pitch {
+      flex-direction: row;
+    }
+  }
+  .side {
     flex: 1;
-    display: grid;
-    place-items: center;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .side.a {
+    background: var(--night);
+  }
+  .side.b {
+    background: var(--night-2);
+  }
+
+  .plaque {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 4;
+    width: var(--plaque-w);
+    height: var(--plaque-h);
+    border-radius: var(--radius-pill);
+    background: var(--tier);
+    overflow: hidden;
+    box-shadow: var(--shadow-plaque);
+  }
+  .plaque::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: var(--radius-pill);
+    background: var(--plaque-gloss);
+  }
+
+  .veil {
+    position: absolute;
+    inset: 0;
+    z-index: 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--veil);
+    padding: 26px;
+  }
+  .panel {
+    max-width: var(--panel-w);
+    text-align: center;
+    width: 100%;
+  }
+  .panel h1 {
+    font-size: var(--fs-display);
+    line-height: var(--lh-display);
+    font-variation-settings: var(--fv-display);
+    letter-spacing: var(--tracking-display);
+  }
+  .panel h1 em {
+    font-style: normal;
+    color: var(--gold);
+  }
+  .sublegend {
+    margin-top: 8px;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: var(--fs-sublegend);
+    letter-spacing: var(--tracking-sublegend);
+    background: var(--legends-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: var(--legends-shadow);
+  }
+  .panel p {
+    margin-top: 14px;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
     color: var(--dim);
-    font-size: 14px;
+  }
+  .cta {
+    margin-top: 20px;
+    padding: 14px 34px;
+    border-radius: var(--radius-pill);
+    background: var(--gold);
+    color: var(--ink);
+    font-size: var(--fs-cta);
+    font-variation-settings: var(--fv-cta);
+  }
+  .cta:focus-visible {
+    outline: var(--focus-ring) solid var(--chalk);
+    outline-offset: var(--focus-offset);
+  }
+  .cta:disabled {
+    cursor: default;
   }
 </style>

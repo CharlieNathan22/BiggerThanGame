@@ -1,0 +1,98 @@
+/*
+ * Long-form static pages (about, credits, the landing page, 404).
+ *
+ * The prototype has no text pages, so this is built from its panels: the
+ * start screen's heading and body copy, and the game-over panel's ruled
+ * section with its small label. No new values — everything is a token.
+ */
+
+.prose {
+  flex: 1;
+  width: 100%;
+  max-width: var(--prose-w);
+  margin: 0 auto;
+  padding: 40px 20px 56px;
+}
+
+.prose h1 {
+  font-size: var(--fs-display);
+  line-height: var(--lh-display);
+  font-variation-settings: var(--fv-display);
+  letter-spacing: var(--tracking-display);
+}
+.prose h1 em {
+  font-style: normal;
+  color: var(--gold);
+}
+
+/* The start panel's "Football Legends" line. */
+.prose .sublegend {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--fs-sublegend);
+  letter-spacing: var(--tracking-sublegend);
+  background: var(--legends-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: var(--legends-shadow);
+}
+
+/* The game-over panel's ruled section. */
+.prose h2 {
+  margin-top: 36px;
+  padding-top: 16px;
+  border-top: var(--border) solid var(--rule);
+  font-size: var(--fs-heading);
+  line-height: var(--lh-name);
+  font-variation-settings: var(--fv-heading);
+}
+
+/* The game-over panel's small label. */
+.prose .lab {
+  display: block;
+  margin-top: 22px;
+  font-size: var(--fs-lab);
+  color: var(--dim);
+  font-variation-settings: var(--fv-caps);
+}
+
+.prose p,
+.prose li {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--dim);
+}
+.prose p {
+  margin-top: 14px;
+}
+.prose ul,
+.prose ol {
+  margin-top: 14px;
+  padding-left: 1.2em;
+}
+.prose li + li {
+  margin-top: 6px;
+}
+.prose strong,
+.prose b {
+  color: var(--chalk);
+  font-variation-settings: var(--fv-strong);
+}
+
+/* The start panel's call to action, as a link. */
+.prose .cta {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 14px 34px;
+  border-radius: var(--radius-pill);
+  background: var(--gold);
+  color: var(--ink);
+  font-size: var(--fs-cta);
+  font-variation-settings: var(--fv-cta);
+  text-decoration: none;
+}
+.prose .cta:focus-visible {
+  outline: var(--focus-ring) solid var(--chalk);
+}

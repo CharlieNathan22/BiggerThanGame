@@ -1,13 +1,24 @@
 ---
+import "../styles/fonts.css";
 import "../styles/tokens.css";
+import "../styles/base.css";
+import archivoLatin from "@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url";
+import cinzelLatin from "@fontsource/cinzel/files/cinzel-latin-900-normal.woff2?url";
+
 interface Props {
   title: string;
-  description?: string;
+  description: string;
+  /** The game page: a fixed-height screen with no scrolling. `/` only. */
+  game?: boolean;
+  /** Off for pages that shouldn't be indexed under their own URL, like the 404. */
+  canonical?: boolean;
 }
-const {
-  title,
-  description = "The football higher or lower game. Two legends, one stat — guess higher or lower.",
-} = Astro.props;
+
+const { title, description, game = false, canonical = true } = Astro.props;
+
+// Pages build to `about.html` and are served at `/about` (astro.config.mjs).
+const path = Astro.url.pathname.replace(/(\/index)?\.html$/, "") || "/";
+const canonicalUrl = new URL(path, Astro.site);
 ---
 
 <!doctype html>
@@ -17,15 +28,16 @@ const {
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=Cinzel:wght@700;900&display=swap"
-      rel="stylesheet"
-    />
+    {canonical && <link rel="canonical" href={canonicalUrl} />}
+    <!-- The title bar's --ink. A meta tag can't read a custom property. -->
+    <meta name="theme-color" content="#06121a" />
+    <!-- The title bar is on every page, so its two Latin faces are always needed. -->
+    <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={cinzelLatin} as="font" type="font/woff2" crossorigin />
   </head>
-  <body>
-    <slot />
+  <body class:list={{ game }}>
+    <div class="frame">
+      <slot />
+    </div>
   </body>
 </html>

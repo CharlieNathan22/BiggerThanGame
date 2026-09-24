@@ -665,6 +665,18 @@ knife-edge bands is a second signal.
 - **Port the prototype's CSS as-is.** It is plain CSS with custom properties. Rewriting it into a
   utility framework would cost days and guarantee visual drift, and `DESIGN.md` §12 requires the
   look to match.
+- **Every design value is a token** in `apps/web/src/styles/tokens.css` — colours, fonts, type
+  sizes, dimensions, radii, shadows, easings, durations — so a restyle edits one file. Global
+  styles live in `styles/` (`base.css`, `fonts.css`, `prose.css`); component styles are scoped.
+- **Fonts are self-hosted** from `@fontsource-variable/archivo` (width axis, `"Archivo Variable"`)
+  and `@fontsource/cinzel` (900 only), Latin and Latin Extended subsets, with the two Latin faces
+  preloaded. No third-party font requests.
+- `TitleBar.svelte` renders server-side with no JS on static pages; the game island reuses it.
+  Only `/` gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag).
+- Pages build to `about.html` and are served at `/about` — no trailing slash, which is also the
+  canonical URL.
+- `/credits` reads `packages/deck/dist/credits.json` with `fs` at build time. It is never imported,
+  so it can't enter the module graph.
 - Local leaderboard lives in `localStorage`, wrapped in try/catch, and works with no network.
 - The reveal count-up (~640ms) is what masks the round trip — see section 9 for the full budget,
   the hold-don't-snap rule, and the image prefetch requirement.

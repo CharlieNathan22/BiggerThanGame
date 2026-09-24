@@ -43,13 +43,14 @@ If a change seems to require breaking one of these, stop and ask.
 ## Commands
 
 ```bash
-pnpm dev          # the site (Astro dev server)
+pnpm dev          # builds the deck, then wrangler dev on :8787 and astro dev together; /api proxied
 pnpm dev:api      # builds the deck, then the Worker on :8787 (wrangler dev, secret from .dev.vars)
 pnpm test         # unit tests (vitest) — core, deck and Worker
 pnpm simulate     # 10k-run difficulty simulation → simulation.md
 pnpm build        # validates deck, emits artifacts, builds site (sample deck allowed)
 pnpm build:prod   # same, but refuses the sample deck — production and deploy only
-pnpm typecheck    # needs the deck artifacts: run a deck build first on a clean checkout
+pnpm typecheck    # tsc, then astro check + svelte-check for apps/web; needs the deck artifacts:
+                  # run a deck build first on a clean checkout
 pnpm lint
 ```
 
@@ -173,6 +174,7 @@ deck.** They exist to test the feel of the game, nothing else.
 
 ## Commits
 
+DONT COMMIT UNLESS EXPLICITLY ASKED, KEEP CHANGES LOCAL, UNSTAGED.
 Small and focused. Conventional prefixes (`feat:`, `fix:`, `chore:`, `docs:`). If a change alters
 game behaviour, say which DESIGN.md section it implements or changes.
 

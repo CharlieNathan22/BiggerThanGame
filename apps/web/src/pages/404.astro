@@ -1,45 +1,26 @@
 ---
-import Base from "../layouts/Base.astro";
-import TitleBar from "../components/TitleBar.astro";
+import Page from "../layouts/Page.astro";
 ---
 
-<Base title="Not found — Bigger Than Game">
-  <div class="shell">
-    <TitleBar />
-    <main>
-      <h1>404</h1>
-      <p>That page doesn't exist.</p>
-      <a href="/">Back to the game</a>
-    </main>
+<Page title="Not found — Bigger Than Game" description="That page doesn't exist." canonical={false}>
+  <div class="missing">
+    <div class="final num">404</div>
+    <p>That page doesn't exist.</p>
+    <a class="cta" href="/">
+      Back to the game
+    </a>
   </div>
-</Base>
+</Page>
 
 <style>
-  .shell {
-    height: 100dvh;
-    display: flex;
-    flex-direction: column;
-  }
-  main {
-    flex: 1;
-    display: grid;
-    place-content: center;
+  /* The game-over panel's big number. */
+  .missing {
+    padding-top: 10vh;
     text-align: center;
-    gap: 10px;
   }
-  h1 {
-    font-size: 64px;
+  .final {
+    font-size: var(--fs-final);
+    line-height: var(--lh-final);
     color: var(--gold);
-    font-variation-settings:
-      "wdth" 118,
-      "wght" 900;
-  }
-  p {
-    color: var(--dim);
-    font-size: 15px;
-  }
-  a {
-    color: var(--gold);
-    font-size: 14px;
   }
 </style>

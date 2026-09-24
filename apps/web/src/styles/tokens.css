@@ -1,57 +1,163 @@
+/*
+ * Design tokens — every colour, font, type size, dimension, radius, shadow,
+ * easing and duration the site uses. Ported from prototype/index.html.
+ *
+ * Restyling the game should mean editing this file, not hunting through
+ * components. Component styles reference these; they don't invent values.
+ * Media-query breakpoints (560px, 780px) can't be custom properties, so they
+ * stay literal; responsive values are redefined inside those queries below.
+ */
+
 :root {
+  /* ---------- palette ---------- */
   --night: #0a1a22;
   --night-2: #0f2935;
   --ink: #06121a;
   --chalk: #eef3f1;
   --dim: rgba(238, 243, 241, 0.58);
+  --faint: rgba(238, 243, 241, 0.3);
+  --unknown: rgba(238, 243, 241, 0.16);
+  --rule: rgba(238, 243, 241, 0.13);
   --gold: #ffb020;
+  --gold-rule: rgba(255, 176, 32, 0.28);
+  --monogram: rgba(255, 176, 32, 0.052);
+  --flare: #e2453c;
+  --hit: #13512c;
+  --miss: #5b1d19;
+  --veil: rgba(6, 18, 26, 0.97);
 
+  /* Tiers (DESIGN.md §6). `--tier` is the live stat's tier, set by the game. */
   --t-basic: #ffc24d;
   --t-unc: #5ab9f0;
   --t-rare: #c77dff;
   --tier: var(--t-basic);
 
-  --flare: #e2453c;
-  --rule: rgba(238, 243, 241, 0.13);
+  /* The gold-leaf treatment on "Legends". */
+  --legends-gradient: linear-gradient(177deg, #fff3c4 0%, #ffd164 32%, #e8991a 62%, #a96a0c 100%);
+  --legends-shadow: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.85));
 
-  --font-ui: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  /* ---------- type ---------- */
+  --font-ui: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
   --font-display: "Cinzel", Georgia, serif;
+
+  /* Archivo is one variable family; width and weight carry the whole hierarchy. */
+  --fv-body: "wdth" 100, "wght" 400;
+  --fv-num: "wdth" 118, "wght" 800;
+  --fv-brand: "wdth" 112, "wght" 800;
+  --fv-sub: "wdth" 92, "wght" 600;
+  --fv-label: "wdth" 88, "wght" 600;
+  --fv-meta: "wdth" 90, "wght" 500;
+  --fv-caption: "wdth" 90, "wght" 600;
+  --fv-caps: "wdth" 90, "wght" 700;
+  --fv-name: "wdth" 105, "wght" 800;
+  --fv-plaque: "wdth" 90, "wght" 800;
+  --fv-button: "wdth" 100, "wght" 700;
+  --fv-cta: "wdth" 100, "wght" 800;
+  --fv-strong: "wdth" 100, "wght" 750;
+  --fv-suffix: "wdth" 100, "wght" 700;
+  --fv-display: "wdth" 120, "wght" 900;
+  --fv-heading: "wdth" 110, "wght" 800;
+
+  --tracking-num: -0.02em;
+  --tracking-brand: -0.01em;
+  --tracking-display: -0.035em;
+  --tracking-legends: 0.055em;
+  --tracking-sublegend: 0.14em;
+
+  /* Title bar. The larger sizes apply from 560px (below). */
+  --fs-brand: 14px;
+  --fs-dash: 13px;
+  --fs-sub: 13.5px;
+  --fs-legends: 19px;
+  --fs-score-label: 10.5px;
+  --fs-score: 18px;
+
+  /* Cards. */
+  --fs-name: clamp(22px, 4.1vh, 36px);
+  --fs-meta: 12px;
+  --fs-fig: clamp(36px, 6.7vh, 60px);
+  --fs-qual: 11.5px;
+  --fs-monogram: clamp(130px, 26vh, 270px);
+  --fs-pick: 15px;
+  --fs-plaque: 14px;
+
+  /* Panels: start, game over, and the static pages built from them. */
+  --fs-display: clamp(34px, 7.6vw, 56px);
+  --fs-sublegend: clamp(17px, 4vw, 23px);
+  --fs-body: 14.5px;
+  --fs-cta: 16px;
+  --fs-ghost: 13px;
+  --fs-final: clamp(60px, 16vw, 104px);
+  --fs-caption: 13px;
+  --fs-reason: 14px;
+  --fs-lab: 11.5px;
+  --fs-heading: 20px;
+  --fs-foot: 10.5px;
+
+  --lh-tight: 1;
+  --lh-display: 0.94;
+  --lh-final: 0.9;
+  --lh-name: 1.06;
+  --lh-body: 1.55;
+  --lh-reason: 1.6;
+
+  /* ---------- dimensions ---------- */
+  --plaque-w: min(80vw, 290px);
+  --plaque-h: 50px;
+  --plaque-halo: 7px;
+  --pick-min-w: 110px;
+  --panel-w: 34ch;
+  --prose-w: 62ch;
+  --border: 1px;
+  --border-pick: 1.5px;
+  --focus-ring: 3px;
+  --focus-ring-thin: 2px;
+  --focus-offset: 3px;
+
+  /* ---------- shape ---------- */
+  --radius-pill: 100px;
+  --shadow-plaque: 0 0 0 var(--plaque-halo) var(--night), 0 6px 24px rgba(0, 0, 0, 0.35);
+  --plaque-gloss: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.34),
+    transparent 42%,
+    rgba(0, 0, 0, 0.14)
+  );
+
+  /* ---------- motion ----------
+   * The game's timing constants in TypeScript read these (M3), with a test
+   * that parses this file, so CSS and script can't drift apart.
+   */
+  --ease: ease;
+  --ease-spin: cubic-bezier(0.13, 0.78, 0.16, 1);
+  --press-scale: 0.96;
+  --pop-scale: 1.13;
+
+  --dur-press: 100ms;
+  --dur-hover: 140ms;
+  --dur-side: 300ms;
+  --dur-tint: 400ms;
+  --dur-pop: 420ms;
+  /* Players shown, then a beat before the wheel (DESIGN.md §4). */
+  --dur-beat: 480ms;
+  /* No spin when the stat holds: the pause before the anchor's value shows. */
+  --dur-hold: 340ms;
+  /* The wheel (DESIGN.md §7). */
+  --dur-spin: 1300ms;
+  /* The reveal count-up that masks the round trip (ARCHITECTURE.md §9). */
+  --dur-count: 640ms;
+  /* From tap to the correct/incorrect colour. */
+  --dur-verdict: 680ms;
+  /* From the verdict colour to the next deal. */
+  --dur-next: 760ms;
+  /* From a wrong answer's colour to the game-over panel. */
+  --dur-over: 820ms;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html,
-body {
-  height: 100%;
-}
-
-body {
-  background: var(--night);
-  color: var(--chalk);
-  font-family: var(--font-ui);
-  font-variation-settings:
-    "wdth" 100,
-    "wght" 400;
-  -webkit-font-smoothing: antialiased;
-}
-
-.num {
-  font-variant-numeric: tabular-nums;
-  font-variation-settings:
-    "wdth" 118,
-    "wght" 800;
-  letter-spacing: -0.02em;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation: none !important;
-    transition: none !important;
+@media (min-width: 560px) {
+  :root {
+    --fs-brand: 16px;
+    --fs-sub: 14.5px;
+    --fs-legends: 22px;
   }
 }

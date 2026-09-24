@@ -9,15 +9,23 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "typecheck": "astro check && svelte-check --fail-on-warnings"
   },
   "dependencies": {
     "@astrojs/svelte": "^9.0.1",
+    "@bt/core": "workspace:*",
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource/cinzel": "^5.3.0",
     "astro": "^7.3.3",
     "svelte": "^5.57.0",
     "typescript": "^6.0.3"
   },
   "allowScripts": {
     "esbuild": true
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "svelte-check": "^4.7.6"
   }
 }
