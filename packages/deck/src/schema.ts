@@ -68,6 +68,29 @@ export const imageSchema = z
   })
   .strict();
 
+/** The decade of a player's peak, `1900s` to `2020s`. */
+const era = z
+  .string()
+  .regex(/^\d{3}0s$/, 'must be a decade like "1990s"')
+  .refine((s) => {
+    const year = Number(s.slice(0, 4));
+    return year >= 1900 && year <= 2020;
+  }, "must be a decade from 1900s to 2020s");
+
+/**
+ * A list of names: at least one, none blank, no repeats. Repeats are compared
+ * ignoring case and surrounding space, since `Serie A` twice is a typo however
+ * it is spelled. An empty list is rejected — omit the key instead.
+ */
+const nameList = (what: string) =>
+  z
+    .array(z.string().trim().min(1, `${what} cannot be blank`))
+    .min(1, `list at least one ${what}, or omit the key`)
+    .refine(
+      (names) => new Set(names.map((n) => n.toLowerCase())).size === names.length,
+      `${what}s must not repeat`,
+    );
+
 export const playerSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/, "ids are lowercase, digits and hyphens only"),
@@ -77,6 +100,11 @@ export const playerSchema = z
     dob: isoDate,
     deceased: z.boolean().optional(),
     iconic: z.boolean().optional(),
+    // For future themed modes. Carried into deck.full.json; no mode reads them
+    // yet and no round payload includes them.
+    era: era.optional(),
+    main_clubs: nameList("club").optional(),
+    leagues: nameList("league").optional(),
     stats: statsSchema,
     image: imageSchema.optional(),
   })
@@ -115,6 +143,9 @@ export function toPlayer(raw: RawPlayer): Player {
     dob: raw.dob,
     ...(raw.deceased !== undefined ? { deceased: raw.deceased } : {}),
     ...(raw.iconic !== undefined ? { iconic: raw.iconic } : {}),
+    ...(raw.era !== undefined ? { era: raw.era } : {}),
+    ...(raw.main_clubs !== undefined ? { mainClubs: raw.main_clubs } : {}),
+    ...(raw.leagues !== undefined ? { leagues: raw.leagues } : {}),
     stats,
   };
 }

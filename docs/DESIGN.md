@@ -472,8 +472,14 @@ drives stat eligibility and must never be inferred at runtime.
 
 Players recognisable enough to open a run on are flagged **`iconic`**. Round one's anchor is drawn
 from this pool, and the first few challengers of a run prefer it, for a number of rounds set per
-mode (§10). The flag previously defined the client-side
-Friendly pool; that pool no longer exists, so the name now says what it actually means.
+mode (§10). The flag previously defined the client-side Friendly pool; that pool no longer exists,
+so the name now says what it actually means.
+
+Three optional fields describe a player for **future themed modes** and are **not yet used by any
+mode**: **`era`**, the decade of the player's peak (`1990s`); **`main_clubs`**, the main senior
+clubs; and **`leagues`**, the leagues played in. They are not stats and are never asked about.
+`main_clubs` is distinct from the clubs-played-for stat, which counts every senior club. Nothing
+reads them yet, and they stay server-side until a mode needs them.
 
 Store **date of birth**, not age — age is computed, and the player is excluded from the age stat if
 deceased.

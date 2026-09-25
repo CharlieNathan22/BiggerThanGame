@@ -6,6 +6,9 @@ country: Norlandia
 position: FW
 dob: 1979-04-13
 iconic: true
+era: 1990s
+main_clubs: [Port Selwyn, Kestwick United]
+leagues: [Norlandian Premier]
 stats:
   club_goals: 480
   caps: 105

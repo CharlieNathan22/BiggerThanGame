@@ -159,6 +159,9 @@ position: MF # GK | DF | MF | FW  — drives the goals-stat exclusion
 dob: 1972-06-23
 deceased: false
 iconic: true # opens runs; early challengers prefer it (DESIGN.md §10)
+era: 1990s # optional; decade of peak, 1900s–2020s. Not yet used by any mode
+main_clubs: [Bordeaux, Juventus, Real Madrid] # optional; main senior clubs. Not the clubs stat
+leagues: [Ligue 1, Serie A, La Liga] # optional; leagues played in. Not yet used by any mode
 stats:
   club_goals: 125
   caps: 108
@@ -188,6 +191,14 @@ runtime. It drives one eligibility rule today: **goalkeepers are excluded from `
 the engine.
 
 `age` is derived from `dob` at runtime and is unavailable when `deceased: true`.
+
+**`era`, `main_clubs` and `leagues` are optional and not yet used by any mode.** They are there
+for future themed modes (DESIGN.md §11). `era` must be a decade from `1900s` to `2020s`;
+`main_clubs` and `leagues` are non-empty lists of non-blank names with no repeats, compared
+ignoring case. The build carries them into `deck.full.json`, and no round payload includes them —
+the response-shape test forbids the keys. `main_clubs` (`mainClubs` on the engine's `Player`) is
+the player's main clubs, which is not the same thing as `stats.clubs`, the count of every senior
+club.
 
 **Images keep full provenance** even though stats do not. A licence is a legal obligation, not a
 convenience, so `author`, `licence` and `source` are all required whenever an `image` block is

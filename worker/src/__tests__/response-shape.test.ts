@@ -88,7 +88,9 @@ function checkResponse(
 ): void {
   // No Player, whole or partial, anywhere in the response.
   const keys = allKeys(response);
-  for (const forbidden of ["stats", "dob", "deceased", "iconic", "band", "relaxation"]) {
+  const playerKeys = ["stats", "dob", "deceased", "iconic", "era", "leagues"];
+  const themedKeys = ["mainClubs", "main_clubs"];
+  for (const forbidden of [...playerKeys, ...themedKeys, "band", "relaxation"]) {
     expect(keys).not.toContain(forbidden);
   }
 

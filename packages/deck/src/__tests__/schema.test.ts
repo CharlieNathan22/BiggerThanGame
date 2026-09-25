@@ -68,6 +68,74 @@ describe("playerSchema", () => {
     ).toBe(false);
   });
 
+  describe("themed-mode fields", () => {
+    const ok = (over: Record<string, unknown>) =>
+      playerSchema.safeParse({ ...valid, ...over }).success;
+
+    it("are optional", () => {
+      const parsed = playerSchema.parse(valid);
+      expect(parsed.era).toBeUndefined();
+      expect(parsed.main_clubs).toBeUndefined();
+      expect(parsed.leagues).toBeUndefined();
+    });
+
+    it("accept a decade from 1900s to 2020s", () => {
+      for (const era of ["1900s", "1950s", "1990s", "2020s"]) expect(ok({ era })).toBe(true);
+    });
+
+    it("reject a malformed or out-of-range era", () => {
+      for (const era of ["1990", "90s", "1995s", "1990S", "1890s", "2030s", " 1990s", ""]) {
+        expect(ok({ era }), era).toBe(false);
+      }
+      expect(ok({ era: 1990 })).toBe(false);
+    });
+
+    it("accept lists of clubs and leagues", () => {
+      expect(ok({ main_clubs: ["Club A", "Club B"], leagues: ["League A"] })).toBe(true);
+    });
+
+    it("reject blank names", () => {
+      expect(ok({ main_clubs: ["Club A", ""] })).toBe(false);
+      expect(ok({ leagues: ["   "] })).toBe(false);
+    });
+
+    it("reject repeated names, ignoring case and surrounding space", () => {
+      expect(ok({ main_clubs: ["Club A", "Club A"] })).toBe(false);
+      expect(ok({ leagues: ["League A", " league a "] })).toBe(false);
+    });
+
+    it("reject an empty list", () => {
+      expect(ok({ main_clubs: [] })).toBe(false);
+      expect(ok({ leagues: [] })).toBe(false);
+    });
+
+    it("reject a bare string where a list is expected", () => {
+      expect(ok({ main_clubs: "Club A" })).toBe(false);
+    });
+
+    it("are carried through to the engine shape", () => {
+      const p = toPlayer(
+        playerSchema.parse({
+          ...valid,
+          era: "1990s",
+          main_clubs: ["Club A"],
+          leagues: ["League A"],
+        }),
+      );
+      expect(p.era).toBe("1990s");
+      expect(p.mainClubs).toEqual(["Club A"]);
+      expect(p.leagues).toEqual(["League A"]);
+      expect(p.stats.clubs).toBeUndefined(); // the list is not the clubs stat
+    });
+
+    it("stay absent from the engine shape when omitted", () => {
+      const p = toPlayer(playerSchema.parse(valid));
+      expect(p).not.toHaveProperty("era");
+      expect(p).not.toHaveProperty("mainClubs");
+      expect(p).not.toHaveProperty("leagues");
+    });
+  });
+
   it("rejects a licence off the allow-list", () => {
     const r = playerSchema.safeParse({
       ...valid,

@@ -6,6 +6,9 @@ country: Norlandia
 position: MF
 dob: 1982-03-12
 iconic: true
+era: 2000s
+main_clubs: [Harrowgate Athletic, Port Selwyn, Real Castamar]
+leagues: [Norlandian Premier, Liga Castamar]
 stats:
   club_goals: 210
   caps: 98

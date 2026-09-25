@@ -53,6 +53,25 @@ describe("buildFullDeck", () => {
     expect(full.players).toHaveLength(3);
     expect(full.eligibility.one).toContain("club_goals");
   });
+
+  it("carries the themed-mode fields through to the JSON", () => {
+    const themed = toPlayer(
+      playerSchema.parse({
+        ...raws[0],
+        era: "1990s",
+        main_clubs: ["Club A"],
+        leagues: ["League A"],
+      }),
+    );
+    const json = JSON.parse(JSON.stringify(buildFullDeck([themed], NOW))) as {
+      players: Array<Record<string, unknown>>;
+    };
+    expect(json.players[0]).toMatchObject({
+      era: "1990s",
+      mainClubs: ["Club A"],
+      leagues: ["League A"],
+    });
+  });
 });
 
 describe("buildIndexes", () => {

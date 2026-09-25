@@ -62,6 +62,16 @@ export interface Player {
    * depends on the mode (`ICONIC_ROUNDS`, DESIGN.md §10).
    */
   readonly iconic?: boolean;
+  /**
+   * For future themed modes; no mode reads these yet, and they never reach a
+   * round payload. `era` is the decade of the player's peak (`"1990s"`).
+   * `mainClubs` is the main senior clubs (`main_clubs` in YAML) — not the
+   * `clubs` stat, which is a count
+   * of every senior club. `leagues` is the leagues played in.
+   */
+  readonly era?: string;
+  readonly mainClubs?: readonly string[];
+  readonly leagues?: readonly string[];
   readonly stats: PlayerStats;
 }
 
