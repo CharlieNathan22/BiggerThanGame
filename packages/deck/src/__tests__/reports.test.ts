@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { rankCorrelation, statViability, viabilityReport } from "../viability.js";
-import { pCorrect, simulate, simulationReport } from "../simulate.js";
+import { iconicViability, rankCorrelation, statViability, viabilityReport } from "../viability.js";
+import { SIM_MODES, pCorrect, simulate, simulationReport } from "../simulate.js";
 import { playerSchema, toPlayer } from "../schema.js";
+import { ICONIC_ROUNDS } from "@bt/core";
 import type { Player } from "@bt/core";
 
 const NOW = new Date("2026-09-18T00:00:00Z");
@@ -76,7 +77,27 @@ describe("rankCorrelation", () => {
   });
 });
 
+const onlyIconic = (ids: readonly string[]): Player[] =>
+  players.map((p) => ({ ...p, iconic: ids.includes(p.id) }));
+
+describe("iconicViability", () => {
+  it("counts anchors that have an iconic challenger in the opening band", () => {
+    // Only "a" (400) is iconic. The opening band wants a gap of 200% or more,
+    // so "b" (200) is too close, "a" cannot face itself, and c–f all qualify.
+    const v = iconicViability(onlyIconic(["a"]), "club_goals", NOW);
+    expect(v.iconicEligible).toBe(1);
+    expect(v.anchors).toBe(6);
+    expect(v.anchorsWithIconic).toBe(4);
+  });
+});
+
 describe("viabilityReport", () => {
+  it("reports the iconic preference", () => {
+    const md = viabilityReport(onlyIconic(["a"]), NOW);
+    expect(md).toContain("## Iconic preference");
+    expect(md).toContain("1 of 6 players are iconic");
+  });
+
   it("names every stat and flags correlated pairs", () => {
     const md = viabilityReport(players, NOW);
     expect(md).toContain("Club goals");
@@ -102,29 +123,60 @@ describe("pCorrect", () => {
 
 describe("simulate", () => {
   it("is deterministic for the same inputs", () => {
-    const a = simulate({ deck: players, now: NOW, runs: 200 });
-    const b = simulate({ deck: players, now: NOW, runs: 200 });
+    const a = simulate({ deck: players, now: NOW, mode: "ranked", runs: 200 });
+    const b = simulate({ deck: players, now: NOW, mode: "ranked", runs: 200 });
     expect(a.streaks).toEqual(b.streaks);
     expect(a.statCounts).toEqual(b.statCounts);
   });
 
   it("does not let the skill model perturb the sequence", () => {
     // Same deck and seeds must deal the same rounds regardless of run count.
-    const few = simulate({ deck: players, now: NOW, runs: 50 });
-    const many = simulate({ deck: players, now: NOW, runs: 200 });
+    const few = simulate({ deck: players, now: NOW, mode: "ranked", runs: 50 });
+    const many = simulate({ deck: players, now: NOW, mode: "ranked", runs: 200 });
     expect(many.streaks.slice(0, 0)).toEqual(few.streaks.slice(0, 0));
     expect(many.maxConstructible).toBeGreaterThanOrEqual(few.maxConstructible);
   });
 
   it("records a relaxation breakdown that sums to the rounds dealt", () => {
-    const r = simulate({ deck: players, now: NOW, runs: 100 });
-    const total = r.relaxationCounts.none + r.relaxationCounts.band + r.relaxationCounts.seen;
+    const r = simulate({ deck: players, now: NOW, mode: "ranked", runs: 100 });
+    const total = Object.values(r.relaxationCounts).reduce((a, b) => a + b, 0);
     expect(total).toBe(r.roundsDealt);
   });
 
+  it("counts only rounds inside the mode's iconic window", () => {
+    for (const mode of SIM_MODES) {
+      const r = simulate({ deck: players, now: NOW, mode, runs: 100, maxRounds: 30 });
+      const inWindow = Object.values(r.iconicWindow).reduce((a, b) => a + b, 0);
+      expect(inWindow).toBeGreaterThan(0);
+      expect(inWindow).toBeLessThanOrEqual(r.runs * ICONIC_ROUNDS[mode]);
+    }
+  });
+
+  it("never falls back on the preference when every player is iconic", () => {
+    const r = simulate({ deck: players, now: NOW, mode: "friendly", runs: 100 });
+    expect(r.iconicWindow.iconic).toBe(0);
+    expect(r.relaxationCounts.iconic).toBe(0);
+  });
+
+  it("always falls back on the preference when no player is iconic", () => {
+    const r = simulate({ deck: onlyIconic([]), now: NOW, mode: "friendly", runs: 100 });
+    expect(r.iconicWindow.none).toBe(0);
+    expect(r.iconicWindow.iconic).toBeGreaterThan(0);
+  });
+
+  it("reports every mode side by side", () => {
+    const results = SIM_MODES.map((mode) => simulate({ deck: players, now: NOW, mode, runs: 50 }));
+    const md = simulationReport(results, players.length, NOW);
+    expect(md).toContain("## Iconic preference");
+    for (const mode of SIM_MODES) {
+      expect(md).toContain(mode);
+      expect(md).toContain(`rounds 1–${ICONIC_ROUNDS[mode]}`);
+    }
+  });
+
   it("produces a report naming the model as an assumption", () => {
-    const r = simulate({ deck: players, now: NOW, runs: 100 });
-    const md = simulationReport(r, players.length, NOW);
+    const r = simulate({ deck: players, now: NOW, mode: "ranked", runs: 100 });
+    const md = simulationReport([r], players.length, NOW);
     expect(md).toContain("modelled");
     expect(md).toContain("Streak distribution");
   });

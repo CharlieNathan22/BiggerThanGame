@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SEEN_DEPTH, candidates, remember, selectChallenger, valueOf } from "../engine.js";
 import { createRng } from "../prng.js";
-import { gap } from "../ramp.js";
+import { bandFor, gap } from "../ramp.js";
 import { NOW, fixtureDeck } from "../__fixtures__/deck.js";
 import type { Player } from "../types.js";
 
@@ -162,6 +162,76 @@ describe("selectChallenger", () => {
       createRng("lonely"),
     );
     expect(match).toBeUndefined();
+  });
+});
+
+describe("selectChallenger with the iconic preference", () => {
+  const forward = (id: string, caps: number, iconic = false): Player => ({
+    id,
+    name: id,
+    country: "T",
+    position: "FW",
+    dob: "1990-01-01",
+    ...(iconic ? { iconic: true } : {}),
+    stats: { caps },
+  });
+  const seeds = Array.from({ length: 30 }, (_, i) => `pref-${i}`);
+  const pick = (deck: Player[], preferIconic: boolean, seed: string, seen: string[] = []) =>
+    selectChallenger(deck[0]!, "caps", 1, { deck, now: NOW, seen }, createRng(seed), preferIconic);
+
+  it("chooses an iconic challenger whenever one is valid", () => {
+    // Round one wants a gap of at least 200%: from 10 caps, both 40 and 50 qualify.
+    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 50, true)];
+    for (const seed of seeds) {
+      const match = pick(deck, true, seed);
+      expect(match?.challenger.id).toBe("icon");
+      expect(match?.relaxation).toBe("none");
+    }
+  });
+
+  it("chooses from the whole deck when the preference is off", () => {
+    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 50, true)];
+    const chosen = new Set(seeds.map((seed) => pick(deck, false, seed)?.challenger.id));
+    expect(chosen).toEqual(new Set(["plain", "icon"]));
+    for (const seed of seeds) expect(pick(deck, false, seed)?.relaxation).toBe("none");
+  });
+
+  it("falls back to the whole deck rather than widening the band", () => {
+    // The only iconic opponent is 100% away, reachable only by relaxing the floor.
+    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 20, true)];
+    for (const seed of seeds) {
+      const match = pick(deck, true, seed);
+      expect(match?.challenger.id).toBe("plain");
+      expect(match?.relaxation).toBe("iconic");
+      expect(match?.band).toEqual(bandFor("caps", 1));
+    }
+  });
+
+  it("falls back rather than dealing a recently seen iconic player", () => {
+    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 50, true)];
+    for (const seed of seeds) {
+      const match = pick(deck, true, seed, ["icon"]);
+      expect(match?.challenger.id).toBe("plain");
+      expect(match?.relaxation).toBe("iconic");
+    }
+  });
+
+  it("falls back rather than dealing a tied iconic player", () => {
+    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 10, true)];
+    for (const seed of seeds) {
+      expect(pick(deck, true, seed)?.challenger.id).toBe("plain");
+    }
+  });
+
+  it("reports the band, not the preference, when the band also had to widen", () => {
+    const deck = [forward("anchor", 10), forward("plain", 15), forward("icon", 20, true)];
+    const match = pick(deck, true, "both");
+    expect(match?.relaxation).toBe("band");
+  });
+
+  it("never reports the preference when it was not asked for", () => {
+    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 20, true)];
+    for (const seed of seeds) expect(pick(deck, false, seed)?.relaxation).toBe("none");
   });
 });
 

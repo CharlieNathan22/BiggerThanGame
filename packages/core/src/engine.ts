@@ -25,16 +25,20 @@ export interface MatchContext {
 }
 
 /**
- * What had to give to deal this pair.
+ * What had to give to deal this pair. Always the furthest step taken.
  *
- * - `none`  — the round's band was met outright.
- * - `band`  — the band was widened (ceiling first, then floor).
- * - `seen`  — the band was fine but the recently-seen queue had to be ignored,
- *             so a player reappears sooner than SEEN_DEPTH would allow.
+ * - `none`   — the round's band was met outright (by an iconic challenger, when
+ *              the iconic preference applied).
+ * - `iconic` — the iconic preference applied but no iconic player could be
+ *              dealt, so the band was met from the whole deck instead.
+ * - `band`   — the band was widened (ceiling first, then floor).
+ * - `seen`   — the band was fine but the recently-seen queue had to be ignored,
+ *              so a player reappears sooner than SEEN_DEPTH would allow.
  *
  * Kept distinct because simulation.md needs to tell them apart: a deck that
- * relaxes on `band` is too sparse in the tails, whereas one that relaxes on
- * `seen` is simply too small.
+ * relaxes on `iconic` is short of recognisable names, one that relaxes on
+ * `band` is too sparse in the tails, and one that relaxes on `seen` is simply
+ * too small.
  */
 export interface Match {
   readonly challenger: Player;
@@ -81,9 +85,12 @@ export function candidates(
 /**
  * Pick a challenger, widening the band rather than ever failing to deal.
  *
- * Order: the requested band, then each relaxation in turn, then the same
- * ladder again with the recently-seen queue ignored. Returns undefined only
- * when the deck genuinely cannot produce a non-tied opponent.
+ * Order: when `preferIconic` is set, iconic players only at the requested band;
+ * then the whole deck at the requested band; then each relaxation in turn; then
+ * the same ladder again with the recently-seen queue ignored. The iconic
+ * preference is the first thing to give — it is never held at the cost of a
+ * wider band or a repeated player. Returns undefined only when the deck
+ * genuinely cannot produce a non-tied opponent.
  */
 export function selectChallenger(
   anchor: Player,
@@ -91,15 +98,23 @@ export function selectChallenger(
   round: number,
   ctx: MatchContext,
   rng: Rng,
+  preferIconic = false,
 ): Match | undefined {
   const target = bandFor(stat, round);
   const ladder = relaxations(target);
+
+  if (preferIconic) {
+    const pool = candidates(anchor, stat, target, ctx).filter((p) => p.iconic === true);
+    const chosen = rng.pick(pool);
+    if (chosen !== undefined) return { challenger: chosen, band: target, relaxation: "none" };
+  }
 
   for (const [index, band] of ladder.entries()) {
     const pool = candidates(anchor, stat, band, ctx);
     const chosen = rng.pick(pool);
     if (chosen !== undefined) {
-      return { challenger: chosen, band, relaxation: index > 0 ? "band" : "none" };
+      const relaxation = index > 0 ? "band" : preferIconic ? "iconic" : "none";
+      return { challenger: chosen, band, relaxation };
     }
   }
 

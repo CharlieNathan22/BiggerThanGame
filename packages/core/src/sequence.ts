@@ -1,8 +1,8 @@
 /**
  * Deterministic run construction.
  *
- * Same seed, same deck, same reference date → identical rounds, in every
- * runtime. This is the property Daily Ranked rests on, and the one the Worker
+ * Same seed, same mode, same deck, same reference date → identical rounds, in
+ * every runtime. This is the property Daily Ranked rests on, and the one the Worker
  * relies on to re-derive a round and verify a guess without storing it.
  *
  * Replay is from round one every time. That is O(n) per lookup, but n is a few
@@ -17,11 +17,13 @@ import { candidates, remember, selectChallenger } from "./engine.js";
 import { bandFor, statAllowedAtRound } from "./ramp.js";
 import { STATS, STAT_KEYS } from "./stats.js";
 import { chooseStat, nextDwell } from "./wheel.js";
-import type { Player, Round, StatKey } from "./types.js";
+import type { Mode, Player, Round, StatKey } from "./types.js";
 
 export interface RunOptions {
   readonly deck: readonly Player[];
   readonly seed: string;
+  /** Sets how many opening rounds prefer iconic challengers (`ICONIC_ROUNDS`). */
+  readonly mode: Mode;
   /** Reference date — age is derived from it, so it must be fixed per run. */
   readonly now: Date;
   /** Hard cap on rounds generated. Defaults to `MAX_ROUNDS`. */
@@ -30,6 +32,21 @@ export interface RunOptions {
 
 /** Default cap on a run's length. A run that reaches it has exhausted the deck. */
 export const MAX_ROUNDS = 60;
+
+/**
+ * For rounds 1..N of a run, the challenger is drawn from iconic players
+ * whenever one can be dealt within the round's band. When none can, the whole
+ * deck is used before any other relaxation (engine.ts). Friendly is the mode a
+ * newcomer meets through a shared link, so it holds the preference longest.
+ *
+ * Changing a value changes every run of that mode — and every golden
+ * fingerprint for it.
+ */
+export const ICONIC_ROUNDS: Readonly<Record<Mode, number>> = {
+  friendly: 10,
+  endless: 5,
+  ranked: 5,
+};
 
 /** Stats that could open a run: basic tier, banded, genuinely easy to read. */
 const OPENING_STATS: readonly StatKey[] = ["club_goals", "ig", "caps"];
@@ -61,6 +78,7 @@ function openingAnchor(
 export function buildRun(opts: RunOptions): Round[] {
   const { deck, seed, now } = opts;
   const maxRounds = opts.maxRounds ?? MAX_ROUNDS;
+  const iconicRounds = ICONIC_ROUNDS[opts.mode];
   const rng = createRng(seed);
 
   let stat: StatKey | undefined;
@@ -102,7 +120,8 @@ export function buildRun(opts: RunOptions): Round[] {
       }
     }
 
-    const match = selectChallenger(anchor, stat, index, { deck, now, seen }, rng);
+    const preferIconic = index <= iconicRounds;
+    const match = selectChallenger(anchor, stat, index, { deck, now, seen }, rng, preferIconic);
     if (match === undefined) break;
 
     rounds.push({

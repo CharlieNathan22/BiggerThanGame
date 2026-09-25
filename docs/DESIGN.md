@@ -246,11 +246,13 @@ appearance totals.
 
 ### Club trophies — the definition
 
-Counts: **domestic leagues, domestic cups, and continental competitions and cups** (Champions
-League, Europa League, Copa Libertadores and equivalents), plus the **Club World Cup**.
+Counts: **every trophy listed under the club section of the Honours part of the player's English
+Wikipedia article, where the player's team won it.** That includes one-match trophies — the
+Community Shield, domestic super cups and the UEFA Super Cup — alongside leagues, cups,
+continental competitions and the Club World Cup.
 
-Does not count: **single-match trophies** — Community Shield, UEFA Super Cup, domestic super cups
-and equivalents.
+Does not count: **runners-up and third places, individual awards, youth, reserve and B-team
+honours, and international honours** (those are the international trophies stat).
 
 This rule must be published in the UI. It is the stat most likely to be argued with.
 
@@ -368,10 +370,12 @@ first 10 rounds**.
 
 When the candidate pool falls below a threshold, relax in this order:
 
-1. **Ceiling first** — a too-easy question beats a repeated player.
-2. **Then the floor.**
-3. **Then shorten the recently-seen queue.**
-4. **Never relax tie exclusion.**
+1. **Iconic preference first** — in the early rounds that prefer an iconic challenger (§10), fall
+   back to the whole deck at the same band before touching anything else.
+2. **Then the ceiling** — a too-easy question beats a repeated player.
+3. **Then the floor.**
+4. **Then shorten the recently-seen queue.**
+5. **Never relax tie exclusion.**
 
 The recently-seen queue (the last ~12 players, excluded from selection) matters more here than it
 did with floors, because bands and the queue shrink the pool at the same time.
@@ -433,9 +437,15 @@ Rules the pair-selection logic must enforce:
   guessing at it.
 - **Volatility floor.** Any stat that can still move — chiefly followers — needs a wider gap than a
   frozen one, so a near-tie can't silently flip between data refreshes.
-- **Round one is curated, not random.** Most people who open the link play one run and never
-  return. Guarantee a recognisable name and an easy question first; don't let the shuffler open on
-  obscure club appearances.
+- **Early rounds prefer iconic players, per mode.** Most people who open the link play one run and
+  never return. Round one's anchor is drawn from the `iconic` pool on an easy, banded stat — don't
+  let the shuffler open on obscure club appearances. Then, for rounds 1 to N, the challenger is
+  drawn from iconic players whenever one is valid: eligible, not tied, within the round's band and
+  not in the recently-seen queue. When none is, the whole deck is used at the same band — the
+  preference is the first thing to give and never costs a wider band or a repeated player (§8).
+  N is set per mode in `ICONIC_ROUNDS` in `packages/core`: **Friendly 10, Endless 5, Ranked 5.**
+  Friendly holds it longest because it is the mode a newcomer meets through a shared link. The run
+  is a pure function of seed and mode; `simulation.md` reports how often each mode fell back.
 - **Seeded PRNG, never `Math.random`.** Runs must be reproducible for testing, for the daily
   sequence, and for server-side verification.
 
@@ -460,8 +470,9 @@ Each player also carries a **position flag** (goalkeeper, defender, midfielder, 
 by majority career position and recorded explicitly with a note where the call is arguable. It
 drives stat eligibility and must never be inferred at runtime.
 
-Players recognisable enough to open a run on are flagged **`iconic`**. Round one is curated rather
-than random (§10), and this is the pool it draws from. The flag previously defined the client-side
+Players recognisable enough to open a run on are flagged **`iconic`**. Round one's anchor is drawn
+from this pool, and the first few challengers of a run prefer it, for a number of rounds set per
+mode (§10). The flag previously defined the client-side
 Friendly pool; that pool no longer exists, so the name now says what it actually means.
 
 Store **date of birth**, not age — age is computed, and the player is excluded from the age stat if

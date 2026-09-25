@@ -1,6 +1,6 @@
 # Deck viability
 
-Generated 2026-09-24 from 24 players.
+Generated 2026-09-25 from 24 players.
 
 Counts are **unordered pairs that clear the band**, before the recently-seen
 queue takes its cut. A stat showing 0 at a band cannot be dealt there and will
@@ -24,6 +24,22 @@ force relaxation every time the wheel picks it.
 ## Problems
 
 None. Every stat can be dealt at every band.
+
+## Iconic preference
+
+8 of 24 players are iconic. Early rounds prefer an iconic challenger (friendly 1–10, endless 1–5, ranked 1–5). An anchor with no iconic challenger in the opening band always falls back to the whole deck; `simulation.md` reports how often that happens in play.
+
+| Stat | Iconic eligible | Anchors with an iconic challenger |
+|---|---|---|
+| Club goals | 8 | 21 of 21 (100%) |
+| Caps | 8 | 11 of 24 (46%) |
+| Club appearances | 8 | 0 of 24 (0%) |
+| Instagram followers | 8 | 20 of 21 (95%) |
+| Highest transfer fee | 8 | 16 of 24 (67%) |
+| International goals | 8 | 21 of 21 (100%) |
+| Club trophies | 8 | 23 of 24 (96%) |
+
+Band-exempt stats are left out: they cannot be dealt in the opening rounds.
 
 ## Stat correlation
 

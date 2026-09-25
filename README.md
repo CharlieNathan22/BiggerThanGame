@@ -68,11 +68,12 @@ Club goals and international goals are kept separate rather than combined into o
 combined figure counts every international goal twice, which would make the two stats half the same
 question.
 
-**Club trophies counts:** domestic leagues, domestic cups, continental competitions and cups
-(Champions League, Europa League, Copa Libertadores and equivalents), and the Club World Cup.
+**Club trophies counts:** every trophy listed under the club section of the Honours part of the
+player's English Wikipedia article, where the player's team won it — including one-match trophies
+(Community Shield, domestic super cups, UEFA Super Cup).
 
-**Club trophies does not count:** single-match trophies — Community Shield, UEFA Super Cup, domestic
-super cups and equivalents.
+**Club trophies does not count:** runners-up and third places, individual awards, youth, reserve and
+B-team honours, and international honours (those are the international trophies stat).
 
 Transfer fees are deliberately left un-adjusted. Football fees have risen far faster than consumer
 prices, so a CPI adjustment would barely change any answer while implying a rigour it doesn't have.

@@ -135,7 +135,9 @@ These four are what make the leaderboard defensible. Everything else is negotiab
    would mean several readable answers sitting in memory at all times. Prefetch _display_ data
    only — and do prefetch it: images especially must be loaded ahead of the round they appear in
    (section 9).
-3. **The round sequence is a pure function of the seed** and does not depend on player answers.
+3. **The round sequence is a pure function of the seed and mode** and does not depend on player
+   answers. The mode only sets how many early rounds prefer iconic challengers (`ICONIC_ROUNDS`,
+   DESIGN.md §10).
    This is what lets the server recompute any round statelessly, and what makes Daily Ranked
    identical for everyone. It holds naturally because the challenger becomes the anchor whether
    the guess was right or wrong, and a wrong guess ends the run.
@@ -156,7 +158,7 @@ country: France
 position: MF # GK | DF | MF | FW  — drives the goals-stat exclusion
 dob: 1972-06-23
 deceased: false
-iconic: true # recognisable enough to open a run on (DESIGN.md §10)
+iconic: true # opens runs; early challengers prefer it (DESIGN.md §10)
 stats:
   club_goals: 125
   caps: 108
@@ -215,7 +217,7 @@ it.
 | `credits.json`             | read by `/credits` at build | player name, author, licence, licence URL (absent for PD) and source per image; read with `fs`, never bundled |
 | `data/legends/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                                                          |
 | `viability.md`             | repo, committed             | per stat and gap band, how many valid pairs exist                                                             |
-| `simulation.md`            | repo, committed             | streak distribution and stat firing rates over 10k runs                                                       |
+| `simulation.md`            | repo, committed             | per mode: streak distribution, stat firing rates and iconic-preference fallback over 10k runs                 |
 
 **Which deck.** The private deck is used once it holds `MIN_PRIVATE_DECK` (30) schema-valid
 players. Below that the build falls back to the public sample of invented players and logs why
@@ -258,9 +260,11 @@ when a floor is well populated. With ten stats and four of them rare and tie-pro
 you which stats can actually fire at the late bands, and whether the 30–80% band is reachable at
 all. Read it after every deck change.
 
-`simulation.md` runs the real engine 10,000 times over the compiled deck and reports the streak
-histogram and how often each stat actually fires after tie and gap filtering. This is how the
-ramp and tier weights get tuned — not by guessing.
+`simulation.md` runs the real engine 10,000 times per mode over the compiled deck, on the same
+seeds for every mode, and reports the streak histogram, how often each stat actually fires after
+tie and gap filtering, and how often the early-round iconic preference had to fall back to the
+whole deck. This is how the ramp and tier weights get tuned — not by guessing. `viability.md`
+adds the static side: per stat, how many anchors have any iconic challenger in the opening band.
 
 ---
 
@@ -287,8 +291,9 @@ date, so a caller can't choose an arbitrary reference date. The client never see
 > — not the hidden values, which are public facts anyway, but the upcoming pairings. Decide in
 > Phase 5 whether that matters; widening the state changes every golden fingerprint.
 
-`sequence.ts` takes a seed and a round number and replays the engine deterministically from round
-one. Twenty rounds is well under a millisecond, so the server recomputes rather than storing.
+`sequence.ts` takes a seed, a mode and a round number and replays the engine deterministically
+from round one. The mode is part of the input because it sets how many early rounds prefer iconic
+challengers (`ICONIC_ROUNDS`); the same seed under a different mode is a different run. Twenty rounds is well under a millisecond, so the server recomputes rather than storing.
 
 **Game numbering.** `gameNo = floor((now - EPOCH) / 86400000) + 1`, `EPOCH` being launch day at
 00:00 UTC. **Game 1 is launch day and the epoch is never moved** — game numbers become permanent
@@ -374,7 +379,8 @@ the challenger carries **only** `id, name, country, position, image?`. The chall
 (fee year, follower snapshot date) is stat-derived, so it is withheld with the value and arrives in
 `reveal`. `display` is always `STATS[key].format(value)`.
 
-Each request derives the seed from `runId` (§7), replays the run to one round past the one answered,
+Each request derives the seed from `runId` (§7), replays the run in mode `friendly` to one round
+past the one answered,
 and **decides correctness server-side**. A run that reaches `MAX_ROUNDS` (60) — or can deal no next
 round — ends with `deck-exhausted`. Every response is an explicitly declared DTO built field by field
 in `worker/src/payload.ts`; a `Round` is never returned. Requests are validated strictly — unknown
@@ -686,8 +692,9 @@ knife-edge bands is a second signal.
 ## 15. Testing
 
 - **Unit:** `packages/core` under Vitest. The PRNG, ramp, tie exclusion and eligibility rules are
-  pure functions and should be covered properly. Cover the relaxation path explicitly: ceiling
-  first, then floor, then the seen queue, never tie exclusion.
+  pure functions and should be covered properly. Cover the relaxation path explicitly: the
+  early-round iconic preference first, then ceiling, then floor, then the seen queue, never tie
+  exclusion.
 - **Determinism:** the same seed must produce an identical sequence in the browser, the Worker and
   Node. Assert this explicitly; it is the foundation of Daily Ranked.
 - **Simulation:** 10,000-run harness producing `simulation.md`. Run it on every deck change.

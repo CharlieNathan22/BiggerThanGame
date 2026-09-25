@@ -51,7 +51,7 @@ async function start(ctx: RoundContext): Promise<RoundResult> {
   if (now === undefined) throw new Error(`minted a malformed run id: ${runId}`);
 
   const seed = await friendlySeed(ctx.secret, runId);
-  const first = buildRun({ deck: ctx.deck, seed, now, maxRounds: 1 })[0];
+  const first = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds: 1 })[0];
   if (first === undefined) {
     return { status: 503, body: { error: "unavailable", detail: "the deck cannot deal a round" } };
   }
@@ -69,7 +69,7 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
   const seed = await friendlySeed(ctx.secret, req.runId);
   // One past the answered round, so the response can carry the next question.
   const maxRounds = Math.min(req.round + 1, MAX_ROUNDS);
-  const rounds = buildRun({ deck: ctx.deck, seed, now, maxRounds });
+  const rounds = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds });
 
   const round = rounds[req.round - 1];
   if (round === undefined) return badRequest(`this run has no round ${req.round}`);

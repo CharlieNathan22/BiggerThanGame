@@ -57,8 +57,9 @@ export interface Player {
   readonly dob: string;
   readonly deceased?: boolean;
   /**
-   * Recognisable enough to open a run on. Round one is curated rather than
-   * random (DESIGN.md §10) and draws from this pool.
+   * Recognisable enough to open a run on. Round one's anchor is drawn from
+   * this pool, and the first few challengers of a run prefer it — how many
+   * depends on the mode (`ICONIC_ROUNDS`, DESIGN.md §10).
    */
   readonly iconic?: boolean;
   readonly stats: PlayerStats;
@@ -73,7 +74,7 @@ export interface Band {
   readonly ceiling: number | null;
 }
 
-export type Relaxation = "none" | "band" | "seen";
+export type Relaxation = "none" | "iconic" | "band" | "seen";
 
 /** One dealt question. */
 export interface Round {

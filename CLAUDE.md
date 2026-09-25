@@ -27,7 +27,8 @@ Breaking any of these silently breaks the leaderboard. They are not preferences.
    `anchor` and `challenger` are full `Player` objects.
 2. **Never prefetch hidden values** — not one round ahead, not ever. Display data (names, images)
    _must_ be prefetched; values must not.
-3. **The round sequence is a pure function of the seed** and must not depend on player answers.
+3. **The round sequence is a pure function of the seed and mode** and must not depend on player
+   answers.
    This is what makes Daily Ranked identical for everyone and lets the server recompute any round.
 4. **A progress token is spent once** (Phase 5, Ranked and Endless; Friendly issues no token).
    The Durable Object nonce check is what prevents replay. Do not "optimise" it away — without it a

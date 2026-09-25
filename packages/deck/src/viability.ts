@@ -7,8 +7,18 @@
  * pointless. Read it after every deck change.
  */
 
-import { STATS, STAT_KEYS, bandForRound, gap, isEligible, withinBand } from "@bt/core";
-import type { Band, Player, StatKey } from "@bt/core";
+import {
+  ICONIC_ROUNDS,
+  STATS,
+  STAT_KEYS,
+  bandFor,
+  bandForRound,
+  gap,
+  isEligible,
+  statAllowedAtRound,
+  withinBand,
+} from "@bt/core";
+import type { Band, Mode, Player, StatKey } from "@bt/core";
 
 /** The distinct bands the ramp uses, with a label for the report. */
 export const REPORT_BANDS: ReadonlyArray<{ label: string; rounds: string; band: Band }> = [
@@ -126,6 +136,45 @@ export function rankCorrelation(
   return num / Math.sqrt(da * db);
 }
 
+export interface IconicViability {
+  readonly stat: StatKey;
+  /** Iconic players eligible for the stat. */
+  readonly iconicEligible: number;
+  /** Players eligible for the stat, i.e. possible anchors. */
+  readonly anchors: number;
+  /** Anchors with at least one non-tied iconic challenger within the opening band. */
+  readonly anchorsWithIconic: number;
+}
+
+/**
+ * Can the iconic preference (DESIGN.md §10) be honoured at the opening band?
+ *
+ * An anchor with no iconic challenger in band always falls back to the whole
+ * deck. Static, before the recently-seen queue takes its cut — simulation.md
+ * reports how often the preference actually falls back in play.
+ */
+export function iconicViability(
+  players: readonly Player[],
+  key: StatKey,
+  now: Date,
+): IconicViability {
+  const band = bandFor(key, 1);
+  const values = valuesFor(players, key, now);
+  const iconicIds = new Set(players.filter((p) => p.iconic === true).map((p) => p.id));
+  const iconic = values.filter(([id]) => iconicIds.has(id));
+
+  let anchorsWithIconic = 0;
+  for (const [id, v] of values) {
+    const reachable = iconic.some(([otherId, w]) => {
+      if (otherId === id || v === w) return false;
+      return withinBand(gap(v, w), band);
+    });
+    if (reachable) anchorsWithIconic += 1;
+  }
+
+  return { stat: key, iconicEligible: iconic.length, anchors: values.length, anchorsWithIconic };
+}
+
 /** Above this, a pair is correlated enough that switching between them is flat. */
 export const CORRELATION_WARN = 0.8;
 
@@ -187,6 +236,43 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
   lines.push("## Problems");
   lines.push("");
   lines.push(dead.length > 0 ? dead.join("\n") : "None. Every stat can be dealt at every band.");
+  lines.push("");
+
+  const iconicCount = players.filter((p) => p.iconic === true).length;
+  const windows = (Object.entries(ICONIC_ROUNDS) as Array<[Mode, number]>)
+    .map(([mode, n]) => `${mode} 1–${n}`)
+    .join(", ");
+  lines.push("## Iconic preference");
+  lines.push("");
+  lines.push(
+    `${iconicCount} of ${players.length} players are iconic. Early rounds prefer an iconic ` +
+      `challenger (${windows}). An anchor with no iconic challenger in the opening band always ` +
+      `falls back to the whole deck; \`simulation.md\` reports how often that happens in play.`,
+  );
+  lines.push("");
+  const opening = bandForRound(1);
+  const beyond = (Object.entries(ICONIC_ROUNDS) as Array<[Mode, number]>).filter(
+    ([, n]) => JSON.stringify(bandForRound(n)) !== JSON.stringify(opening),
+  );
+  for (const [mode] of beyond) {
+    lines.push(
+      `> ${mode}'s window runs past the opening band; its later rounds are not covered here.`,
+    );
+    lines.push("");
+  }
+  lines.push("| Stat | Iconic eligible | Anchors with an iconic challenger |");
+  lines.push("|---|---|---|");
+  for (const key of STAT_KEYS) {
+    if (!statAllowedAtRound(key, 1)) continue;
+    const v = iconicViability(players, key, now);
+    const share = v.anchors === 0 ? 0 : v.anchorsWithIconic / v.anchors;
+    lines.push(
+      `| ${STATS[key].label} | ${v.iconicEligible} | ` +
+        `${v.anchorsWithIconic} of ${v.anchors} (${(share * 100).toFixed(0)}%) |`,
+    );
+  }
+  lines.push("");
+  lines.push("Band-exempt stats are left out: they cannot be dealt in the opening rounds.");
   lines.push("");
 
   lines.push("## Stat correlation");

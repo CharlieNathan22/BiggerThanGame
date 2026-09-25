@@ -14,7 +14,7 @@ const DEFINITIONS: Readonly<Record<StatKey, string>> = {
   ig: "Instagram followers, from a dated snapshot. The date is shown under the number.",
   fee: "The largest single reported transfer fee, shown with the year it was paid. Not adjusted for inflation.",
   igoals: "Senior international goals. Not asked about goalkeepers.",
-  ct: "Major club honours. Exactly what counts is set out below.",
+  ct: "Club honours won, as listed on Wikipedia. Exactly what counts is set out below.",
   it: "Major international honours won with the national team.",
   clubs: "The number of senior clubs played for.",
   age: "Age today, worked out from date of birth. Only asked about living players.",
@@ -103,13 +103,15 @@ const reportHref = `mailto:${CORRECTIONS_EMAIL}?subject=${encodeURIComponent("Co
   <h2 id="club-trophies">What counts as a club trophy</h2>
   <span class="lab">Counts</span>
   <p>
-    Domestic leagues, domestic cups, and continental competitions and cups (the Champions League,
-    Europa League, Copa Libertadores and their equivalents), plus the Club World Cup.
+    Every trophy listed under the club section of the Honours part of the player's English Wikipedia
+    article, where the player's team won it. That includes one-match trophies such as the Community
+    Shield, domestic super cups and the UEFA Super Cup, as well as leagues, cups, continental
+    competitions and the Club World Cup.
   </p>
   <span class="lab">Doesn't count</span>
   <p>
-    Single-match trophies: the Community Shield, the UEFA Super Cup, domestic super cups and their
-    equivalents.
+    Runners-up and third places, individual awards, and youth, reserve or B-team honours.
+    International honours don't count here either: they're the international trophies stat.
   </p>
 
   <h2>The players</h2>

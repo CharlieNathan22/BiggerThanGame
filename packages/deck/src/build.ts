@@ -16,7 +16,7 @@ import { buildCredits, buildFullDeck, buildImages, buildIndexes } from "./artifa
 import { checkManifest, loadManifest } from "./manifest.js";
 import { DECK, MIN_PRIVATE_DECK, fallbackNotice, loadDeck, manifestPathFor } from "./load.js";
 import type { LoadedDeck } from "./load.js";
-import { simulate, simulationReport } from "./simulate.js";
+import { SIM_MODES, simulate, simulationReport } from "./simulate.js";
 import { formatProblems, validateDeck } from "./validate.js";
 import { viabilityReport } from "./viability.js";
 
@@ -121,11 +121,14 @@ export function runBuild(opts: BuildOptions = {}): number {
     console.log("deck: simulation skipped");
   } else {
     const runs = opts.simulationRuns ?? 10_000;
-    console.log(`deck: simulating ${runs.toLocaleString("en-GB")} runs`);
+    console.log(`deck: simulating ${runs.toLocaleString("en-GB")} runs per mode`);
     const started = Date.now();
-    const result = simulate({ deck: loaded.players, now, runs });
+    const results = SIM_MODES.map((mode) => simulate({ deck: loaded.players, now, mode, runs }));
     console.log(`  ${((Date.now() - started) / 1000).toFixed(1)}s`);
-    write(join(packageRoot, "simulation.md"), simulationReport(result, loaded.players.length, now));
+    write(
+      join(packageRoot, "simulation.md"),
+      simulationReport(results, loaded.players.length, now),
+    );
   }
 
   console.log("deck: done");

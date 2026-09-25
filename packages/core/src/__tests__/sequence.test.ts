@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { buildRun, roundAt } from "../sequence.js";
+import { ICONIC_ROUNDS, buildRun, roundAt } from "../sequence.js";
 import { STATS } from "../stats.js";
 import { statAllowedAtRound } from "../ramp.js";
 import { valueOf } from "../engine.js";
 import { NOW, fixtureDeck } from "../__fixtures__/deck.js";
+import type { Mode, Player } from "../types.js";
 
-const run = (seed: string, maxRounds = 40) =>
-  buildRun({ deck: fixtureDeck, seed, now: NOW, maxRounds });
+const MODES = Object.keys(ICONIC_ROUNDS) as Mode[];
+
+const run = (seed: string, maxRounds = 40, mode: Mode = "ranked") =>
+  buildRun({ deck: fixtureDeck, seed, mode, now: NOW, maxRounds });
 
 describe("determinism", () => {
   it("produces an identical run for the same seed", () => {
@@ -26,10 +29,21 @@ describe("determinism", () => {
     expect(sameShape).toBe(false);
   });
 
+  it("produces an identical run for the same seed and mode, in every mode", () => {
+    for (const mode of MODES) {
+      const a = run("same", 30, mode).map((r) => [r.stat, r.anchor.id, r.challenger.id]);
+      const b = run("same", 30, mode).map((r) => [r.stat, r.anchor.id, r.challenger.id]);
+      expect(a).toEqual(b);
+    }
+  });
+
   it("agrees with roundAt for any index", () => {
     const full = run("ranked:7");
     for (const index of [1, 2, 5, 9]) {
-      const single = roundAt({ deck: fixtureDeck, seed: "ranked:7", now: NOW }, index);
+      const single = roundAt(
+        { deck: fixtureDeck, seed: "ranked:7", mode: "ranked", now: NOW },
+        index,
+      );
       expect(single?.challenger.id).toBe(full[index - 1]?.challenger.id);
       expect(single?.stat).toBe(full[index - 1]?.stat);
     }
@@ -109,6 +123,90 @@ describe("structure", () => {
   });
 });
 
+describe("iconic preference", () => {
+  // Forty invented forwards on a geometric ladder, every third one iconic, so
+  // most anchors have both iconic and non-iconic opponents at the opening band.
+  const ladder: readonly Player[] = Array.from({ length: 40 }, (_, i) => ({
+    id: `p${String(i).padStart(2, "0")}`,
+    name: `Player ${i}`,
+    country: "Testland",
+    position: "FW" as const,
+    dob: "1980-01-01",
+    ...(i % 3 === 0 ? { iconic: true } : {}),
+    stats: {
+      club_goals: Math.round(3 * 1.19 ** i),
+      caps: Math.round(2 * 1.13 ** i) + i,
+      apps: 100 + 17 * i,
+    },
+  }));
+  const ladderRun = (seed: string, mode: Mode) =>
+    buildRun({ deck: ladder, seed, mode, now: NOW, maxRounds: 20 });
+  const seeds = Array.from({ length: 40 }, (_, i) => `iconic-${i}`);
+
+  it("prefers an iconic challenger for exactly the mode's window", () => {
+    for (const mode of MODES) {
+      const window = ICONIC_ROUNDS[mode];
+      let iconicInWindow = 0;
+      let plainAfterWindow = 0;
+      for (const seed of seeds) {
+        for (const r of ladderRun(seed, mode)) {
+          if (r.index <= window) {
+            // Inside the window a round met outright must have an iconic challenger.
+            if (r.relaxation === "none") expect(r.challenger.iconic).toBe(true);
+            if (r.challenger.iconic === true) iconicInWindow += 1;
+          } else {
+            // Past it the preference is off, so it can never be what gave.
+            expect(r.relaxation).not.toBe("iconic");
+            if (r.relaxation === "none" && r.challenger.iconic !== true) plainAfterWindow += 1;
+          }
+        }
+      }
+      expect(iconicInWindow).toBeGreaterThan(0);
+      expect(plainAfterWindow).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps preferring iconic between a short window's end and a long window's end", () => {
+    const [short, long] = [...MODES].sort((a, b) => ICONIC_ROUNDS[a] - ICONIC_ROUNDS[b]);
+    const [shortEnd, longEnd] = [ICONIC_ROUNDS[short!], ICONIC_ROUNDS[long!]];
+    if (shortEnd === longEnd) return; // every mode shares one window; nothing to compare
+    const share = (mode: Mode) => {
+      let iconic = 0;
+      let total = 0;
+      for (const seed of seeds) {
+        for (const r of ladderRun(seed, mode)) {
+          if (r.index <= shortEnd || r.index > longEnd) continue;
+          total += 1;
+          if (r.challenger.iconic === true) iconic += 1;
+        }
+      }
+      return iconic / total;
+    };
+    expect(share(long!)).toBeGreaterThan(share(short!));
+  });
+
+  it("deals identical rounds across modes until the shorter window ends", () => {
+    const shared = Math.min(...MODES.map((m) => ICONIC_ROUNDS[m]));
+    for (const seed of seeds) {
+      const byMode = MODES.map((m) =>
+        ladderRun(seed, m)
+          .slice(0, shared)
+          .map((r) => `${r.stat}:${r.anchor.id}>${r.challenger.id}`),
+      );
+      for (const other of byMode) expect(other).toEqual(byMode[0]);
+    }
+  });
+
+  it("changes the run when the mode's window differs", () => {
+    const differs = seeds.some(
+      (seed) =>
+        JSON.stringify(ladderRun(seed, "friendly").map((r) => r.challenger.id)) !==
+        JSON.stringify(ladderRun(seed, "ranked").map((r) => r.challenger.id)),
+    );
+    expect(differs).toBe(true);
+  });
+});
+
 describe("the wheel in a run", () => {
   it("holds a stat for at least two rounds before switching", () => {
     for (const seed of ["h1", "h2", "h3", "h4"]) {
@@ -141,16 +239,18 @@ describe("the wheel in a run", () => {
 
 describe("degenerate decks", () => {
   it("returns no rounds for an empty deck", () => {
-    expect(buildRun({ deck: [], seed: "empty", now: NOW })).toEqual([]);
+    expect(buildRun({ deck: [], seed: "empty", mode: "ranked", now: NOW })).toEqual([]);
   });
 
   it("returns no rounds for a single-player deck", () => {
-    expect(buildRun({ deck: [fixtureDeck[0]!], seed: "one", now: NOW })).toEqual([]);
+    expect(buildRun({ deck: [fixtureDeck[0]!], seed: "one", mode: "ranked", now: NOW })).toEqual(
+      [],
+    );
   });
 
   it("stops rather than looping forever on a tiny deck", () => {
     const tiny = [fixtureDeck[0]!, fixtureDeck[1]!];
-    const rounds = buildRun({ deck: tiny, seed: "tiny", now: NOW, maxRounds: 50 });
+    const rounds = buildRun({ deck: tiny, seed: "tiny", mode: "ranked", now: NOW, maxRounds: 50 });
     expect(rounds.length).toBeLessThanOrEqual(50);
   });
 });
