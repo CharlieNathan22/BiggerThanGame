@@ -1,5 +1,5 @@
 # SAMPLE DATA — invented players, not real footballers.
-# The real deck lives in the private submodule at data/players/.
+# The real deck lives in the private submodule at data/legends/players/.
 id: roan-selby
 name: Roan Selby
 country: Vantia
