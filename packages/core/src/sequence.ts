@@ -14,10 +14,10 @@ import { createRng } from "./prng.js";
 import type { Rng } from "./prng.js";
 import { isEligible } from "./eligibility.js";
 import { candidates, remember, selectChallenger } from "./engine.js";
-import { bandFor, statAllowedAtRound } from "./ramp.js";
+import { bandFor } from "./ramp.js";
 import { STATS, STAT_KEYS } from "./stats.js";
-import { chooseStat, nextDwell } from "./wheel.js";
-import type { Mode, Player, Round, StatKey } from "./types.js";
+import { chooseStat, nextDwell, weightedPick } from "./wheel.js";
+import type { Mode, Player, Round, StatKey, Tier } from "./types.js";
 
 export interface RunOptions {
   readonly deck: readonly Player[];
@@ -34,6 +34,15 @@ export interface RunOptions {
 export const MAX_ROUNDS = 60;
 
 /**
+ * How many rounds the opening stat holds. Fixed, unlike every later stat's
+ * 2–5: the first switch always comes at round 3, so every player who gets two
+ * right sees the stat change — the mechanic the game is built on. Holding the
+ * opening stat longer also crowded rare stats into the later rounds, since
+ * they never open a run. DESIGN.md §7.
+ */
+export const OPENING_DWELL = 2;
+
+/**
  * For rounds 1..N of a run, the challenger is drawn from iconic players
  * whenever one can be dealt within the round's band. When none can, the whole
  * deck is used before any other relaxation (engine.ts). Friendly is the mode a
@@ -48,8 +57,13 @@ export const ICONIC_ROUNDS: Readonly<Record<Mode, number>> = {
   ranked: 5,
 };
 
-/** Stats that could open a run: basic tier, banded, genuinely easy to read. */
-const OPENING_STATS: readonly StatKey[] = ["club_goals", "ig", "caps"];
+/**
+ * Tiers a run may open on. Rare stats never open a run: the first question a
+ * newcomer sees should be one they can read at a glance. The opening stat is
+ * otherwise drawn by the wheel's own tier weights, so it doesn't skew the mix —
+ * it holds for roughly half of all rounds played. DESIGN.md §7.
+ */
+const OPENING_TIERS: ReadonlySet<Tier> = new Set<Tier>(["basic", "uncommon"]);
 
 /**
  * Most people who open the link play one run and never come back, so round one
@@ -84,21 +98,25 @@ export function buildRun(opts: RunOptions): Round[] {
   let stat: StatKey | undefined;
   let anchor: Player | undefined;
 
-  // Opening round: curated anchor on an easy stat.
-  for (const candidateStat of rng.shuffle(OPENING_STATS)) {
+  // Opening round: a weighted draw over the opening tiers, then a curated
+  // anchor. A stat no player can open on is dropped and the draw repeated.
+  let openers = STAT_KEYS.filter((key) => OPENING_TIERS.has(STATS[key].tier));
+  while (openers.length > 0) {
+    const candidateStat = weightedPick(openers, rng)!;
     const pick = openingAnchor(deck, candidateStat, now, rng);
     if (pick !== undefined) {
       stat = candidateStat;
       anchor = pick;
       break;
     }
+    openers = openers.filter((key) => key !== candidateStat);
   }
 
   if (stat === undefined || anchor === undefined) return [];
 
   const rounds: Round[] = [];
   let seen: string[] = [];
-  let dwell = nextDwell(rng);
+  let dwell = OPENING_DWELL;
   let heldFor = 0;
 
   for (let index = 1; index <= maxRounds; index++) {
@@ -107,12 +125,11 @@ export function buildRun(opts: RunOptions): Round[] {
     if (heldFor >= dwell && index > 1) {
       const viable = STAT_KEYS.filter((key) => {
         if (!isEligible(anchor as Player, key, now)) return false;
-        if (!statAllowedAtRound(key, index)) return false;
         return (
           candidates(anchor as Player, key, bandFor(key, index), { deck, now, seen }).length > 0
         );
       });
-      const next = chooseStat({ current: stat, round: index, viable, rng });
+      const next = chooseStat({ current: stat, viable, rng });
       if (next !== undefined) {
         stat = next;
         dwell = nextDwell(rng);

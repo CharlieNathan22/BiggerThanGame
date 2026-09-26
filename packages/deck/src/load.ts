@@ -145,6 +145,15 @@ export function loadDeckForSync(root: string): LoadedDeck {
   };
 }
 
+/**
+ * The committed sample deck, always — never the private one, whatever it holds.
+ * For tests: anything that needs a known, public deck must not depend on how
+ * far the owner has got with the private submodule on this machine.
+ */
+export function loadSampleDeck(root: string): Pick<LoadedDeck, "raws" | "players" | "problems"> {
+  return readPlayers(playersDirFor(root, "sample"));
+}
+
 /** Why the sample was used, for the build log. Undefined when it wasn't. */
 export function fallbackNotice(deck: LoadedDeck): string | undefined {
   if (deck.source !== "sample") return undefined;

@@ -16,13 +16,15 @@ export interface CsvRow {
    * number in a text editor.
    */
   readonly row: number;
-  /** Cells by header name, trimmed. A row shorter than the header is padded with blanks. */
+  /** Cells by header name, trimmed. Only meaningful when `fields` matches the header. */
   readonly cells: Readonly<Record<string, string>>;
   /**
-   * Non-blank cells beyond the last header column. Almost always an unquoted
-   * comma that has shifted everything after it one column right.
+   * How many fields the row actually has. Anything other than the header's
+   * count means the columns can't be trusted — usually an unquoted comma that
+   * split one value in two and shifted everything after it. The reader
+   * reports it; it never pads or truncates to make the row fit.
    */
-  readonly overflow: readonly string[];
+  readonly fields: number;
 }
 
 export interface CsvTable {
@@ -109,8 +111,7 @@ export function parseCsv(input: string): CsvTable {
     if (trimmed.every((c) => c === "")) continue;
     const cells: Record<string, string> = {};
     for (const [col, name] of header.entries()) cells[name] = trimmed[col] ?? "";
-    const overflow = trimmed.slice(header.length).filter((c) => c !== "");
-    rows.push({ row: index + 2, cells, overflow });
+    rows.push({ row: index + 2, cells, fields: trimmed.length });
   }
   return { header, rows };
 }

@@ -13,21 +13,29 @@ import {
   STAT_KEYS,
   bandFor,
   bandForRound,
-  gap,
   isEligible,
-  statAllowedAtRound,
-  withinBand,
+  pairFits,
+  percentiles,
 } from "@bt/core";
 import type { Band, Mode, Player, StatKey } from "@bt/core";
 
-/** The distinct bands the ramp uses, with a label for the report. */
-export const REPORT_BANDS: ReadonlyArray<{ label: string; rounds: string; band: Band }> = [
-  { label: "opening", rounds: "1–10", band: bandForRound(1) },
-  { label: "early", rounds: "11–18", band: bandForRound(11) },
-  { label: "middle", rounds: "19–26", band: bandForRound(19) },
-  { label: "late", rounds: "27–34", band: bandForRound(27) },
-  { label: "hard", rounds: "35–42", band: bandForRound(35) },
-  { label: "knife edge", rounds: "43+", band: bandForRound(43) },
+/**
+ * The distinct bands the ramp uses, with a label for the report. `round` is
+ * the first round of each: counts use `bandFor(stat, round)`, which adds the
+ * volatility floor for Instagram — the same band the engine applies.
+ */
+export const REPORT_BANDS: ReadonlyArray<{
+  label: string;
+  rounds: string;
+  round: number;
+  band: Band;
+}> = [
+  { label: "opening", rounds: "1–10", round: 1, band: bandForRound(1) },
+  { label: "early", rounds: "11–18", round: 11, band: bandForRound(11) },
+  { label: "middle", rounds: "19–26", round: 19, band: bandForRound(19) },
+  { label: "late", rounds: "27–34", round: 27, band: bandForRound(27) },
+  { label: "hard", rounds: "35–42", round: 35, band: bandForRound(35) },
+  { label: "knife edge", rounds: "43+", round: 43, band: bandForRound(43) },
 ];
 
 export interface StatViability {
@@ -51,6 +59,8 @@ function valuesFor(players: readonly Player[], key: StatKey, now: Date): Array<[
 
 export function statViability(players: readonly Player[], key: StatKey, now: Date): StatViability {
   const values = valuesFor(players, key, now);
+  const table = percentiles(players, key, now);
+  const bands = REPORT_BANDS.map((b) => ({ label: b.label, band: bandFor(key, b.round) }));
   const pairsByBand: Record<string, number> = {};
   for (const b of REPORT_BANDS) pairsByBand[b.label] = 0;
 
@@ -63,11 +73,9 @@ export function statViability(players: readonly Player[], key: StatKey, now: Dat
         tied += 1;
         continue; // ties are excluded everywhere, so they count for no band
       }
-      const g = gap(a, b);
-      for (const band of REPORT_BANDS) {
-        // Band-exempt stats ignore the band entirely; every non-tied pair counts.
-        const ok = STATS[key].bandExempt === true ? true : withinBand(g, band.band);
-        if (ok) pairsByBand[band.label] = (pairsByBand[band.label] ?? 0) + 1;
+      // The engine's own test, so the report and the deal can't disagree.
+      for (const { label, band } of bands) {
+        if (pairFits(table, a, b, band)) pairsByBand[label] = (pairsByBand[label] ?? 0) + 1;
       }
     }
   }
@@ -159,6 +167,7 @@ export function iconicViability(
   now: Date,
 ): IconicViability {
   const band = bandFor(key, 1);
+  const table = percentiles(players, key, now);
   const values = valuesFor(players, key, now);
   const iconicIds = new Set(players.filter((p) => p.iconic === true).map((p) => p.id));
   const iconic = values.filter(([id]) => iconicIds.has(id));
@@ -166,8 +175,8 @@ export function iconicViability(
   let anchorsWithIconic = 0;
   for (const [id, v] of values) {
     const reachable = iconic.some(([otherId, w]) => {
-      if (otherId === id || v === w) return false;
-      return withinBand(gap(v, w), band);
+      if (otherId === id) return false;
+      return pairFits(table, v, w, band);
     });
     if (reachable) anchorsWithIconic += 1;
   }
@@ -185,8 +194,10 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
   lines.push(`Generated ${now.toISOString().slice(0, 10)} from ${players.length} players.`);
   lines.push("");
   lines.push("Counts are **unordered pairs that clear the band**, before the recently-seen");
-  lines.push("queue takes its cut. A stat showing 0 at a band cannot be dealt there and will");
-  lines.push("force relaxation every time the wheel picks it.");
+  lines.push("queue takes its cut. Bands are in rank distance — how far apart two players sit");
+  lines.push("in the deck's spread for the stat — and Instagram also needs the volatility floor,");
+  lines.push("exactly as the engine deals them. A stat showing 0 at a band cannot be dealt there");
+  lines.push("and will force relaxation every time the wheel picks it.");
   lines.push("");
 
   const header = [
@@ -201,9 +212,8 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
 
   const rows = STAT_KEYS.map((key) => statViability(players, key, now));
   for (const row of rows) {
-    const exempt = STATS[row.stat].bandExempt === true ? " *" : "";
     const cells = [
-      `${STATS[row.stat].label}${exempt}`,
+      STATS[row.stat].label,
       String(row.eligible),
       String(row.distinctValues),
       String(row.tiedPairs),
@@ -211,10 +221,6 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
     ];
     lines.push(`| ${cells.join(" | ")} |`);
   }
-  lines.push("");
-  lines.push(
-    "`*` band-exempt — matched on tie exclusion alone, so every band shows the same count.",
-  );
   lines.push("");
 
   // Anything that cannot be dealt somewhere is the headline finding.
@@ -263,7 +269,6 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
   lines.push("| Stat | Iconic eligible | Anchors with an iconic challenger |");
   lines.push("|---|---|---|");
   for (const key of STAT_KEYS) {
-    if (!statAllowedAtRound(key, 1)) continue;
     const v = iconicViability(players, key, now);
     const share = v.anchors === 0 ? 0 : v.anchorsWithIconic / v.anchors;
     lines.push(
@@ -272,7 +277,8 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
     );
   }
   lines.push("");
-  lines.push("Band-exempt stats are left out: they cannot be dealt in the opening rounds.");
+  lines.push("Rare stats never open a run, but the wheel can switch to them at round 3, well");
+  lines.push("inside every mode's window, so they are listed too.");
   lines.push("");
 
   lines.push("## Stat correlation");

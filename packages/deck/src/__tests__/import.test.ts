@@ -373,11 +373,9 @@ describe("invalid players", () => {
     expect(p.duplicates).toEqual(["players.csv: zidane-zinedine on rows 2, 4"]);
   });
 
-  it("include missing required cells and stray cells past the last column", () => {
-    const p = plan([HEADER, row({ ...ZIDANE, name: "" }) + ",oops"].join("\n"));
-    const problems = problemsFor(p, "zidane-zinedine");
-    expect(problems).toMatch(/name: is required/);
-    expect(problems).toMatch(/cell\(s\) past the last column \("oops"\)/);
+  it("include missing required cells", () => {
+    const p = plan([HEADER, row({ ...ZIDANE, name: "" })].join("\n"));
+    expect(problemsFor(p, "zidane-zinedine")).toMatch(/name: is required/);
   });
 
   it("keep their existing file untouched", () => {
@@ -397,6 +395,49 @@ describe("the CSV files themselves", () => {
     expect(run()).toBe(1);
     expect(output()).toMatch(/unknown column\(s\) club_gaols/);
     expect(existsSync(playersDir())).toBe(false);
+  });
+
+  it("fail the whole import on any row whose field count differs from the header", () => {
+    players(ZIDANE, KEEPER_OK);
+    // An unquoted comma in the source URL splits it across two fields.
+    write(
+      "image-log.csv",
+      `${IMAGE_HEADER}\n` +
+        "zidane-zinedine,zidane-2008.jpg,1600,2400,Jane Smith,CC-BY-4.0," +
+        "https://commons.wikimedia.org/wiki/File:Zidane,_2008.jpg,good\n",
+    );
+    write("focus.csv", "player_id,focus\nzidane-zinedine\n");
+    expect(run()).toBe(1);
+    const out = output();
+    expect(out).toMatch(
+      /image-log\.csv: row 2 has 9 fields, but the header has 8 — quote any value that contains a comma/,
+    );
+    expect(out).toMatch(/focus\.csv: row 2 has 1 fields, but the header has 2/);
+    expect(existsSync(playersDir())).toBe(false);
+  });
+
+  it("apply the field count to players.csv too, short rows included", () => {
+    write("players.csv", `${HEADER}\n${row(ZIDANE)},extra\n${row(KEEPER_OK).replace(/,+$/, "")}\n`);
+    expect(run()).toBe(1);
+    const out = output();
+    expect(out).toMatch(/players\.csv: row 2 has 23 fields, but the header has 22/);
+    expect(out).toMatch(/players\.csv: row 3 has 13 fields, but the header has 22/);
+    expect(existsSync(playersDir())).toBe(false);
+  });
+
+  it("read a quoted value containing commas as one field", () => {
+    players(ZIDANE);
+    write(
+      "image-log.csv",
+      `${IMAGE_HEADER}\n` +
+        'zidane-zinedine,zidane-2008.jpg,1600,2400,"Smith, Jane",CC-BY-4.0,' +
+        '"https://commons.wikimedia.org/wiki/File:Zidane,_2008.jpg","good, sharp"\n',
+    );
+    expect(run()).toBe(0);
+    expect(loadPlayer("zidane-zinedine").image).toMatchObject({
+      author: "Smith, Jane",
+      source: "https://commons.wikimedia.org/wiki/File:Zidane,_2008.jpg",
+    });
   });
 
   it("fail without players.csv", () => {

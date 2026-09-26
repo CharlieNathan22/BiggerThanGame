@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DWELL_MAX, DWELL_MIN, chooseStat, nextDwell, weightedPick } from "../wheel.js";
 import { createRng } from "../prng.js";
-import { STAT_KEYS } from "../stats.js";
+import { STAT_KEYS, TIER_WEIGHT } from "../stats.js";
 import type { StatKey } from "../types.js";
 
 describe("nextDwell", () => {
@@ -24,8 +24,8 @@ describe("weightedPick", () => {
   });
 
   it("divides a tier's share across its members rather than per stat", () => {
-    // One basic against two uncommon. Weights are 70 / 11 / 11, renormalised
-    // over the 92 actually present — so basic takes 70/92, not a flat 70%.
+    // One basic against two uncommon: the basic weight whole, the uncommon
+    // weight halved, renormalised over what is actually present.
     const rng = createRng("weights");
     const keys: StatKey[] = ["caps", "fee", "igoals"];
     const counts: Record<string, number> = { caps: 0, fee: 0, igoals: 0 };
@@ -34,13 +34,15 @@ describe("weightedPick", () => {
       const k = weightedPick(keys, rng);
       if (k) counts[k] = (counts[k] ?? 0) + 1;
     }
-    expect(counts.caps! / n).toBeCloseTo(70 / 92, 2);
-    expect(counts.fee! / n).toBeCloseTo(11 / 92, 2);
-    expect(counts.igoals! / n).toBeCloseTo(11 / 92, 2);
+    const total = TIER_WEIGHT.basic + TIER_WEIGHT.uncommon;
+    expect(counts.caps! / n).toBeCloseTo(TIER_WEIGHT.basic / total, 2);
+    expect(counts.fee! / n).toBeCloseTo(TIER_WEIGHT.uncommon / 2 / total, 2);
+    expect(counts.igoals! / n).toBeCloseTo(TIER_WEIGHT.uncommon / 2 / total, 2);
   });
 
-  it("hits the documented percentages when every stat is viable", () => {
-    // DESIGN.md §6: basic ~17% each, uncommon ~11% each, rare ~2% each.
+  it("gives each stat its tier weight divided by the tier's size, when every stat is viable", () => {
+    // Per spin, not per round played: the opening stat and dwell reshape the
+    // per-round mix, which simulation.md measures against TIER_TARGET.
     const rng = createRng("full");
     const counts = new Map<StatKey, number>();
     const n = 200_000;
@@ -48,9 +50,9 @@ describe("weightedPick", () => {
       const k = weightedPick(STAT_KEYS, rng);
       if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
     }
-    expect((counts.get("caps") ?? 0) / n).toBeCloseTo(0.175, 2);
-    expect((counts.get("fee") ?? 0) / n).toBeCloseTo(0.11, 2);
-    expect((counts.get("clubs") ?? 0) / n).toBeCloseTo(0.02, 2);
+    expect((counts.get("caps") ?? 0) / n).toBeCloseTo(TIER_WEIGHT.basic / 4 / 100, 2);
+    expect((counts.get("fee") ?? 0) / n).toBeCloseTo(TIER_WEIGHT.uncommon / 2 / 100, 2);
+    expect((counts.get("clubs") ?? 0) / n).toBeCloseTo(TIER_WEIGHT.rare / 4 / 100, 2);
   });
 
   it("gives every member of a tier the same share", () => {
@@ -73,7 +75,6 @@ describe("chooseStat", () => {
     for (let i = 0; i < 200; i++) {
       const next = chooseStat({
         current: "caps",
-        round: 20,
         viable: STAT_KEYS,
         rng: createRng(`seed-${i}`),
       });
@@ -85,7 +86,6 @@ describe("chooseStat", () => {
     for (let i = 0; i < 500; i++) {
       const next = chooseStat({
         current: "caps",
-        round: 20,
         viable: ["apps", "igoals", "ig"],
         rng: createRng(`corr-${i}`),
       });
@@ -94,7 +94,6 @@ describe("chooseStat", () => {
     for (let i = 0; i < 500; i++) {
       const next = chooseStat({
         current: "club_goals",
-        round: 20,
         viable: ["igoals", "caps", "ig"],
         rng: createRng(`corr2-${i}`),
       });
@@ -102,36 +101,60 @@ describe("chooseStat", () => {
     }
   });
 
-  it("bars band-exempt stats from the opening rounds", () => {
-    for (let i = 0; i < 300; i++) {
-      const next = chooseStat({
-        current: "caps",
-        round: 3,
-        viable: ["clubs", "age", "it", "apps"],
-        rng: createRng(`early-${i}`),
-      });
-      expect(next).toBe("apps");
-    }
-  });
-
-  it("allows band-exempt stats later", () => {
+  it("may switch to a rare stat — no stat is barred by round any more", () => {
     const picks = new Set<StatKey>();
     for (let i = 0; i < 300; i++) {
       const next = chooseStat({
         current: "caps",
-        round: 30,
         viable: ["clubs", "age", "it"],
-        rng: createRng(`late-${i}`),
+        rng: createRng(`r-${i}`),
       });
       if (next) picks.add(next);
     }
-    expect(picks.size).toBeGreaterThan(0);
+    expect(picks).toEqual(new Set(["clubs", "age", "it"]));
+  });
+
+  it("never follows a rare stat with another rare stat while an alternative exists", () => {
+    for (let i = 0; i < 500; i++) {
+      const next = chooseStat({
+        current: "ct",
+        viable: ["it", "clubs", "age", "caps"],
+        rng: createRng(`rare-${i}`),
+      });
+      expect(next).toBe("caps");
+    }
+  });
+
+  it("falls back to another rare stat when nothing else is viable", () => {
+    const picks = new Set<StatKey>();
+    for (let i = 0; i < 300; i++) {
+      const next = chooseStat({
+        current: "ct",
+        viable: ["ct", "it", "clubs"],
+        rng: createRng(`rare-only-${i}`),
+      });
+      expect(next).toBeDefined();
+      picks.add(next!);
+    }
+    expect(picks).toEqual(new Set(["it", "clubs"]));
+  });
+
+  it("still switches from a basic or uncommon stat to a rare one", () => {
+    const picks = new Set<StatKey>();
+    for (let i = 0; i < 300; i++) {
+      const next = chooseStat({
+        current: "fee",
+        viable: ["ct", "caps"],
+        rng: createRng(`to-${i}`),
+      });
+      if (next) picks.add(next);
+    }
+    expect(picks).toContain("ct");
   });
 
   it("falls back to a correlated stat rather than stalling", () => {
     const next = chooseStat({
       current: "caps",
-      round: 20,
       viable: ["apps"],
       rng: rng(),
     });
@@ -139,12 +162,6 @@ describe("chooseStat", () => {
   });
 
   it("returns undefined when nothing at all is viable", () => {
-    expect(chooseStat({ current: "caps", round: 20, viable: [], rng: rng() })).toBeUndefined();
-  });
-
-  it("returns undefined when only barred stats are viable early", () => {
-    expect(
-      chooseStat({ current: "caps", round: 2, viable: ["clubs"], rng: rng() }),
-    ).toBeUndefined();
+    expect(chooseStat({ current: "caps", viable: [], rng: rng() })).toBeUndefined();
   });
 });

@@ -3,28 +3,27 @@
 Generated 2026-09-26 from 77 players.
 
 Counts are **unordered pairs that clear the band**, before the recently-seen
-queue takes its cut. A stat showing 0 at a band cannot be dealt there and will
-force relaxation every time the wheel picks it.
+queue takes its cut. Bands are in rank distance — how far apart two players sit
+in the deck's spread for the stat — and Instagram also needs the volatility floor,
+exactly as the engine deals them. A stat showing 0 at a band cannot be dealt there
+and will force relaxation every time the wheel picks it.
 
 | Stat | Eligible | Distinct | Tied pairs | opening | early | middle | late | hard | knife edge |
 |---|---|---|---|---|---|---|---|---|---|
-| Club goals | 73 | 66 | 8 | 1012 | 975 | 995 | 897 | 714 | 458 |
-| Caps | 77 | 62 | 15 | 45 | 127 | 387 | 656 | 1023 | 1080 |
-| Club appearances | 77 | 74 | 3 | 0 | 0 | 5 | 47 | 262 | 778 |
-| Instagram followers | 66 | 60 | 7 | 1399 | 748 | 579 | 461 | 351 | 226 |
-| Highest transfer fee | 61 | 55 | 6 | 1006 | 635 | 511 | 402 | 351 | 269 |
-| International goals | 73 | 42 | 49 | 1068 | 1048 | 997 | 871 | 715 | 506 |
-| Club trophies | 77 | 30 | 96 | 498 | 603 | 855 | 901 | 981 | 874 |
-| International trophies * | 77 | 6 | 741 | 2185 | 2185 | 2185 | 2185 | 2185 | 2185 |
-| Clubs played for * | 77 | 13 | 327 | 2599 | 2599 | 2599 | 2599 | 2599 | 2599 |
-| Age * | 69 | 26 | 78 | 2268 | 2268 | 2268 | 2268 | 2268 | 2268 |
-
-`*` band-exempt — matched on tie exclusion alone, so every band shows the same count.
+| Club goals | 73 | 66 | 8 | 825 | 1272 | 1276 | 1021 | 911 | 494 |
+| Caps | 77 | 62 | 15 | 917 | 1414 | 1409 | 1147 | 1013 | 536 |
+| Club appearances | 77 | 74 | 3 | 907 | 1424 | 1407 | 1142 | 1034 | 560 |
+| Instagram followers | 66 | 60 | 7 | 671 | 1018 | 997 | 685 | 427 | 56 |
+| Highest transfer fee | 61 | 55 | 6 | 581 | 889 | 890 | 712 | 639 | 343 |
+| International goals | 73 | 42 | 49 | 824 | 1240 | 1260 | 1028 | 892 | 504 |
+| Club trophies | 77 | 30 | 96 | 920 | 1403 | 1399 | 1142 | 1033 | 484 |
+| International trophies | 77 | 6 | 741 | 875 | 1586 | 1182 | 1205 | 372 | 70 |
+| Clubs played for | 77 | 13 | 327 | 865 | 1608 | 1406 | 1212 | 806 | 267 |
+| Age | 69 | 26 | 78 | 742 | 1095 | 1134 | 922 | 858 | 423 |
 
 ## Problems
 
-- **Club appearances** has no valid pair at the opening band (1–10).
-- **Club appearances** has no valid pair at the early band (11–18).
+None. Every stat can be dealt at every band.
 
 ## Iconic preference
 
@@ -33,14 +32,18 @@ force relaxation every time the wheel picks it.
 | Stat | Iconic eligible | Anchors with an iconic challenger |
 |---|---|---|
 | Club goals | 38 | 73 of 73 (100%) |
-| Caps | 41 | 35 of 77 (45%) |
-| Club appearances | 41 | 0 of 77 (0%) |
+| Caps | 41 | 77 of 77 (100%) |
+| Club appearances | 41 | 77 of 77 (100%) |
 | Instagram followers | 39 | 66 of 66 (100%) |
 | Highest transfer fee | 33 | 61 of 61 (100%) |
 | International goals | 38 | 73 of 73 (100%) |
 | Club trophies | 41 | 77 of 77 (100%) |
+| International trophies | 41 | 77 of 77 (100%) |
+| Clubs played for | 41 | 77 of 77 (100%) |
+| Age | 35 | 69 of 69 (100%) |
 
-Band-exempt stats are left out: they cannot be dealt in the opening rounds.
+Rare stats never open a run, but the wheel can switch to them at round 3, well
+inside every mode's window, so they are listed too.
 
 ## Stat correlation
 

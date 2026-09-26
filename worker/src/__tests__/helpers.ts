@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { valueOf } from "@bt/core";
 import type { AnswerResponse, Guess, Player, RoundPayload, StartResponse } from "@bt/core";
-import { loadDeck } from "@bt/deck";
+import { loadSampleDeck } from "@bt/deck";
 import { fixtureDeck } from "../../../packages/core/src/__fixtures__/deck.js";
 import type { ImageLookup } from "../payload.js";
 import { handleNextRound } from "../round.js";
@@ -27,8 +27,12 @@ const deckRoot = resolve(
   "deck",
 );
 
-/** The committed 24-player sample deck — realistic spread of stats and positions. */
-export const SAMPLE_DECK: readonly Player[] = loadDeck(deckRoot).players;
+/**
+ * The committed 24-player sample deck — realistic spread of stats and
+ * positions. Loaded directly: `loadDeck` would pick the private deck once it
+ * reaches MIN_PRIVATE_DECK, and tests must not change with the owner's data.
+ */
+export const SAMPLE_DECK: readonly Player[] = loadSampleDeck(deckRoot).players;
 export const FIXTURE_DECK: readonly Player[] = fixtureDeck;
 
 /** Deterministic, well-formed v4-style uuids. */

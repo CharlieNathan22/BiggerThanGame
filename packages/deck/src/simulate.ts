@@ -12,11 +12,37 @@
  * **The streak distribution rests on a model of player skill**, and that model
  * is an assumption, not data. See `pCorrect` below. Treat the shape of the
  * distribution as informative and the absolute numbers as indicative until real
- * play replaces them.
+ * play replaces them (M5c).
  */
 
-import { ICONIC_ROUNDS, STATS, STAT_KEYS, buildRun, createRng, valueOf } from "@bt/core";
+import {
+  ICONIC_ROUNDS,
+  STATS,
+  STAT_KEYS,
+  TIER_TARGET,
+  buildRun,
+  createRng,
+  percentiles,
+  rankDistance,
+  valueOf,
+} from "@bt/core";
 import type { Mode, Player, Relaxation, Round } from "@bt/core";
+
+/**
+ * Round ranges for the per-range firing table. The opening stat dominates the
+ * first, so the overall rates hide how concentrated the later rounds are.
+ */
+export const ROUND_RANGES: ReadonlyArray<{ label: string; from: number; to: number }> = [
+  { label: "1–5", from: 1, to: 5 },
+  { label: "6–10", from: 6, to: 10 },
+  { label: "11–20", from: 11, to: 20 },
+  { label: "21+", from: 21, to: Infinity },
+];
+
+/** Which range a 1-based round falls in. */
+export function rangeOf(index: number): string {
+  return ROUND_RANGES.find((r) => index >= r.from && index <= r.to)!.label;
+}
 
 /** Every mode, in the order the report shows them. */
 export const SIM_MODES = Object.keys(ICONIC_ROUNDS) as Mode[];
@@ -30,20 +56,24 @@ function emptyRelaxationCounts(): Record<Relaxation, number> {
 /**
  * Modelled probability that a player answers a round correctly.
  *
- * A pair with no gap is a coin flip; a blowout is near-certain. Between those,
- * skill rises with the relative gap. `HALF_GAP` is the gap at which the player
- * is halfway between guessing and their ceiling.
+ * Measured in **rank distance** (ramp.ts), the same scale the bands use: two
+ * players at the same point in the deck's spread are a coin flip; opposite ends
+ * are near-certain. Between those, skill rises with the distance. `HALF_GAP`
+ * is the distance at which the player is halfway between guessing and their
+ * ceiling — a fifth of the deck apart.
  *
- * Both constants are guesses. Tune them once real play gives an observed
- * accuracy-by-band curve — the telemetry in ARCHITECTURE.md §12 logs exactly
- * that.
+ * The model, and both constants, are an **assumption**, not data. The earlier
+ * model measured a ratio, which scored every club-appearances pair as a near
+ * coin flip because legends' figures sit within 2x of each other. Replace this
+ * with the observed accuracy-by-band curve from real play (M5c) — the
+ * telemetry in ARCHITECTURE.md §12 logs exactly that.
  */
 export const SKILL_CEILING = 0.95;
-export const HALF_GAP = 1.0;
+export const HALF_GAP = 0.2;
 
-export function pCorrect(gapRatio: number): number {
-  if (!Number.isFinite(gapRatio)) return SKILL_CEILING;
-  const share = gapRatio / (gapRatio + HALF_GAP);
+export function pCorrect(distance: number): number {
+  if (!(distance > 0)) return 0.5;
+  const share = distance / (distance + HALF_GAP);
   return 0.5 + (SKILL_CEILING - 0.5) * share;
 }
 
@@ -77,6 +107,10 @@ export interface SimResult {
   readonly maxConstructible: number;
   /** Relaxation rate per 10-round bucket. */
   readonly relaxationByBucket: Readonly<Record<string, number>>;
+  /** Rounds played before the first stat change — the opening stat's share. */
+  readonly openingStatRounds: number;
+  /** Rounds played per round range (`ROUND_RANGES`), per stat. */
+  readonly statCountsByRange: Readonly<Record<string, Readonly<Record<string, number>>>>;
 }
 
 function quantile(sorted: readonly number[], q: number): number {
@@ -89,15 +123,11 @@ function quantile(sorted: readonly number[], q: number): number {
   return a + (b - a) * (pos - lo);
 }
 
-function gapOf(round: Round, now: Date): number {
+function distanceOf(round: Round, deck: readonly Player[], now: Date): number {
   const a = valueOf(round.anchor, round.stat, now);
   const b = valueOf(round.challenger, round.stat, now);
   if (a === undefined || b === undefined) return 0;
-  if (a === b) return 0;
-  const hi = Math.max(a, b);
-  const lo = Math.min(a, b);
-  if (lo <= 0) return Infinity;
-  return hi / lo - 1;
+  return rankDistance(percentiles(deck, round.stat, now), a, b);
 }
 
 export function simulate(opts: SimOptions): SimResult {
@@ -114,6 +144,12 @@ export function simulate(opts: SimOptions): SimResult {
   for (const key of STAT_KEYS) statCounts[key] = 0;
 
   let roundsDealt = 0;
+  let openingStatRounds = 0;
+  const statCountsByRange: Record<string, Record<string, number>> = {};
+  for (const { label } of ROUND_RANGES) {
+    statCountsByRange[label] = {};
+    for (const key of STAT_KEYS) statCountsByRange[label]![key] = 0;
+  }
   let exhausted = 0;
   let maxConstructible = 0;
 
@@ -125,10 +161,15 @@ export function simulate(opts: SimOptions): SimResult {
     // A separate stream for the skill model, so it cannot perturb the sequence.
     const rng = createRng(`${seed}:skill`);
     let streak = 0;
+    let stillOpening = true;
 
     for (const round of rounds) {
       roundsDealt += 1;
+      if (round.statChanged) stillOpening = false;
+      if (stillOpening) openingStatRounds += 1;
       statCounts[round.stat] = (statCounts[round.stat] ?? 0) + 1;
+      const inRange = statCountsByRange[rangeOf(round.index)]!;
+      inRange[round.stat] = (inRange[round.stat] ?? 0) + 1;
       relaxationCounts[round.relaxation] += 1;
       if (round.index <= windowEnd) iconicWindow[round.relaxation] += 1;
 
@@ -138,7 +179,7 @@ export function simulate(opts: SimOptions): SimResult {
       if (round.relaxation !== "none") entry.relaxed += 1;
       bucketTotals.set(bucket, entry);
 
-      if (rng.next() < pCorrect(gapOf(round, opts.now))) {
+      if (rng.next() < pCorrect(distanceOf(round, opts.deck, opts.now))) {
         streak += 1;
       } else {
         break;
@@ -168,6 +209,8 @@ export function simulate(opts: SimOptions): SimResult {
     exhausted,
     maxConstructible,
     relaxationByBucket,
+    openingStatRounds,
+    statCountsByRange,
   };
 }
 
@@ -209,8 +252,10 @@ export function simulationReport(
   );
   lines.push("");
   lines.push("> Streaks come from a **modelled** player: correct with probability rising from");
-  lines.push("> 0.5 at no gap to 0.95 at a blowout. That model is an assumption. The shape is");
-  lines.push("> informative; the absolute numbers are not, until real play replaces them.");
+  lines.push("> 0.5 for two players at the same point in the deck's spread to 0.95 for opposite");
+  lines.push("> ends, measured in rank distance like the bands. **That model is an assumption**,");
+  lines.push("> to be replaced by the accuracy curve observed in real play (M5c). The shape is");
+  lines.push("> informative; the absolute numbers are not, until then.");
   lines.push("");
 
   lines.push("## Streak distribution");
@@ -240,23 +285,76 @@ export function simulationReport(
 
   lines.push("## Stat firing rates");
   lines.push("");
-  lines.push("What the wheel actually produced, after tie exclusion and band filtering had");
-  lines.push("their say. Compare against the intended 17.5 / 11 / 2 per stat.");
+  lines.push("Share of rounds played on each stat, after tie exclusion and band filtering had");
+  lines.push("their say, against the per-stat target for its tier (`TIER_TARGET`). The wheel's");
+  lines.push("tier weights are tuned to land within about two points of it.");
   lines.push("");
-  lines.push(...header("Stat", "Tier", "Intended"));
-  const intended = { basic: 17.5, uncommon: 11, rare: 2 } as const;
+  lines.push(...header("Stat", "Tier", "Target"));
   for (const key of STAT_KEYS) {
     const tier = STATS[key].tier;
     lines.push(
       row(
         STATS[key].label,
         tier,
-        `${intended[tier]}%`,
+        `${TIER_TARGET[tier]}%`,
         ...results.map((r) => pct(r.statCounts[key] ?? 0, r.roundsDealt)),
       ),
     );
   }
+  lines.push(
+    row(
+      "_Rounds on the opening stat_",
+      "",
+      "",
+      ...results.map((r) => pct(r.openingStatRounds, r.roundsDealt)),
+    ),
+  );
   lines.push("");
+  lines.push("The opening stat — basic or uncommon, never rare — always holds for rounds 1 and");
+  lines.push("2, and most runs are short, so it covers a large share of all rounds. That is why");
+  lines.push("rare stats need a much larger wheel weight than their target suggests.");
+  lines.push("");
+
+  const friendly = results.find((r) => r.mode === "friendly");
+  if (friendly !== undefined) {
+    lines.push("### By round range (Friendly)");
+    lines.push("");
+    lines.push("Share of the rounds played in each range. Rare stats never open a run, so they");
+    lines.push("are absent from rounds 1–2 and would concentrate later without the wheel's");
+    lines.push("no-rare-after-rare rule. The rare row is the tier together, which should stay");
+    lines.push("under about 30% in every range.");
+    lines.push("");
+    const rangeTotal = (label: string): number =>
+      STAT_KEYS.reduce((sum, key) => sum + (friendly.statCountsByRange[label]?.[key] ?? 0), 0);
+    const cells = ["Stat", "Tier", ...ROUND_RANGES.map((r) => `Rounds ${r.label}`)];
+    lines.push(`| ${cells.join(" | ")} |`, `|${cells.map(() => "---").join("|")}|`);
+    for (const key of STAT_KEYS) {
+      lines.push(
+        row(
+          STATS[key].label,
+          STATS[key].tier,
+          ...ROUND_RANGES.map((r) =>
+            pct(friendly.statCountsByRange[r.label]?.[key] ?? 0, rangeTotal(r.label)),
+          ),
+        ),
+      );
+    }
+    const rare = STAT_KEYS.filter((key) => STATS[key].tier === "rare");
+    lines.push(
+      row(
+        "**Rare, together**",
+        "",
+        ...ROUND_RANGES.map((r) =>
+          pct(
+            rare.reduce((sum, key) => sum + (friendly.statCountsByRange[r.label]?.[key] ?? 0), 0),
+            rangeTotal(r.label),
+          ),
+        ),
+      ),
+    );
+    lines.push(row("_Rounds played_", "", ...ROUND_RANGES.map((r) => String(rangeTotal(r.label)))));
+    lines.push("");
+  }
 
   lines.push("## Iconic preference");
   lines.push("");

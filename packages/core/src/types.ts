@@ -82,12 +82,18 @@ export interface Player {
 }
 
 /**
- * Required distance between the two values, as a ratio: `max / min - 1`.
- * A larger floor means an easier round. `ceiling: null` means uncapped.
+ * Required distance between the two values, in rank distance: how far apart
+ * they sit in the deck's spread for the stat, 0 to 1 (see ramp.ts). A larger
+ * floor means an easier round. `ceiling: null` means uncapped.
  */
 export interface Band {
   readonly floor: number;
   readonly ceiling: number | null;
+  /**
+   * Smallest ratio gap (`max / min - 1`) allowed on top of the rank band. Set
+   * for volatile stats only — the volatility floor.
+   */
+  readonly minRatio?: number;
 }
 
 export type Relaxation = "none" | "iconic" | "band" | "seen";

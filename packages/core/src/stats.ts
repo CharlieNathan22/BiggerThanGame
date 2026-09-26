@@ -12,13 +12,7 @@ export interface StatDef {
   /** Shown on the plaque. */
   readonly label: string;
   readonly tier: Tier;
-  /**
-   * Matched on tie-exclusion alone, with no band, because the whole range is
-   * a handful of values. Band-exempt stats are barred from the opening rounds
-   * (see ramp.ts) so a rare one can't end a run during the easy phase.
-   */
-  readonly bandExempt?: boolean;
-  /** Can still move between deck refreshes, so it needs a wider floor. */
+  /** Can still move between deck refreshes, so it needs a ratio floor too (ramp.ts). */
   readonly volatile?: boolean;
   /** Returns undefined when the player has no figure for this stat. */
   get(player: Player, now: Date): number | undefined;
@@ -98,7 +92,6 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     key: "it",
     label: "International trophies",
     tier: "rare",
-    bandExempt: true,
     get: (p) => p.stats.it,
     format: int,
   },
@@ -106,7 +99,6 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     key: "clubs",
     label: "Clubs played for",
     tier: "rare",
-    bandExempt: true,
     get: (p) => p.stats.clubs,
     format: int,
   },
@@ -114,7 +106,6 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     key: "age",
     label: "Age",
     tier: "rare",
-    bandExempt: true,
     get: (p, now) => (p.deceased === true ? undefined : ageAt(p.dob, now)),
     format: int,
   },
@@ -123,14 +114,33 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
 export const STAT_KEYS: readonly StatKey[] = Object.keys(STATS) as StatKey[];
 
 /**
- * Share of spins per tier. Divided across each tier's members, never applied
+ * Target share of rounds played, **per stat**, by tier (DESIGN.md §7): four
+ * basic stats at 15%, two uncommon at 10%, four rare at 5%. No stat should
+ * fall below 5%. simulation.md reports the actual rates against these.
+ */
+export const TIER_TARGET: Readonly<Record<Tier, number>> = {
+  basic: 15,
+  uncommon: 10,
+  rare: 5,
+};
+
+/**
+ * Wheel weight per tier. Divided across each tier's members, never applied
  * per stat — with 4 basic and 2 uncommon, a naive per-stat weighting would
  * give basic twice uncommon's share. This was a real bug in the prototype.
+ *
+ * These are **inputs, tuned to hit an output**: the target is 15% of rounds
+ * per basic stat, 10% per uncommon and 5% per rare (DESIGN.md §7). Rare is
+ * weighted far above its target because rare stats never open a run, and the
+ * opening stat covers about 30% of all rounds played. The wheel never follows
+ * a rare stat with another, which keeps them from crowding later rounds.
+ * Re-tune against simulation.md's firing tables — overall and by round range —
+ * not by reasoning about these numbers.
  */
 export const TIER_WEIGHT: Readonly<Record<Tier, number>> = {
-  basic: 70,
-  uncommon: 22,
-  rare: 8,
+  basic: 42,
+  uncommon: 15,
+  rare: 43,
 };
 
 /**
@@ -138,14 +148,18 @@ export const TIER_WEIGHT: Readonly<Record<Tier, number>> = {
  * because winning on one usually means winning on the other, which kills the
  * dissonance the stat switch exists to create.
  *
- * **Driven by viability.md's correlation report, not by intuition.** The first
- * version of this list paired caps with international goals and club goals with
- * appearances; the report showed the real pairs run the other way — goals
- * correlate with goals, appearances with appearances. Re-read the report after
- * every substantial deck change and update this list to match.
+ * **Driven by viability.md's correlation report, not by intuition** — with one
+ * deliberate exception, marked below. The first version of this list paired
+ * caps with international goals and club goals with appearances; the report
+ * showed the real pairs run the other way — goals correlate with goals,
+ * appearances with appearances. Re-read the report after every substantial
+ * deck change and update this list to match.
  */
 export const CORRELATED_PAIRS: ReadonlyArray<readonly [StatKey, StatKey]> = [
   ["club_goals", "igoals"],
+  // Kept by design, not by the report: caps and appearances rank only
+  // moderately together, but both measure career length, and asking one
+  // straight after the other feels like the same question twice.
   ["caps", "apps"],
 ];
 

@@ -21,7 +21,9 @@ implementation.
 3. **Precompute everything that can be precomputed**, but understand that at a few hundred players
    the value is build-time validation and tuning insight, not runtime speed.
    `ramp.ts` returns a **band** (floor and ceiling), not a floor. A floor alone does not create a
-   ramp — see `DESIGN.md` §8. The first band has no ceiling; every later band does.
+   ramp — see `DESIGN.md` §8. The first band has no ceiling; every later band does. Bands are in
+   **rank distance**: each stat's percentile table is computed from the deck and `now`, memoised
+   per deck, and identical in every runtime, so the sequence stays a function of seed and mode.
 4. **One deployment.** Static assets and API in a single Worker.
 5. **The game core is framework-free TypeScript**, imported unchanged by the browser, the Worker
    and the Node test harness.
@@ -69,7 +71,7 @@ bucket — see section 9.
 │   ├── core/              # framework-free TS — the game
 │   │   ├── prng.ts        # seeded PRNG (mulberry32), never Math.random
 │   │   ├── engine.ts      # matching engine, eligibility, tie exclusion
-│   │   ├── ramp.ts        # gap bands by round, relaxation order
+│   │   ├── ramp.ts        # rank-distance bands by round, relaxation order
 │   │   ├── wheel.ts       # tier-weighted stat selection, correlated-pair exclusion
 │   │   ├── sequence.ts    # deterministic round sequence from a seed
 │   │   ├── api.ts         # /api/round/next request and response types, shared with the web app
@@ -248,8 +250,11 @@ from them. The column format is in `players-csv-format.md` at the repo root.
   row's existing file is left as it was.
 - **Parsing is strict.** CSV is read by a small hand-written RFC 4180 parser (`csv.ts`: quotes,
   BOM, CRLF), with no dependency. Headers must be exactly the known columns — a misspelt header
-  would otherwise read as a column of blanks. Numbers must be plain (`1,234`, `€77m` and
-  `506 apps` are refused, naming row, column and value). Lists split on `;` and refuse commas.
+  would otherwise read as a column of blanks. **Every row must have exactly the header's field
+  count**, in all three files; any other count stops the import, naming the file, row and count.
+  An unquoted comma in a source URL once split it across columns, cutting off the credit link.
+  Numbers must be plain (`1,234`, `€77m` and `506 apps` are refused, naming row, column and
+  value). Lists split on `;` and refuse commas.
   Blank means omitted; `0` is kept.
 - **Pairs.** `ig_millions` and `ig_as_of` come together or not at all. `fee_eur_m` without
   `fee_year` is a **warning**: the fee is left out, the rest of the player imported, and the report
@@ -311,25 +316,31 @@ bundle as readily as on JSON, and it must not trust any object's shape.
 Note that **image URLs are display data, not stat values**, and reach the client freely. The
 scanner only looks for numbers.
 
-Band-exempt stats (`clubs`, and any other flagged narrow stat) are matched on tie exclusion alone
-and are **barred from the first 10 rounds** — otherwise a rare stat landing at round 3 ends a run
-during the phase meant to build confidence.
+**Every stat is banded**, rare ones included, and none is barred by round. Rank distance is what
+made that possible: `clubs` or `it` spanning a handful of small integers still spreads across the
+0–1 scale, so a band means something. Rare stats never _open_ a run (`sequence.ts`), but the wheel
+can switch to them from the first switch, at round 3 — never straight after another rare stat
+while an alternative exists (`wheel.ts`).
 
 `viability.md` also reports **pairwise correlation between stats**, which is what identifies
-candidates for the correlated-pair exclusion in `wheel.ts`. `caps`/`igoals` and
-`club_goals`/`apps` are the expected pairs and must never be switched between directly — confirm
-the full list from the report rather than assuming it (see `DESIGN.md` §10).
+candidates for the correlated-pair exclusion in `wheel.ts`. `club_goals`/`igoals` comes from the
+report; `caps`/`apps` is kept by design — both measure career length — even though the report
+ranks them only moderately together (see `DESIGN.md` §10).
 
 `viability.md` reports per stat **and per band** — not per floor — since a band can be empty even
-when a floor is well populated. With ten stats and four of them rare and tie-prone, it is what tells
-you which stats can actually fire at the late bands, and whether the 30–80% band is reachable at
-all. Read it after every deck change.
+when a floor is well populated. It counts pairs with the engine's own test, `pairFits` on
+`bandFor(stat, round)`, so Instagram's volatility floor is included and the report can't promise a
+pair the engine won't deal. Read it after every deck change.
 
 `simulation.md` runs the real engine 10,000 times per mode over the compiled deck, on the same
-seeds for every mode, and reports the streak histogram, how often each stat actually fires after
-tie and gap filtering, and how often the early-round iconic preference had to fall back to the
-whole deck. This is how the ramp and tier weights get tuned — not by guessing. `viability.md`
-adds the static side: per stat, how many anchors have any iconic challenger in the opening band.
+seeds for every mode, and reports the streak histogram, each stat's share of rounds played against
+its `TIER_TARGET`, the opening stat's share, the same mix by round range for Friendly (rounds 1–5,
+6–10, 11–20, 21+, with the rare tier's total — overall rates hide how concentrated later rounds
+are), and how often the early-round iconic preference had to fall back to the whole deck. This is
+how the ramp and tier weights get tuned — not by guessing.
+Its streaks come from a **modelled player** whose accuracy rises with rank distance; that model is
+an assumption until real play data replaces it (M5c). `viability.md` adds the static side: per
+stat, how many anchors have any iconic challenger in the opening band.
 
 ---
 
@@ -568,16 +579,22 @@ img.biggerthangame.com/cdn-cgi/image/width=800,quality=80,fit=scale-down,
   and maps id → key, width, height and source
   hash. It stores keys, never URLs — the domain comes from config. It exists so `pnpm build` stays
   offline: the build checks that deck and manifest agree and never touches the network.
-- **Image Transformations** (enabled on the `biggerthangame.com` zone, sources restricted to that
-  zone) resize and convert on first request and cache the result at the edge. `format=auto` serves
-  AVIF or WebP by `Accept` header and counts as **one** transformation. `fit=scale-down` never
-  enlarges. `onerror=redirect` falls back to the original rather than a broken image.
+- **Image Transformations** (enabled on the `biggerthangame.com` zone, sources restricted to the
+  photo path on this zone) resize and convert on first request and cache the result at the edge.
+  `format=auto` serves AVIF or WebP by `Accept` header and counts as **one** transformation.
+  `fit=scale-down` never enlarges. `onerror=redirect` falls back to the original rather than a
+  broken image.
 - **Two widths only: 800 and 1600.** Every distinct URL is a separate transformation against the
   free allowance of 5,000 a month; 300 players × 2 widths is 600. Widths are fixed constants
   (`DISPLAY_WIDTHS`), **never computed per device**. Past the allowance, new transformations fail
   and `onerror=redirect` serves the original — slower, never broken, never billed on the free plan.
 - **`srcset` across both widths**, built by `srcsetFor(base, key)`, with `width`/`height` from the
   manifest so the card reserves its box and does not jump.
+- **`img.` is protected by Cloudflare rules** that the owner configures in the dashboard. They
+  depend on the exact image URL format, and they are deliberately not described here.
+
+The image URL format (DISPLAY_WIDTHS, the transform options and their order) must not change
+without the owner updating the Cloudflare configuration first.
 
 Sync validates every source before uploading anything: exists, readable, shortest edge ≥ 800px
 (`MIN_IMAGE_EDGE`), aspect ≤ 3:1, no two players sharing a file. It is idempotent — unchanged hashes
@@ -706,15 +723,18 @@ path entirely — the board is the same for everyone, so it should be served fro
 - **Shadow-flagging, not blocking.** A flagged score submits and is quietly excluded from the
   public board. Visible rejection just tells a cheater to iterate.
 
-### Telemetry signals (Workers Analytics Engine)
+### Telemetry signals
 
-Log per round: stat, gap band, round number, server-measured elapsed time, correctness. This gives
-you both the anti-cheat signals and the ramp-tuning data from one pipeline.
+M5c adds **Workers Logs** for errors and warnings, and **Workers Analytics Engine** for one data
+point per answered round (mode, round, stat, band, correct, streak, country; no IP, user agent or
+hidden values). The full schema arrives with M5c's Observability section.
 
-Bot detection is **behavioural, not structural** — the stats are public facts, so a script with its
-own copy of the data can always answer correctly. What it cannot easily fake is human timing
-variance. A run of sub-400ms answers at the 30% gap band is not a person. Perfect accuracy at the
-knife-edge bands is a second signal.
+**Phase 5 note — bot timing.** Bot detection is **behavioural, not structural**: the stats are
+public facts, so a script with its own copy of the data can always answer correctly. What it cannot
+easily fake is human timing variance — a run of sub-400ms answers at the knife-edge band is not a
+person, and perfect accuracy at the late bands is a second signal. Using server-measured answer
+time this way needs a per-round timestamp that M5c does not record; add it with the Phase 5
+anti-cheat work, under the same no-personal-data rule.
 
 ---
 
@@ -788,7 +808,7 @@ current numbers against Cloudflare's pricing page before launch.
 
 ## 17. Build order
 
-Note that **images are v1 scope**, and licence verification across ~400 players is a long pole in
+Note that **images are v1 scope**, and licence verification across ~300 players is a long pole in
 its own right — see `DESIGN.md` §13. Friendly Mode ships on whatever the deck holds; players without a
 verified image render the monogram fallback.
 

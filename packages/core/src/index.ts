@@ -24,22 +24,32 @@ export type {
 export { createRng, hashSeed } from "./prng.js";
 export type { Rng } from "./prng.js";
 
-export { STATS, STAT_KEYS, TIER_WEIGHT, CORRELATED_PAIRS, areCorrelated, ageAt } from "./stats.js";
+export {
+  STATS,
+  STAT_KEYS,
+  TIER_TARGET,
+  TIER_WEIGHT,
+  CORRELATED_PAIRS,
+  areCorrelated,
+  ageAt,
+} from "./stats.js";
 export type { StatDef } from "./stats.js";
 
 export { isEligible, eligibleStats, buildEligibilityMap } from "./eligibility.js";
 export type { EligibilityMap } from "./eligibility.js";
 
 export {
-  BAND_EXEMPT_MIN_ROUND,
   VOLATILE_FLOOR,
   bandFor,
   bandForRound,
   gap,
+  pairFits,
+  percentiles,
+  rankDistance,
   relaxations,
-  statAllowedAtRound,
   withinBand,
 } from "./ramp.js";
+export type { Percentiles } from "./ramp.js";
 
 export { SEEN_DEPTH, candidates, remember, selectChallenger, valueOf } from "./engine.js";
 export type { Match, MatchContext } from "./engine.js";
@@ -47,7 +57,14 @@ export type { Match, MatchContext } from "./engine.js";
 export { DWELL_MAX, DWELL_MIN, chooseStat, nextDwell, weightedPick } from "./wheel.js";
 export type { WheelOptions } from "./wheel.js";
 
-export { ICONIC_ROUNDS, MAX_ROUNDS, buildRun, labelFor, roundAt } from "./sequence.js";
+export {
+  ICONIC_ROUNDS,
+  MAX_ROUNDS,
+  OPENING_DWELL,
+  buildRun,
+  labelFor,
+  roundAt,
+} from "./sequence.js";
 export type { RunOptions } from "./sequence.js";
 
 export { DISPLAY_WIDTHS, IMAGE_QUALITY, imageUrl, originalUrl, srcsetFor } from "./images.js";

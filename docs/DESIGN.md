@@ -285,23 +285,23 @@ engine.
 
 Three tiers, three hues, readable in under a second on a phone.
 
-| Tier     | Colour           | Roughly      | Character                        |
-| -------- | ---------------- | ------------ | -------------------------------- |
-| Basic    | Gold `#FFC24D`   | 70% of spins | Wide range, large pool, reliable |
-| Uncommon | Blue `#5AB9F0`   | 22%          | Narrower, some tie exclusion     |
-| Rare     | Violet `#C77DFF` | 8%           | Tie-prone or restricted pool     |
+| Tier     | Colour           | Target, per stat   | Character                        |
+| -------- | ---------------- | ------------------ | -------------------------------- |
+| Basic    | Gold `#FFC24D`   | 15% of rounds each | Wide range, large pool, reliable |
+| Uncommon | Blue `#5AB9F0`   | 10% each           | Narrower, some tie exclusion     |
+| Rare     | Violet `#C77DFF` | 5% each            | Tie-prone or restricted pool     |
 
 **Weight by tier, not per stat.** Dividing the tier's share across its members is essential: with
 four basic stats, two uncommon and four rare, a naive per-stat weighting would give basic twice the
 share of uncommon and the uncommon stats would barely appear. This was a real bug in the prototype.
 
-With ten stats split 4 / 2 / 4, each basic stat fires roughly 17% of the time, each uncommon 11%,
-each rare 2%. Note that uncommon has only two members, so **highest transfer fee and international
-goals individually fire more often than any single rare stat** — worth remembering when judging how
-much verification each stat's data deserves.
+With ten stats split 4 / 2 / 4, the targets add up to 60% basic, 20% uncommon and 20% rare, and no
+stat falls below 5%. Note that **highest transfer fee and international goals individually fire
+twice as often as any single rare stat** — worth remembering when judging how much verification
+each stat's data deserves.
 
-The percentages above are a starting guess, not a finding — tune them once the deck is populated
-and you can see how often each stat actually clears the tie and gap filters.
+The targets are the design; the tier **weights** that achieve them are a tuning result, and differ
+sharply from the targets (§7).
 
 ### Rarity does not pay more
 
@@ -321,10 +321,29 @@ for colourblind players.
 
 - Spins **after** both players are shown, never before.
 - Runs on question one too, so the mechanic introduces itself.
-- Stat holds for **2 to 5 rounds, randomised**. Fixed cadence lets players pre-load their answer;
-  switching every single round means they never settle into a rhythm, so the trap never springs.
+- **The opening stat holds for exactly 2 rounds, so the first switch is always round 3 — on
+  purpose.** Every player who gets two right sees the stat change, the mechanic the whole game is
+  built on; a longer or random first hold meant many short runs ended without ever seeing it. The
+  one predictable switch is a fair price: after it, the cadence is random again.
+- Every later stat holds for **2 to 5 rounds, randomised**. Fixed cadence lets players pre-load
+  their answer; switching every single round means they never settle into a rhythm, so the trap
+  never springs.
 - **No spin when the stat isn't changing.** A wheel that lands on the same stat twice reads as
   broken.
+- **The opening stat is a wheel draw too**, over basic and uncommon stats only, with the same tier
+  weights. **Rare stats never open a run** — a newcomer's first question should read at a glance —
+  but the wheel can switch to them from the first switch, at round 3.
+- **A rare stat is never followed directly by another rare stat**, unless nothing else is viable
+  at that moment. Rare stats carry a heavy weight to make up for never opening a run; without this
+  rule they would crowd the later rounds — measured at 45–49% of rounds from round 6 on.
+- **Target mix, measured per round played:** 15% for each basic stat, 10% for each uncommon, 5% for
+  each rare, none below 5%. The tier weights are tuned until `simulation.md` lands within about two
+  points of every target. They are currently **basic 42, uncommon 15, rare 43**. Rare is weighted
+  far above its target because rare stats never open a run, and rounds 1–2 — always on the
+  opening stat — are about 30% of all rounds played, since most runs are short. **Rare stats
+  together should stay under about 30% of rounds in every round range**; `simulation.md` reports
+  the mix by range (1–5, 6–10, 11–20, 21+) for Friendly. Re-tune against both tables after
+  substantial deck changes, never by reasoning about the weights.
 - Spin duration around **1.3 seconds** with a long deceleration. The original sub-second spin was
   too quick to read.
 - The switch must be **unmissable** — wheel, colour change on the plaque, and a settle animation.
@@ -335,7 +354,24 @@ for colourblind players.
 
 ## 8. Difficulty ramp
 
-Gap is expressed as a ratio between the two values: `max / min - 1`.
+Gap is expressed as **rank distance**: how far apart the two values sit in the deck's own spread
+for that stat. Each value's percentile is its mid-rank among eligible players — 0 for the lowest
+figure in the deck, 1 for the highest, tied values sharing one — and the gap is the difference. A
+gap of 0.45 means the two players are nearly half the deck apart.
+
+It replaced a raw ratio (`max / min - 1`). A ratio can't make an easy question from a stat whose
+range is narrow: every legend has between 478 and 985 club appearances, so no pair ever reached the
+opening band's 3×, and appearances never fired. Caps fared little better. Rank distance puts every
+stat on the same 0–1 scale, whatever its units or range. It is computed from the deck and the
+run's reference date alone — never from answers or from who was dealt recently — so the sequence
+stays a pure function of seed and mode.
+
+Rank distance could in principle pair two figures whose ranks are far apart but whose values are
+close. Checked on the 77-player legends deck: across the basic and uncommon stats, the closest
+pair the opening band admits is 18.6% apart (appearances, 663 v 786), and the closest early pair
+8.7% (appearances, 689 v 749). No ratio floor is needed on top. Re-check it if the deck changes
+shape — a minimum relative difference of 15% for rounds 1–10 and 8% for 11–18 is the planned
+remedy if it's ever needed.
 
 **Difficulty is controlled by a band, not a floor.** A floor alone does not create a ramp: it only
 removes pairs that are too close, so the pool at round 46 with a 30% floor is a strict superset of
@@ -343,28 +379,29 @@ the pool at round 1 — every blowout that qualified early still qualifies late.
 from it keeps serving gifts, so expected difficulty barely moves. A ceiling is what makes a late
 round actually hard.
 
-| Rounds | Band                  | Feel                                                        |
+| Rounds | Band (rank distance)  | Feel                                                        |
 | ------ | --------------------- | ----------------------------------------------------------- |
-| 1–10   | ≥200%, **no ceiling** | Nearly free. Blowouts are the joke, so leave them uncapped. |
-| 11–18  | 150–800%              | Generous, no longer absurd.                                 |
-| 19–26  | 100–400%              | Requires some knowledge.                                    |
-| 27–34  | 75–250%               | Requires real knowledge.                                    |
-| 35–42  | 50–150%               | Hard.                                                       |
-| 43+    | 30–80%                | Knife edge.                                                 |
+| 1–10   | ≥0.45, **no ceiling** | Nearly free. Blowouts are the joke, so leave them uncapped. |
+| 11–18  | 0.25–0.70             | Generous, no longer absurd.                                 |
+| 19–26  | 0.15–0.50             | Requires some knowledge.                                    |
+| 27–34  | 0.10–0.35             | Requires real knowledge.                                    |
+| 35–42  | 0.05–0.25             | Hard.                                                       |
+| 43+    | 0.02–0.12             | Knife edge.                                                 |
 
 The first band keeps no ceiling deliberately — early rounds should actively favour the funniest
 available pair (a squad player against someone with sixty million followers), not merely any pair
 clearing the floor.
 
-### Narrow stats are exempt from bands
+### Every stat is banded
 
-Small-integer stats — clubs played for, and any other stat where most of the deck clusters on a few
-values — are matched on tie-exclusion alone, with no band. A band is meaningless when the whole
-range is 1 to 11.
+Small-integer stats — clubs played for, international trophies, age — used to be matched on tie
+exclusion alone, because a ratio band is meaningless when the whole range is 1 to 11. That made
+them always maximally hard, so they were barred from the first 10 rounds.
 
-The consequence is that they are always maximally hard, which is acceptable at rare-tier frequency
-but **not** during the confidence-building phase. Band-exempt stats are therefore **barred from the
-first 10 rounds**.
+Rank distance removes the problem: however few values a stat takes, they spread across the same
+0–1 scale, so a band means what it means for any other stat. **All ten stats are banded, and none
+is barred by round.** Rare stats still never open a run (§7), but can be dealt from round 3, as
+easy a pair as any other stat at that round.
 
 ### Relaxation
 
@@ -382,9 +419,9 @@ did with floors, because bands and the queue shrink the pool at the same time.
 
 ### Run length
 
-A 200% floor through round 10 pushes the knife-edge band out to roughly round 43, so a strong run is
+A 0.45 floor through round 10 pushes the knife-edge band out to roughly round 43, so a strong run is
 40-plus questions at 10 seconds each — six to eight minutes. Acceptable for a once-a-day puzzle,
-long by the genre's norms. Sustaining it also needs the full 400-player deck; a 50-player test deck
+long by the genre's norms. Sustaining it also needs the full 300-player deck; a 50-player test deck
 will exhaust the pool long before then and sit permanently in relaxation.
 
 **These numbers are a considered guess, not a finding.** `simulation.md` settles them.
@@ -427,19 +464,23 @@ Rules the pair-selection logic must enforce:
 - **Both players must be eligible for the stat** — including the carried-over anchor when the stat
   switches.
 - **Respect the gap band** for the current round, relaxing in the order given in section 8 rather
-  than ever failing to deal a pair. Band-exempt stats are barred from the first 10 rounds.
+  than ever failing to deal a pair. Every stat is banded, in rank distance (§8).
 - **Recently-seen queue** so the same player doesn't reappear within roughly a dozen rounds.
-- **Correlated-stat rule.** Caps and international goals move together — a player who just won on
-  caps will usually win on international goals too, which undercuts the stat switch whose entire
-  point is dissonance. The wheel must **not switch directly between caps and international goals**;
-  it needs an intervening stat. **Club goals and club appearances** are the other likely pair.
-  `viability.md` reports pairwise correlation, so confirm the list from the data rather than
-  guessing at it.
-- **Volatility floor.** Any stat that can still move — chiefly followers — needs a wider gap than a
-  frozen one, so a near-tie can't silently flip between data refreshes.
+- **Correlated-stat rule.** Two stats that order players the same way ask the same question twice,
+  which undercuts the stat switch whose entire point is dissonance. The wheel must **not switch
+  directly between a correlated pair**; it needs an intervening stat. **Club goals and
+  international goals** are paired because the data says so (`viability.md`, ρ ≈ 0.84). **Caps
+  and club appearances** are paired **by design**: both measure career length, and asking one
+  straight after the other feels like the same question, even though they rank players only
+  moderately alike. Confirm the data-driven pairs from the report after deck changes.
+- **Volatility floor.** Any stat that can still move — chiefly followers — must also be at least
+  2× apart as a ratio, on top of its rank band, so a near-tie can't silently flip between data
+  refreshes. Rank distance says how far apart two players sit in the deck; it says nothing about
+  whether a refresh could swap them.
 - **Early rounds prefer iconic players, per mode.** Most people who open the link play one run and
-  never return. Round one's anchor is drawn from the `iconic` pool on an easy, banded stat — don't
-  let the shuffler open on obscure club appearances. Then, for rounds 1 to N, the challenger is
+  never return. Round one's stat is drawn by the wheel from basic and uncommon stats, never rare
+  (§7), and its anchor from the `iconic` pool, at the opening band's wide gap. Then, for rounds 1
+  to N, the challenger is
   drawn from iconic players whenever one is valid: eligible, not tied, within the round's band and
   not in the recently-seen queue. When none is, the whole deck is used at the same band — the
   preference is the first thing to give and never costs a wider band or a repeated player (§8).
@@ -491,9 +532,9 @@ default crop cuts badly. It is display data, kept with the deck; it reaches the 
 
 **The deck is entered by hand**, in a spreadsheet: `players.csv` is the master copy, with
 `image-log.csv` and `focus.csv` beside it, and `pnpm deck:import` generates the per-player YAML the
-build reads (ARCHITECTURE.md §6). Roughly 400 players at up to ten figures each is the largest
+build reads (ARCHITECTURE.md §6). Roughly 300 players at up to ten figures each is the largest
 single piece of work in the project. Development runs on a 50-player deck; public launch of the
-ranked modes needs around 100; the full deck is 400 and arrives incrementally.
+ranked modes needs around 100; the full deck is 300 and arrives incrementally.
 
 Deck size is governed by **recognition**, not by how many players exist. A pair where neither name
 is familiar is a coin flip and feels terrible, so the usable deck is a few hundred names at most.
@@ -558,7 +599,7 @@ compete with the numbers.
 Share-anything requirements travel with CC-BY-SA, so prefer CC-BY or public domain where a choice
 exists, particularly for anything that might appear in a share card.
 
-**This is launch-blocking work**, not a polish pass. Roughly 400 images, each needing a licence
+**This is launch-blocking work**, not a polish pass. Roughly 300 images, each needing a licence
 verified by hand and its metadata recorded, on top of the stat entry. Budget for it accordingly, and
 expect a meaningful number of legends to have no usable free image at all.
 
@@ -651,9 +692,11 @@ a property of the format, not of the anti-cheat. Hence two boards with two diffe
 ## 15. Open questions
 
 - **Ramp validation.** The bands in section 8 are a considered guess. `simulation.md` must confirm
-  the streak distribution, and in particular whether the 30–80% band is populated at all once the
-  recently-seen queue and tie exclusion have taken their cut.
-- **Whether "clubs played for" survives** the first playtest. Retained for now, band-exempt.
+  the streak distribution, and in particular whether the knife-edge band is populated at all once
+  the recently-seen queue and tie exclusion have taken their cut. Its skill model — accuracy rising
+  with rank distance — is an assumption until real play data replaces it (M5c).
+- **Whether "clubs played for" survives** the first playtest. Retained for now, banded like every
+  other stat.
 - **Endless submission rate limit** numbers. Agreed in principle; set when the endpoint is built.
 - **Friendly endpoint rate limit** numbers. This is the only thing standing between the deck and a
   determined scraper, so it deserves more thought than the others — tight enough to make
@@ -664,7 +707,8 @@ a property of the format, not of the anti-cheat. Hence two boards with two diffe
 Modes and their protection, game numbering and rollover, nickname identity and uniqueness, the
 club-trophy definition, position flags and stat eligibility, age as a rare stat, deck size and
 entry method, timer authority, disconnection behaviour, board size and rank display, launch order,
-bands versus floors, relaxation order, the final ten-stat set, dropping per-stat sources, and
+bands versus floors, relaxation order, rank distance over ratio gaps, the per-round stat mix, the
+final ten-stat set, dropping per-stat sources, and
 error-report routing (email).
 
 ---

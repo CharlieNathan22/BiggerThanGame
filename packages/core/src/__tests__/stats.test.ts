@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { CORRELATED_PAIRS, STATS, STAT_KEYS, TIER_WEIGHT, ageAt, areCorrelated } from "../stats.js";
+import {
+  CORRELATED_PAIRS,
+  STATS,
+  STAT_KEYS,
+  TIER_TARGET,
+  TIER_WEIGHT,
+  ageAt,
+  areCorrelated,
+} from "../stats.js";
 import { NOW, fixtureDeck } from "../__fixtures__/deck.js";
 
 const byId = (id: string) => {
@@ -28,6 +36,16 @@ describe("registry", () => {
   it("weights the tiers to 100", () => {
     const total = TIER_WEIGHT.basic + TIER_WEIGHT.uncommon + TIER_WEIGHT.rare;
     expect(total).toBe(100);
+  });
+
+  it("sets per-stat targets that cover every round played, none below 5%", () => {
+    const total = STAT_KEYS.reduce((sum, key) => sum + TIER_TARGET[STATS[key].tier], 0);
+    expect(total).toBe(100);
+    for (const key of STAT_KEYS) expect(TIER_TARGET[STATS[key].tier]).toBeGreaterThanOrEqual(5);
+  });
+
+  it("bands every stat: nothing is exempt any more", () => {
+    for (const key of STAT_KEYS) expect(STATS[key]).not.toHaveProperty("bandExempt");
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SEEN_DEPTH, candidates, remember, selectChallenger, valueOf } from "../engine.js";
 import { createRng } from "../prng.js";
-import { bandFor, gap } from "../ramp.js";
+import { bandFor, percentiles, rankDistance } from "../ramp.js";
 import { NOW, fixtureDeck } from "../__fixtures__/deck.js";
 import type { Player } from "../types.js";
 
@@ -39,24 +39,35 @@ describe("candidates", () => {
     expect(pool.map((p) => p.id)).not.toContain("twin");
   });
 
-  it("respects the floor", () => {
+  // Distances are measured against the whole deck's spread for the stat.
+  const distanceFrom = (anchor: Player, p: Player) =>
+    rankDistance(
+      percentiles(fixtureDeck, "caps", NOW),
+      valueOf(anchor, "caps", NOW)!,
+      valueOf(p, "caps", NOW)!,
+    );
+
+  it("respects the floor, in rank distance", () => {
     const anchor = byId("alpha");
-    const band = { floor: 1, ceiling: null };
-    const pool = candidates(anchor, "caps", band, ctx());
-    const anchorValue = valueOf(anchor, "caps", NOW)!;
-    for (const p of pool) {
-      expect(gap(anchorValue, valueOf(p, "caps", NOW)!)).toBeGreaterThanOrEqual(1);
-    }
+    const pool = candidates(anchor, "caps", { floor: 0.4, ceiling: null }, ctx());
+    expect(pool.length).toBeGreaterThan(0);
+    for (const p of pool) expect(distanceFrom(anchor, p)).toBeGreaterThanOrEqual(0.4);
   });
 
-  it("respects the ceiling", () => {
+  it("respects the ceiling, in rank distance", () => {
     const anchor = byId("alpha");
-    const band = { floor: 0, ceiling: 0.5 };
-    const pool = candidates(anchor, "caps", band, ctx());
-    const anchorValue = valueOf(anchor, "caps", NOW)!;
-    for (const p of pool) {
-      expect(gap(anchorValue, valueOf(p, "caps", NOW)!)).toBeLessThanOrEqual(0.5);
-    }
+    const pool = candidates(anchor, "caps", { floor: 0, ceiling: 0.2 }, ctx());
+    expect(pool.length).toBeGreaterThan(0);
+    for (const p of pool) expect(distanceFrom(anchor, p)).toBeLessThanOrEqual(0.2);
+  });
+
+  it("measures distance on the whole deck, not the pool left after the seen queue", () => {
+    const anchor = byId("alpha");
+    const band = { floor: 0.4, ceiling: null };
+    const all = candidates(anchor, "caps", band, ctx()).map((p) => p.id);
+    const seen = fixtureDeck.map((p) => p.id).filter((id) => !all.includes(id) && id !== "alpha");
+    const filtered = candidates(anchor, "caps", band, ctx(seen)).map((p) => p.id);
+    expect(filtered).toEqual(all);
   });
 
   it("excludes recently seen players", () => {
@@ -97,8 +108,9 @@ describe("selectChallenger", () => {
   });
 
   it("marks a relaxed match when the band could not be met", () => {
-    // Two players 10x apart on caps. Round 43 wants 30-80%, which is
-    // unreachable, so the only possible pair is a relaxed one.
+    // Two players: they sit at opposite ends of the deck, a rank distance of
+    // 1. Round 43 wants 0.02–0.12, which is unreachable, so the only possible
+    // pair is a relaxed one.
     const near: Player = {
       id: "near",
       name: "Near",
@@ -175,62 +187,88 @@ describe("selectChallenger with the iconic preference", () => {
     ...(iconic ? { iconic: true } : {}),
     stats: { caps },
   });
+
+  /**
+   * Eleven forwards on 10, 20 … 110 caps, so percentiles run 0, 0.1 … 1. From
+   * the anchor on 10, round one's 0.45 floor admits 60 caps and up (0.5+);
+   * 20 to 50 caps are too close.
+   */
+  const ladder = (iconicCaps: readonly number[] = []): Player[] =>
+    Array.from({ length: 11 }, (_, i) => (i + 1) * 10).map((caps) =>
+      forward(caps === 10 ? "anchor" : `p${caps}`, caps, iconicCaps.includes(caps)),
+    );
+  const inBand = (id: string | undefined) => id !== undefined && Number(id.slice(1)) >= 60;
+
   const seeds = Array.from({ length: 30 }, (_, i) => `pref-${i}`);
-  const pick = (deck: Player[], preferIconic: boolean, seed: string, seen: string[] = []) =>
-    selectChallenger(deck[0]!, "caps", 1, { deck, now: NOW, seen }, createRng(seed), preferIconic);
+  const pick = (
+    deck: Player[],
+    preferIconic: boolean,
+    seed: string,
+    seen: string[] = [],
+    round = 1,
+  ) =>
+    selectChallenger(
+      deck[0]!,
+      "caps",
+      round,
+      { deck, now: NOW, seen },
+      createRng(seed),
+      preferIconic,
+    );
 
   it("chooses an iconic challenger whenever one is valid", () => {
-    // Round one wants a gap of at least 200%: from 10 caps, both 40 and 50 qualify.
-    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 50, true)];
+    const deck = ladder([100]);
     for (const seed of seeds) {
       const match = pick(deck, true, seed);
-      expect(match?.challenger.id).toBe("icon");
+      expect(match?.challenger.id).toBe("p100");
       expect(match?.relaxation).toBe("none");
     }
   });
 
   it("chooses from the whole deck when the preference is off", () => {
-    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 50, true)];
+    const deck = ladder([100]);
     const chosen = new Set(seeds.map((seed) => pick(deck, false, seed)?.challenger.id));
-    expect(chosen).toEqual(new Set(["plain", "icon"]));
+    expect(chosen.size).toBeGreaterThan(1);
+    for (const id of chosen) expect(inBand(id)).toBe(true);
     for (const seed of seeds) expect(pick(deck, false, seed)?.relaxation).toBe("none");
   });
 
   it("falls back to the whole deck rather than widening the band", () => {
-    // The only iconic opponent is 100% away, reachable only by relaxing the floor.
-    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 20, true)];
+    // The only iconic opponent is on 20 caps: reachable only by relaxing the floor.
+    const deck = ladder([20]);
     for (const seed of seeds) {
       const match = pick(deck, true, seed);
-      expect(match?.challenger.id).toBe("plain");
+      expect(inBand(match?.challenger.id)).toBe(true);
       expect(match?.relaxation).toBe("iconic");
       expect(match?.band).toEqual(bandFor("caps", 1));
     }
   });
 
   it("falls back rather than dealing a recently seen iconic player", () => {
-    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 50, true)];
+    const deck = ladder([100]);
     for (const seed of seeds) {
-      const match = pick(deck, true, seed, ["icon"]);
-      expect(match?.challenger.id).toBe("plain");
+      const match = pick(deck, true, seed, ["p100"]);
+      expect(match?.challenger.id).not.toBe("p100");
       expect(match?.relaxation).toBe("iconic");
     }
   });
 
   it("falls back rather than dealing a tied iconic player", () => {
-    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 10, true)];
+    const deck = [...ladder(), forward("icon", 10, true)];
     for (const seed of seeds) {
-      expect(pick(deck, true, seed)?.challenger.id).toBe("plain");
+      expect(pick(deck, true, seed)?.challenger.id).not.toBe("icon");
     }
   });
 
   it("reports the band, not the preference, when the band also had to widen", () => {
-    const deck = [forward("anchor", 10), forward("plain", 15), forward("icon", 20, true)];
-    const match = pick(deck, true, "both");
+    // Three players are at least half the deck apart; round 43 wants 0.02–0.12.
+    const deck = [forward("anchor", 10), forward("plain", 20), forward("icon", 30, true)];
+    const match = pick(deck, true, "both", [], 43);
     expect(match?.relaxation).toBe("band");
   });
 
   it("never reports the preference when it was not asked for", () => {
-    const deck = [forward("anchor", 10), forward("plain", 40), forward("icon", 20, true)];
+    const deck = ladder([20]);
     for (const seed of seeds) expect(pick(deck, false, seed)?.relaxation).toBe("none");
   });
 });

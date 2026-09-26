@@ -134,7 +134,21 @@ function readTable(
       `${name}: unknown column(s) ${unknown.join(", ")} — expected only ${known.join(", ")}`,
     );
   }
-  return missing.length > 0 || unknown.length > 0 ? undefined : table;
+
+  // Every row has exactly the header's field count. A mismatch means the
+  // columns have shifted — an unquoted comma in a source URL once cut the
+  // credit link short and pushed the rest into `notes` — and no cell in the
+  // row can be trusted, not even the ones that happen to parse.
+  const width = table.header.length;
+  const misfits = table.rows.filter((r) => r.fields !== width);
+  for (const r of misfits) {
+    fatal.push(
+      `${name}: row ${r.row} has ${r.fields} fields, but the header has ${width}` +
+        (r.fields > width ? " — quote any value that contains a comma" : ""),
+    );
+  }
+
+  return missing.length > 0 || unknown.length > 0 || misfits.length > 0 ? undefined : table;
 }
 
 /** Rows grouped by `player_id`, skipping rows with a blank id. */
@@ -259,13 +273,6 @@ function mapRow(
   const c = row.cells;
   const problems = new RowProblems();
 
-  if (row.overflow.length > 0) {
-    problems.add(
-      "(row)",
-      `${row.overflow.length} cell(s) past the last column (${row.overflow.map((v) => `"${v}"`).join(", ")}) — ` +
-        `probably an unquoted comma shifting the row`,
-    );
-  }
   for (const column of PLAYER_REQUIRED) {
     if ((c[column] ?? "") === "") problems.add(column, "is required");
   }

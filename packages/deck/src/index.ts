@@ -26,6 +26,7 @@ export {
   imagesDirFor,
   loadDeck,
   loadDeckForSync,
+  loadSampleDeck,
   manifestPathFor,
 } from "./load.js";
 export type { DeckSource, LoadedDeck } from "./load.js";

@@ -12,18 +12,18 @@ import {
   imagesDirFor,
   loadDeck,
   loadDeckForSync,
+  loadSampleDeck,
   manifestPathFor,
 } from "../load.js";
 import { runSync } from "../sync-cli.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-describe("loadDeck", () => {
-  const deck = loadDeck(packageRoot);
-
-  it("falls back to the sample when the private submodule is empty", () => {
-    expect(deck.source).toBe("sample");
-  });
+// Read directly, never through loadDeck: which deck loadDeck picks depends on
+// how many players the private submodule holds on this machine. The choice
+// itself is tested below on temp directories.
+describe("the sample deck", () => {
+  const deck = loadSampleDeck(packageRoot);
 
   it("parses every sample file without problems", () => {
     expect(deck.problems).toEqual([]);
@@ -31,7 +31,7 @@ describe("loadDeck", () => {
   });
 
   it("loads in a stable order regardless of filesystem ordering", () => {
-    const again = loadDeck(packageRoot);
+    const again = loadSampleDeck(packageRoot);
     expect(again.players.map((p) => p.id)).toEqual(deck.players.map((p) => p.id));
   });
 

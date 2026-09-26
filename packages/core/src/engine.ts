@@ -9,7 +9,7 @@
  */
 
 import { isEligible } from "./eligibility.js";
-import { bandFor, gap, relaxations, withinBand } from "./ramp.js";
+import { bandFor, pairFits, percentiles, relaxations } from "./ramp.js";
 import { STATS } from "./stats.js";
 import type { Band, Player, Relaxation, StatKey } from "./types.js";
 import type { Rng } from "./prng.js";
@@ -54,7 +54,9 @@ export function valueOf(player: Player, stat: StatKey, now: Date): number | unde
  * Everyone who could legally face `anchor` on `stat` within `band`.
  *
  * Ties are excluded and never relaxed: equal values have no right answer, so
- * serving the pair would be unanswerable rather than merely hard.
+ * serving the pair would be unanswerable rather than merely hard. Distance is
+ * measured against the whole deck in `ctx.deck`, never the seen-filtered pool,
+ * so what a round asks doesn't shift with who was dealt recently.
  */
 export function candidates(
   anchor: Player,
@@ -66,6 +68,7 @@ export function candidates(
   const anchorValue = valueOf(anchor, stat, ctx.now);
   if (anchorValue === undefined) return [];
 
+  const table = percentiles(ctx.deck, stat, ctx.now);
   const out: Player[] = [];
   for (const player of ctx.deck) {
     if (player.id === anchor.id) continue;
@@ -74,9 +77,7 @@ export function candidates(
 
     const value = valueOf(player, stat, ctx.now);
     if (value === undefined) continue;
-    if (value === anchorValue) continue; // tie — never relaxed
-
-    if (!withinBand(gap(anchorValue, value), band)) continue;
+    if (!pairFits(table, anchorValue, value, band)) continue; // includes tie exclusion
     out.push(player);
   }
   return out;

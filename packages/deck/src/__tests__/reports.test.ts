@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { iconicViability, rankCorrelation, statViability, viabilityReport } from "../viability.js";
-import { SIM_MODES, pCorrect, simulate, simulationReport } from "../simulate.js";
+import {
+  HALF_GAP,
+  ROUND_RANGES,
+  SIM_MODES,
+  pCorrect,
+  rangeOf,
+  simulate,
+  simulationReport,
+} from "../simulate.js";
 import { playerSchema, toPlayer } from "../schema.js";
 import { ICONIC_ROUNDS } from "@bt/core";
 import type { Player } from "@bt/core";
@@ -58,10 +66,25 @@ describe("statViability", () => {
     expect(v.pairsByBand["opening"]!).toBeGreaterThan(v.pairsByBand["knife edge"]!);
   });
 
-  it("gives band-exempt stats the same count at every band", () => {
-    const v = statViability(players, "age", NOW);
-    const counts = Object.values(v.pairsByBand);
-    expect(new Set(counts).size).toBe(1);
+  it("applies Instagram's volatility floor, exactly as the engine does", () => {
+    // Six players spread across the whole deck in rank, but all within 1.5x of
+    // each other: plenty of pairs on caps, none on followers.
+    const close = [10, 11, 12, 13, 14, 15].map((n, i) =>
+      toPlayer(
+        playerSchema.parse({
+          id: `v${i}`,
+          name: `V${i}`,
+          country: "T",
+          position: "FW",
+          dob: "1985-06-15",
+          stats: { caps: n, apps: n, club_goals: n, ig: { value: n, as_of: "2026-09-01" } },
+        }),
+      ),
+    );
+    const caps = statViability(close, "caps", NOW);
+    const ig = statViability(close, "ig", NOW);
+    expect(caps.pairsByBand["opening"]!).toBeGreaterThan(0);
+    for (const count of Object.values(ig.pairsByBand)) expect(count).toBe(0);
   });
 });
 
@@ -82,12 +105,14 @@ const onlyIconic = (ids: readonly string[]): Player[] =>
 
 describe("iconicViability", () => {
   it("counts anchors that have an iconic challenger in the opening band", () => {
-    // Only "a" (400) is iconic. The opening band wants a gap of 200% or more,
-    // so "b" (200) is too close, "a" cannot face itself, and c–f all qualify.
+    // Only "a" (400) is iconic, at the top of the deck: percentile 1. The six
+    // values sit at 0, 0.2 … 1, and the opening band wants 0.45 apart, so d, e
+    // and f (0.4, 0.2, 0) qualify; b and c are too close and "a" can't face
+    // itself.
     const v = iconicViability(onlyIconic(["a"]), "club_goals", NOW);
     expect(v.iconicEligible).toBe(1);
     expect(v.anchors).toBe(6);
-    expect(v.anchorsWithIconic).toBe(4);
+    expect(v.anchorsWithIconic).toBe(3);
   });
 });
 
@@ -107,17 +132,21 @@ describe("viabilityReport", () => {
 });
 
 describe("pCorrect", () => {
-  it("is a coin flip at no gap", () => {
+  it("is a coin flip for two players at the same point in the deck", () => {
     expect(pCorrect(0)).toBeCloseTo(0.5, 5);
   });
 
-  it("rises with the gap", () => {
-    expect(pCorrect(2)).toBeGreaterThan(pCorrect(0.5));
+  it("rises with rank distance", () => {
+    expect(pCorrect(0.5)).toBeGreaterThan(pCorrect(0.1));
   });
 
-  it("caps at the skill ceiling", () => {
-    expect(pCorrect(Infinity)).toBeCloseTo(0.95, 5);
-    expect(pCorrect(1e9)).toBeLessThanOrEqual(0.95);
+  it("is halfway to the ceiling at HALF_GAP", () => {
+    expect(pCorrect(HALF_GAP)).toBeCloseTo(0.725, 5);
+  });
+
+  it("stays below the skill ceiling even at opposite ends of the deck", () => {
+    expect(pCorrect(1)).toBeLessThan(0.95);
+    expect(pCorrect(1)).toBeGreaterThan(0.85);
   });
 });
 
@@ -172,6 +201,41 @@ describe("simulate", () => {
       expect(md).toContain(mode);
       expect(md).toContain(`rounds 1–${ICONIC_ROUNDS[mode]}`);
     }
+  });
+
+  it("places every round in exactly one range", () => {
+    expect([1, 5, 6, 10, 11, 20, 21, 60].map(rangeOf)).toEqual([
+      "1–5",
+      "1–5",
+      "6–10",
+      "6–10",
+      "11–20",
+      "11–20",
+      "21+",
+      "21+",
+    ]);
+  });
+
+  it("splits every round played across the round ranges", () => {
+    const r = simulate({ deck: players, now: NOW, mode: "friendly", runs: 100 });
+    let total = 0;
+    for (const { label } of ROUND_RANGES) {
+      for (const n of Object.values(r.statCountsByRange[label]!)) total += n;
+    }
+    expect(total).toBe(r.roundsDealt);
+  });
+
+  it("reports the per-range table for Friendly, with the rare tier's total", () => {
+    const results = SIM_MODES.map((mode) => simulate({ deck: players, now: NOW, mode, runs: 50 }));
+    const md = simulationReport(results, players.length, NOW);
+    expect(md).toContain("### By round range (Friendly)");
+    expect(md).toContain("| Stat | Tier | Rounds 1–5 | Rounds 6–10 | Rounds 11–20 | Rounds 21+ |");
+    expect(md).toContain("**Rare, together**");
+  });
+
+  it("leaves the per-range table out when Friendly wasn't simulated", () => {
+    const r = simulate({ deck: players, now: NOW, mode: "ranked", runs: 50 });
+    expect(simulationReport([r], players.length, NOW)).not.toContain("By round range");
   });
 
   it("produces a report naming the model as an assumption", () => {

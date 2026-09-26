@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ICONIC_ROUNDS, buildRun, roundAt } from "../sequence.js";
-import { STATS } from "../stats.js";
-import { statAllowedAtRound } from "../ramp.js";
-import { valueOf } from "../engine.js";
+import { ICONIC_ROUNDS, OPENING_DWELL, buildRun, roundAt } from "../sequence.js";
+import { STATS, STAT_KEYS } from "../stats.js";
+import { SEEN_DEPTH, candidates, valueOf } from "../engine.js";
+import { isEligible } from "../eligibility.js";
+import { bandFor } from "../ramp.js";
 import { NOW, fixtureDeck } from "../__fixtures__/deck.js";
 import type { Mode, Player } from "../types.js";
 
@@ -102,10 +103,18 @@ describe("structure", () => {
     expect([...openers].sort()).toEqual([...iconic].sort());
   });
 
-  it("opens on an easy, banded stat", () => {
-    for (const seed of ["a", "b", "c", "d", "e"]) {
-      const first = run(seed)[0];
-      expect(["club_goals", "ig", "caps"]).toContain(first!.stat);
+  it("never opens on a rare stat", () => {
+    for (let i = 0; i < 200; i++) {
+      const first = run(`open-${i}`, 1)[0];
+      expect(STATS[first!.stat].tier).not.toBe("rare");
+    }
+  });
+
+  it("opens on every basic and uncommon stat the deck can deal, not a fixed few", () => {
+    const opened = new Set<string>();
+    for (let i = 0; i < 400; i++) opened.add(run(`spread-${i}`, 1)[0]!.stat);
+    for (const key of ["club_goals", "caps", "apps", "ig", "fee", "igoals"]) {
+      expect(opened).toContain(key);
     }
   });
 
@@ -113,13 +122,14 @@ describe("structure", () => {
     expect(run("spin")[0]!.statChanged).toBe(false);
   });
 
-  it("never deals a band-exempt stat in the opening rounds", () => {
-    for (const seed of ["x", "y", "z", "w"]) {
-      for (const r of run(seed)) {
-        if (r.index >= 11) break;
-        expect(statAllowedAtRound(r.stat, r.index)).toBe(true);
+  it("can switch to a rare stat well before round 11 now that every stat is banded", () => {
+    let earlyRare = 0;
+    for (let i = 0; i < 200; i++) {
+      for (const r of run(`rare-${i}`, 10)) {
+        if (STATS[r.stat].tier === "rare") earlyRare += 1;
       }
     }
+    expect(earlyRare).toBeGreaterThan(0);
   });
 });
 
@@ -208,6 +218,59 @@ describe("iconic preference", () => {
 });
 
 describe("the wheel in a run", () => {
+  it("holds the opening stat for exactly two rounds, so the first switch is round 3", () => {
+    expect(OPENING_DWELL).toBe(2);
+    for (let i = 0; i < 200; i++) {
+      for (const mode of MODES) {
+        const rounds = run(`hold-${i}`, 3, mode);
+        expect(rounds).toHaveLength(3);
+        expect(rounds[1]!.stat).toBe(rounds[0]!.stat);
+        expect(rounds[1]!.statChanged).toBe(false);
+        expect(rounds[2]!.statChanged).toBe(true);
+      }
+    }
+  });
+
+  it("never follows a rare stat with another while a non-rare stat was viable", () => {
+    // Rebuild what the wheel saw at each switch: the seen queue is the last
+    // SEEN_DEPTH anchors. On this 12-player deck the queue sometimes leaves no
+    // non-rare stat dealable, which is the fallback — counted, not failed.
+    let withChoice = 0;
+    let fallbacks = 0;
+    for (let i = 0; i < 200; i++) {
+      const rounds = run(`no-rr-${i}`, 40);
+      for (let j = 1; j < rounds.length; j++) {
+        const prev = rounds[j - 1]!;
+        const cur = rounds[j]!;
+        if (!cur.statChanged || STATS[prev.stat].tier !== "rare") continue;
+        const seen = rounds
+          .slice(0, j)
+          .map((r) => r.anchor.id)
+          .reverse()
+          .slice(0, SEEN_DEPTH);
+        const nonRareViable = STAT_KEYS.some(
+          (key) =>
+            STATS[key].tier !== "rare" &&
+            isEligible(cur.anchor, key, NOW) &&
+            candidates(cur.anchor, key, bandFor(key, cur.index), {
+              deck: fixtureDeck,
+              now: NOW,
+              seen,
+            }).length > 0,
+        );
+        if (nonRareViable) {
+          withChoice += 1;
+          expect(STATS[cur.stat].tier, `${prev.stat} → ${cur.stat}`).not.toBe("rare");
+        } else {
+          fallbacks += 1;
+        }
+      }
+    }
+    expect(withChoice).toBeGreaterThan(0);
+    // The fallback exists but must stay the exception.
+    expect(fallbacks).toBeLessThan(withChoice);
+  });
+
   it("holds a stat for at least two rounds before switching", () => {
     for (const seed of ["h1", "h2", "h3", "h4"]) {
       const rounds = run(seed);
