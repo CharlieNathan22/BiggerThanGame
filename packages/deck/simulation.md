@@ -1,6 +1,6 @@
 # Simulation
 
-10,000 runs per mode over 24 players, generated 2026-09-25. Every mode uses the same seeds, so the columns differ only by what the mode changes.
+10,000 runs per mode over 77 players, generated 2026-09-26. Every mode uses the same seeds, so the columns differ only by what the mode changes.
 
 > Streaks come from a **modelled** player: correct with probability rising from
 > 0.5 at no gap to 0.95 at a blowout. That model is an assumption. The shape is
@@ -10,20 +10,20 @@
 
 | Measure | friendly | endless | ranked |
 |---|---|---|---|
-| Mean | 5.5 | 5.5 | 5.5 |
+| Mean | 5.9 | 5.9 | 5.9 |
 | Median | 4 | 4 | 4 |
-| 75th percentile | 8 | 8 | 8 |
-| 90th percentile | 13 | 13 | 13 |
+| 75th percentile | 9 | 9 | 9 |
+| 90th percentile | 14 | 14 | 14 |
 | 99th percentile | 24 | 24 | 24 |
-| Best | 38 | 39 | 39 |
+| Best | 39 | 35 | 35 |
 
 | Streak | friendly | endless | ranked |
 |---|---|---|---|
-| 0 | 15.2% | 15.2% | 15.2% |
-| 1–4 | 39.2% | 39.2% | 39.2% |
-| 5–9 | 24.9% | 25.3% | 25.3% |
-| 10–19 | 18.0% | 17.5% | 17.5% |
-| 20–29 | 2.5% | 2.6% | 2.6% |
+| 0 | 14.4% | 14.4% | 14.4% |
+| 1–4 | 37.9% | 37.9% | 37.9% |
+| 5–9 | 24.9% | 24.7% | 24.7% |
+| 10–19 | 19.6% | 19.7% | 19.7% |
+| 20–29 | 3.0% | 3.2% | 3.2% |
 | 30+ | 0.2% | 0.2% | 0.2% |
 
 ## Stat firing rates
@@ -33,15 +33,15 @@ their say. Compare against the intended 17.5 / 11 / 2 per stat.
 
 | Stat | Tier | Intended | friendly | endless | ranked |
 |---|---|---|---|---|---|
-| Club goals | basic | 17.5% | 27.9% | 28.0% | 28.0% |
-| Caps | basic | 17.5% | 24.0% | 23.9% | 23.9% |
-| Club appearances | basic | 17.5% | 1.5% | 1.6% | 1.6% |
-| Instagram followers | basic | 17.5% | 29.5% | 29.2% | 29.2% |
-| Highest transfer fee | uncommon | 11% | 8.1% | 8.4% | 8.4% |
-| International goals | uncommon | 11% | 4.5% | 4.5% | 4.5% |
-| Club trophies | rare | 2% | 3.7% | 3.7% | 3.7% |
-| International trophies | rare | 2% | 0.3% | 0.3% | 0.3% |
-| Clubs played for | rare | 2% | 0.3% | 0.2% | 0.2% |
+| Club goals | basic | 17.5% | 29.4% | 29.4% | 29.4% |
+| Caps | basic | 17.5% | 21.2% | 21.0% | 21.0% |
+| Club appearances | basic | 17.5% | 0.0% | 0.0% | 0.0% |
+| Instagram followers | basic | 17.5% | 32.0% | 31.6% | 31.6% |
+| Highest transfer fee | uncommon | 11% | 7.6% | 7.8% | 7.8% |
+| International goals | uncommon | 11% | 5.1% | 5.0% | 5.0% |
+| Club trophies | rare | 2% | 3.9% | 4.1% | 4.1% |
+| International trophies | rare | 2% | 0.4% | 0.4% | 0.4% |
+| Clubs played for | rare | 2% | 0.3% | 0.3% | 0.3% |
 | Age | rare | 2% | 0.2% | 0.2% | 0.2% |
 
 ## Iconic preference
@@ -54,11 +54,11 @@ fallback rate means the deck is short of iconic players at the opening band.
 | Measure | friendly | endless | ranked |
 |---|---|---|---|
 | Window | rounds 1–10 | rounds 1–5 | rounds 1–5 |
-| Rounds dealt in window | 54225 | 37215 | 37215 |
-| Iconic challenger | 69.0% | 77.9% | 77.9% |
-| Fell back | 31.0% | 22.1% | 22.1% |
-| … to the whole deck | 28.3% | 20.4% | 20.4% |
-| … and widened the band | 2.8% | 1.7% | 1.7% |
+| Rounds dealt in window | 55940 | 37772 | 37772 |
+| Iconic challenger | 96.6% | 96.3% | 96.3% |
+| Fell back | 3.4% | 3.7% | 3.7% |
+| … to the whole deck | 0.3% | 0.1% | 0.1% |
+| … and widened the band | 3.1% | 3.6% | 3.6% |
 | … and ignored the seen queue | 0.0% | 0.0% | 0.0% |
 
 ## Relaxation
@@ -71,19 +71,19 @@ used — the deck is simply too small. They need different fixes.
 
 | Cause | friendly | endless | ranked |
 |---|---|---|---|
-| none | 73.4% | 85.4% | 85.4% |
-| iconic | 23.5% | 11.6% | 11.6% |
-| band | 3.1% | 3.0% | 3.0% |
+| none | 97.0% | 97.3% | 97.3% |
+| iconic | 0.2% | 0.1% | 0.1% |
+| band | 2.8% | 2.7% | 2.7% |
 | seen | 0.0% | 0.0% | 0.0% |
 
 Any relaxation, by round:
 
 | Rounds | friendly | endless | ranked |
 |---|---|---|---|
-| 1–10 | 31.0% | 16.8% | 16.8% |
-| 11–20 | 4.7% | 4.0% | 4.0% |
-| 21–30 | 2.5% | 2.7% | 2.7% |
-| 31–40 | 3.6% | 4.2% | 4.2% |
+| 1–10 | 3.4% | 3.1% | 3.1% |
+| 11–20 | 1.3% | 1.1% | 1.1% |
+| 21–30 | 0.7% | 0.6% | 0.6% |
+| 31–40 | 0.0% | 0.0% | 0.0% |
 
 ## Engine reach
 
