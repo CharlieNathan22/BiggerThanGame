@@ -1,6 +1,6 @@
 # Deck viability
 
-Generated 2026-09-26 from 77 players.
+Generated 2026-09-26 from 108 players.
 
 Counts are **unordered pairs that clear the band**, before the recently-seen
 queue takes its cut. Bands are in rank distance — how far apart two players sit
@@ -10,16 +10,16 @@ and will force relaxation every time the wheel picks it.
 
 | Stat | Eligible | Distinct | Tied pairs | opening | early | middle | late | hard | knife edge |
 |---|---|---|---|---|---|---|---|---|---|
-| Club goals | 73 | 66 | 8 | 825 | 1272 | 1276 | 1021 | 911 | 494 |
-| Caps | 77 | 62 | 15 | 917 | 1414 | 1409 | 1147 | 1013 | 536 |
-| Club appearances | 77 | 74 | 3 | 907 | 1424 | 1407 | 1142 | 1034 | 560 |
-| Instagram followers | 66 | 60 | 7 | 671 | 1018 | 997 | 685 | 427 | 56 |
-| Highest transfer fee | 61 | 55 | 6 | 581 | 889 | 890 | 712 | 639 | 343 |
-| International goals | 73 | 42 | 49 | 824 | 1240 | 1260 | 1028 | 892 | 504 |
-| Club trophies | 77 | 30 | 96 | 920 | 1403 | 1399 | 1142 | 1033 | 484 |
-| International trophies | 77 | 6 | 741 | 875 | 1586 | 1182 | 1205 | 372 | 70 |
-| Clubs played for | 77 | 13 | 327 | 865 | 1608 | 1406 | 1212 | 806 | 267 |
-| Age | 69 | 26 | 78 | 742 | 1095 | 1134 | 922 | 858 | 423 |
+| Club goals | 103 | 90 | 16 | 1645 | 2510 | 2513 | 2020 | 1769 | 957 |
+| Caps | 108 | 75 | 37 | 1788 | 2742 | 2736 | 2241 | 1990 | 1059 |
+| Club appearances | 108 | 98 | 10 | 1781 | 2750 | 2723 | 2240 | 1961 | 1037 |
+| Instagram followers | 94 | 80 | 19 | 1367 | 2089 | 2031 | 1399 | 848 | 131 |
+| Highest transfer fee | 90 | 79 | 13 | 1232 | 1910 | 1908 | 1590 | 1372 | 754 |
+| International goals | 103 | 50 | 96 | 1636 | 2531 | 2490 | 2017 | 1790 | 983 |
+| Club trophies | 108 | 31 | 196 | 1763 | 2752 | 2769 | 2254 | 1992 | 970 |
+| International trophies | 108 | 6 | 1445 | 1692 | 3047 | 2331 | 2340 | 894 | 112 |
+| Clubs played for | 108 | 14 | 678 | 1673 | 3036 | 2714 | 2353 | 1530 | 505 |
+| Age | 100 | 30 | 185 | 1534 | 2355 | 2409 | 1950 | 1730 | 885 |
 
 ## Problems
 
@@ -27,20 +27,20 @@ None. Every stat can be dealt at every band.
 
 ## Iconic preference
 
-41 of 77 players are iconic. Early rounds prefer an iconic challenger (friendly 1–10, endless 1–5, ranked 1–5). An anchor with no iconic challenger in the opening band always falls back to the whole deck; `simulation.md` reports how often that happens in play.
+49 of 108 players are iconic. Early rounds prefer an iconic challenger (friendly 1–10, endless 1–5, ranked 1–5). An anchor with no iconic challenger in the opening band always falls back to the whole deck; `simulation.md` reports how often that happens in play.
 
 | Stat | Iconic eligible | Anchors with an iconic challenger |
 |---|---|---|
-| Club goals | 38 | 73 of 73 (100%) |
-| Caps | 41 | 77 of 77 (100%) |
-| Club appearances | 41 | 77 of 77 (100%) |
-| Instagram followers | 39 | 66 of 66 (100%) |
-| Highest transfer fee | 33 | 61 of 61 (100%) |
-| International goals | 38 | 73 of 73 (100%) |
-| Club trophies | 41 | 77 of 77 (100%) |
-| International trophies | 41 | 77 of 77 (100%) |
-| Clubs played for | 41 | 77 of 77 (100%) |
-| Age | 35 | 69 of 69 (100%) |
+| Club goals | 46 | 103 of 103 (100%) |
+| Caps | 49 | 108 of 108 (100%) |
+| Club appearances | 49 | 108 of 108 (100%) |
+| Instagram followers | 46 | 94 of 94 (100%) |
+| Highest transfer fee | 40 | 90 of 90 (100%) |
+| International goals | 46 | 103 of 103 (100%) |
+| Club trophies | 49 | 108 of 108 (100%) |
+| International trophies | 49 | 108 of 108 (100%) |
+| Clubs played for | 49 | 108 of 108 (100%) |
+| Age | 43 | 100 of 100 (100%) |
 
 Rare stats never open a run, but the wheel can switch to them at round 3, well
 inside every mode's window, so they are listed too.
@@ -53,17 +53,17 @@ the correlated-pair exclusion in `wheel.ts` exists to prevent.
 
 | Pair | ρ | |
 |---|---|---|
-| Club goals / International goals | 0.84 | **exclude** |
-| Instagram followers / Age | -0.60 |  |
-| Instagram followers / Highest transfer fee | 0.57 |  |
-| Highest transfer fee / Age | -0.49 |  |
-| Club appearances / Club trophies | 0.46 |  |
-| Club trophies / Age | -0.45 |  |
-| Caps / Club appearances | 0.45 |  |
-| Caps / International trophies | 0.38 |  |
-| Caps / Instagram followers | 0.37 |  |
-| Caps / Club trophies | 0.36 |  |
-| Caps / Age | -0.35 |  |
-| Instagram followers / International trophies | 0.35 |  |
+| Club goals / International goals | 0.85 | **exclude** |
+| Instagram followers / Age | -0.61 |  |
+| Highest transfer fee / Age | -0.51 |  |
+| Instagram followers / Highest transfer fee | 0.51 |  |
+| Caps / Club appearances | 0.40 |  |
+| Club appearances / Club trophies | 0.38 |  |
+| Club trophies / Age | -0.37 |  |
+| Caps / Instagram followers | 0.35 |  |
+| Caps / Club trophies | 0.34 |  |
+| Instagram followers / Club trophies | 0.34 |  |
+| Caps / International trophies | 0.30 |  |
+| Caps / Age | -0.29 |  |
 
 Pairs at or above ρ = 0.8 should be in `CORRELATED_PAIRS` in `stats.ts`.
