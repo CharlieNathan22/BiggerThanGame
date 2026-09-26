@@ -770,7 +770,18 @@ anti-cheat work, under the same no-personal-data rule.
   so it can't enter the module graph.
 - Local leaderboard lives in `localStorage`, wrapped in try/catch, and works with no network.
 - The reveal count-up (~640ms) is what masks the round trip — see section 9 for the full budget,
-  the hold-don't-snap rule, and the image prefetch requirement.
+  the hold-don't-snap rule, and the image prefetch requirement. The challenger's number scrambles
+  from the tap until the response lands, then counts up from zero until the nominal 640ms or, for a
+  late response, for at least `--dur-settle` (240ms), so it never snaps.
+- The island's flow is a plain-TS state machine in `apps/web/src/game/` (`machine.ts`, a pure
+  reducer: idle → starting → dealing → spinning → awaiting → revealing → verdict → over), run by
+  `controller.ts` with the API, clock and timers injected so it is tested in Node. It keeps a
+  **round history** of `{ index, stat, tier, correct }` per answered round — no values — for the
+  share grid and image. Script timers read the `--dur-*` tokens at runtime; a test keeps their
+  fallbacks equal to `tokens.css`.
+- **All visible game text is in `apps/web/src/i18n/en.ts`**, a flat keyed object with
+  `{placeholder}` interpolation (`t()`). Components hold no user-facing string literals. Another
+  language is another file with the same keys; there is no language switching yet.
 
 ---
 

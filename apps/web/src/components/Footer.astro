@@ -1,14 +1,16 @@
 ---
 // The prototype's footer line, carrying site links instead of the prototype notice.
+import { t } from "../i18n";
+
 const links = [
-  { href: "/about", label: "About" },
-  { href: "/credits", label: "Credits" },
-  { href: "/about#how-to-play", label: "How to play" },
+  { href: "/about", label: t("footer.about") },
+  { href: "/credits", label: t("footer.credits") },
+  { href: "/about#how-to-play", label: t("footer.howToPlay") },
 ];
 ---
 
 <footer class="foot">
-  <nav aria-label="Site">
+  <nav aria-label={t("footer.nav")}>
     {links.map((link, i) => (
       <>
         {i > 0 && <span aria-hidden="true"> · </span>}

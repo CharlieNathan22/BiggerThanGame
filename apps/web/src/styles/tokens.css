@@ -80,6 +80,13 @@
   --fs-monogram: clamp(130px, 26vh, 270px);
   --fs-pick: 15px;
   --fs-plaque: 14px;
+  /* The "m" after a follower count or fee, relative to the figure. */
+  --fs-suffix: 0.4em;
+  --tracking-name: -0.02em;
+  --lh-plaque: 1.05;
+  --who-w: 20ch;
+  /* Reserves the figure's height so the card doesn't jump when it appears. */
+  --value-min-h: clamp(46px, 7.4vh, 66px);
 
   /* Panels: start, game over, and the static pages built from them. */
   --fs-display: clamp(34px, 7.6vw, 56px);
@@ -125,8 +132,9 @@
   );
 
   /* ---------- motion ----------
-   * The game's timing constants in TypeScript read these (M3), with a test
-   * that parses this file, so CSS and script can't drift apart.
+   * The game's script timers read these at runtime (src/game/timing.ts), and a
+   * test parses this file against that module's fallbacks, so CSS and script
+   * can't drift apart.
    */
   --ease: ease;
   --ease-spin: cubic-bezier(0.13, 0.78, 0.16, 1);
@@ -144,8 +152,16 @@
   --dur-hold: 340ms;
   /* The wheel (DESIGN.md §7). */
   --dur-spin: 1300ms;
+  /* The plaque takes the new tier colour this far through the spin. */
+  --spin-tint-at: 0.62;
+  /* From the reel stopping to the plaque's pop and the anchor's value. */
+  --dur-land: 40ms;
   /* The reveal count-up that masks the round trip (ARCHITECTURE.md §9). */
   --dur-count: 640ms;
+  /* The shortest count once a late response lands: it settles, never snaps. */
+  --dur-settle: 240ms;
+  /* How often the scrambling number changes while the response is in flight. */
+  --dur-scramble: 60ms;
   /* From tap to the correct/incorrect colour. */
   --dur-verdict: 680ms;
   /* From the verdict colour to the next deal. */

@@ -3,6 +3,8 @@
   with no JS; the game island reuses it with live scores.
 -->
 <script lang="ts">
+  import { t } from "../i18n";
+
   interface Props {
     /** Streak and best. Shown on the game only; other pages have no run. */
     scores?: { streak: number; best: number };
@@ -15,14 +17,18 @@
 
 <header class="topbar">
   <svelte:element this={home ? "a" : "div"} class="title" href={home ? "/" : undefined}>
-    <span class="bt">Bigger<em>Than</em> Game</span>
+    <span class="bt">{t("brand.bigger")}<em>{t("brand.than")}</em> {t("brand.game")}</span>
     <span class="dash">—</span>
-    <span class="fl">Football <span class="legends">Legends</span></span>
+    <span class="fl">{t("brand.football")} <span class="legends">{t("brand.legends")}</span></span>
   </svelte:element>
   {#if scores}
     <div class="scores">
-      <div class="score"><span>Streak</span><strong class="num">{scores.streak}</strong></div>
-      <div class="score"><span>Best</span><strong class="num">{scores.best}</strong></div>
+      <div class="score">
+        <span>{t("scores.streak")}</span><strong class="num">{scores.streak}</strong>
+      </div>
+      <div class="score">
+        <span>{t("scores.best")}</span><strong class="num">{scores.best}</strong>
+      </div>
     </div>
   {/if}
 </header>
