@@ -7,6 +7,7 @@ import {
   TIER_WEIGHT,
   ageAt,
   areCorrelated,
+  formatCollisions,
 } from "../stats.js";
 import { NOW, fixtureDeck } from "../__fixtures__/deck.js";
 
@@ -92,11 +93,61 @@ describe("formatters", () => {
   it("formats followers in millions", () => {
     expect(STATS.ig.format(80)).toBe("80m");
     expect(STATS.ig.format(1.5)).toBe("1.5m");
+    expect(STATS.ig.format(10.9)).toBe("10.9m");
+  });
+
+  it("formats followers under a million in thousands", () => {
+    expect(STATS.ig.format(0.093)).toBe("93k");
+    expect(STATS.ig.format(0.566)).toBe("566k");
+    expect(STATS.ig.format(1)).toBe("1m");
   });
 
   it("formats fees with a currency symbol", () => {
     expect(STATS.fee.format(60)).toBe("€60m");
     expect(STATS.fee.format(77.5)).toBe("€77.5m");
+  });
+
+  it("formats fees under a million in thousands", () => {
+    expect(STATS.fee.format(0.014)).toBe("€14k");
+    expect(STATS.fee.format(0.66)).toBe("€660k");
+    expect(STATS.fee.format(0.0011)).toBe("€1k");
+  });
+
+  it("shows the one decimal a fee has, and none when it has none", () => {
+    expect(STATS.fee.format(36.2)).toBe("€36.2m");
+    expect(STATS.fee.format(36.0)).toBe("€36m");
+  });
+
+  it("never rounds a count-up frame just under a million to 1000k", () => {
+    expect(STATS.fee.format(0.9996)).toBe("€1m");
+    expect(STATS.ig.format(0.9996)).toBe("1m");
+  });
+
+  // Named pairs that collided under earlier rules: followers of 10m and more
+  // were rounded to whole millions, so 10.9 and 11.3 both read "11m".
+  it.each([
+    ["ig", 10.9, 11.3],
+    ["ig", 10.5, 10.9],
+    ["ig", 0.093, 0.125],
+    ["fee", 36.2, 36.0],
+    ["fee", 0.014, 0.0011],
+    ["fee", 0.94, 1],
+  ] as const)("formats %s %d and %d differently", (key, a, b) => {
+    expect(STATS[key].format(a)).not.toBe(STATS[key].format(b));
+  });
+
+  it("never formats two different fixture values the same way", () => {
+    expect(formatCollisions(fixtureDeck, NOW)).toEqual([]);
+  });
+
+  it("reports values that would read the same", () => {
+    const withIg = (id: string, value: number) => {
+      const p = byId(id);
+      return { ...p, stats: { ...p.stats, ig: { value, asOf: "2026-09-01" } } };
+    };
+    expect(formatCollisions([withIg("alpha", 10.9), withIg("bravo", 10.94)], NOW)).toEqual([
+      { stat: "ig", values: [10.9, 10.94], shown: "10.9m" },
+    ]);
   });
 
   it("groups large integers", () => {

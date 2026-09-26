@@ -1,33 +1,59 @@
 import { describe, expect, it } from "vitest";
-import { checkRateLimits, rateLimitKey } from "../rate-limit.js";
-import { isRunDateCurrent, mintRunId, runDate } from "../run-id.js";
+import { timingSafeEqual } from "../hmac.js";
+import { checkRateLimit, rateLimitKey } from "../rate-limit.js";
+import { isRunDateCurrent, mintRunId, parseRunId, verifyRunId } from "../run-id.js";
 import { friendlySeed } from "../seed.js";
 import { uuidFrom } from "./helpers.js";
 
 describe("run ids", () => {
-  it("mint as YYYYMMDD-uuid in UTC", () => {
-    expect(mintRunId(new Date("2026-01-05T23:59:59Z"), uuidFrom(1))).toBe(
-      `20260105-${uuidFrom(1)}`,
+  const SIG = /^[A-Za-z0-9_-]{22}$/;
+
+  it("mint as YYYYMMDD-uuid.signature, dated in UTC", async () => {
+    const id = await mintRunId(new Date("2026-01-05T23:59:59Z"), uuidFrom(1), "s");
+    const [body, sig] = id.split(".");
+    expect(body).toBe(`20260105-${uuidFrom(1)}`);
+    expect(sig).toMatch(SIG);
+  });
+
+  it("sign with a truncated base64url HMAC-SHA256 of 'run:' + body", async () => {
+    // Cross-checks the Web Crypto path against Node's own implementation.
+    const { createHmac } = await import("node:crypto");
+    const body = `20260919-${uuidFrom(1)}`;
+    const mac = createHmac("sha256", "Jefe").update(`run:${body}`).digest();
+    const expected = mac.subarray(0, 16).toString("base64url");
+    expect(await mintRunId(new Date("2026-09-19T10:00:00Z"), uuidFrom(1), "Jefe")).toBe(
+      `${body}.${expected}`,
     );
   });
 
-  it("parse back to the run's day at 00:00 UTC", () => {
-    expect(runDate(`20260919-${uuidFrom(1)}`)?.toISOString()).toBe("2026-09-19T00:00:00.000Z");
+  it("parse back to the run's day at 00:00 UTC", async () => {
+    const id = await mintRunId(new Date("2026-09-19T18:00:00Z"), uuidFrom(1), "s");
+    expect(parseRunId(id)).toEqual({
+      body: `20260919-${uuidFrom(1)}`,
+      date: new Date("2026-09-19T00:00:00.000Z"),
+    });
   });
 
-  it("round-trip with crypto.randomUUID", () => {
-    const id = mintRunId(new Date("2026-09-19T10:00:00Z"), crypto.randomUUID());
-    expect(runDate(id)).toBeDefined();
+  it("verify with the secret that signed them, and no other", async () => {
+    const id = await mintRunId(new Date("2026-09-19T10:00:00Z"), crypto.randomUUID(), "s");
+    expect(await verifyRunId(id, "s")).toBeDefined();
+    expect(await verifyRunId(id, "t")).toBeUndefined();
   });
 
   it.each([
     "",
     "20260919",
-    `2026091-${uuidFrom(1)}`,
-    `20261301-${uuidFrom(1)}`,
-    `20260230-${uuidFrom(1)}`,
-  ])("reject %j", (id) => {
-    expect(runDate(id)).toBeUndefined();
+    `20260919-${uuidFrom(1)}`,
+    `20260919-${uuidFrom(1)}.`,
+    `20260919-${uuidFrom(1)}.${"A".repeat(21)}`,
+    `20260919-${uuidFrom(1)}.${"A".repeat(23)}`,
+    `20260919-${uuidFrom(1)}.${"A".repeat(21)}=`,
+    `20260919-${uuidFrom(1)}.${"A".repeat(21)}+`,
+    `2026091-${uuidFrom(1)}.${"A".repeat(22)}`,
+    `20261301-${uuidFrom(1)}.${"A".repeat(22)}`,
+    `20260230-${uuidFrom(1)}.${"A".repeat(22)}`,
+  ])("reject %j as malformed", (id) => {
+    expect(parseRunId(id)).toBeUndefined();
   });
 
   it("accept dates within a day of the server's date, either side", () => {
@@ -38,6 +64,17 @@ describe("run ids", () => {
     expect(isRunDateCurrent(day("2026-09-20"), clock)).toBe(true);
     expect(isRunDateCurrent(day("2026-09-17"), clock)).toBe(false);
     expect(isRunDateCurrent(day("2026-09-21"), clock)).toBe(false);
+  });
+});
+
+describe("timingSafeEqual", () => {
+  it.each([
+    ["abc", "abc", true],
+    ["abc", "abd", false],
+    ["abc", "ab", false],
+    ["", "", true],
+  ])("%j vs %j is %s", (a, b, expected) => {
+    expect(timingSafeEqual(a, b)).toBe(expected);
   });
 });
 
@@ -89,25 +126,21 @@ describe("rateLimitKey", () => {
   });
 });
 
-describe("checkRateLimits", () => {
+describe("checkRateLimit", () => {
   const ok = { limit: async () => ({ success: true }) };
   const tripped = { limit: async () => ({ success: false }) };
 
-  it("allows a request under both limits", async () => {
-    expect(await checkRateLimits({ burst: ok, sustained: ok }, "k")).toEqual({ ok: true });
+  it("allows a request under the limit", async () => {
+    const limiters = { answers: ok, starts: ok, flood: ok };
+    expect(await checkRateLimit(limiters, "answers", "k")).toEqual({ ok: true });
   });
 
-  it("reports the burst window when the burst limit trips", async () => {
-    expect(await checkRateLimits({ burst: tripped, sustained: ok }, "k")).toEqual({
-      ok: false,
-      retryAfter: 10,
-    });
-  });
-
-  it("reports the sustained window when the sustained limit trips", async () => {
-    expect(await checkRateLimits({ burst: ok, sustained: tripped }, "k")).toEqual({
-      ok: false,
-      retryAfter: 60,
-    });
+  it.each([
+    ["answers", 10],
+    ["starts", 60],
+    ["flood", 60],
+  ] as const)("reports the %s window when that limit trips", async (rule, period) => {
+    const limiters = { answers: ok, starts: ok, flood: ok, [rule]: tripped };
+    expect(await checkRateLimit(limiters, rule, "k")).toEqual({ ok: false, retryAfter: period });
   });
 });

@@ -11,6 +11,7 @@
 import { STATS, valueOf } from "@bt/core";
 import type {
   AnchorCard,
+  CardImage,
   Guess,
   Player,
   PlayerCard,
@@ -56,9 +57,16 @@ function toPlayerCard(player: Player, images: ImageLookup): PlayerCard {
     name: player.name,
     country: player.country,
     position: player.position,
-    ...(image !== undefined
-      ? { image: { key: image.key, width: image.width, height: image.height } }
-      : {}),
+    ...(image !== undefined ? { image: toCardImage(image, player.imageFocus) } : {}),
+  };
+}
+
+function toCardImage(image: PlayerImage, focus: string | undefined): CardImage {
+  return {
+    key: image.key,
+    width: image.width,
+    height: image.height,
+    ...(focus !== undefined ? { focus } : {}),
   };
 }
 

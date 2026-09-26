@@ -34,6 +34,11 @@ export const en = {
   "start.starting": "Dealing…",
   "start.failed": "Couldn't reach the server. Check your connection and try again.",
   "start.noscript": "Bigger Than needs JavaScript to deal the cards.",
+  "start.slowDown": "Lots of runs have started from your connection. Starting in a moment…",
+
+  // Connection trouble mid-run: the reveal waits, the run carries on
+  "hitch.reconnecting": "Connection lost. Trying again…",
+  "hitch.slowDown": "Slow down a moment — carrying on shortly.",
 
   // The pitch
   "pitch.label": "The two players",

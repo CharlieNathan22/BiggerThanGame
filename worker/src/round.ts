@@ -6,8 +6,8 @@
  * §8). The server decides correctness and releases the challenger's figure only
  * after the guess.
  *
- * Deck, images, secret, clock and uuid are all injected, so tests drive this
- * directly in Node with no Worker runtime.
+ * Deck, images, secret, clock, uuid and the rate limits are all injected, so
+ * tests drive this directly in Node with no Worker runtime.
  */
 
 import { MAX_ROUNDS, buildRun } from "@bt/core";
@@ -22,7 +22,8 @@ import type {
 } from "@bt/core";
 import { isCorrect, toReveal, toRoundPayload } from "./payload.js";
 import type { ImageLookup } from "./payload.js";
-import { isRunDateCurrent, mintRunId, runDate } from "./run-id.js";
+import type { RateDecision } from "./rate-limit.js";
+import { isRunDateCurrent, mintRunId, parseRunId, verifyRunId } from "./run-id.js";
 import { friendlySeed } from "./seed.js";
 import { isAnswer, parseNextRoundRequest } from "./validate.js";
 
@@ -33,11 +34,24 @@ export interface RoundContext {
   /** Server time. Used to mint run ids and to bound which runs are answered. */
   readonly clock: () => Date;
   readonly uuid: () => string;
+  /** Rate limits that depend on what the request is. Absent: nothing is limited. */
+  readonly limits?: RoundLimits;
+}
+
+/**
+ * The limits the handler applies once it knows what the request is: run
+ * starts per IP, and answers per run. app.ts wires them to the bindings.
+ */
+export interface RoundLimits {
+  start(): Promise<RateDecision>;
+  /** `run` is the run id's verified body, `YYYYMMDD-<uuid>`. */
+  answer(run: string): Promise<RateDecision>;
 }
 
 export type RoundResult =
   | { readonly status: 200; readonly body: StartResponse | AnswerResponse }
-  | { readonly status: 400 | 503; readonly body: ApiError };
+  | { readonly status: 400 | 503; readonly body: ApiError }
+  | { readonly status: 429; readonly body: ApiError; readonly retryAfter: number };
 
 export async function handleNextRound(body: unknown, ctx: RoundContext): Promise<RoundResult> {
   const parsed = parseNextRoundRequest(body);
@@ -46,11 +60,15 @@ export async function handleNextRound(body: unknown, ctx: RoundContext): Promise
 }
 
 async function start(ctx: RoundContext): Promise<RoundResult> {
-  const runId = mintRunId(ctx.clock(), ctx.uuid());
-  const now = runDate(runId);
-  if (now === undefined) throw new Error(`minted a malformed run id: ${runId}`);
+  const limited = await ctx.limits?.start();
+  if (limited?.ok === false) return rateLimited(limited.retryAfter);
 
-  const seed = await friendlySeed(ctx.secret, runId);
+  const runId = await mintRunId(ctx.clock(), ctx.uuid(), ctx.secret);
+  const run = parseRunId(runId);
+  if (run === undefined) throw new Error(`minted a malformed run id: ${runId}`);
+  const now = run.date;
+
+  const seed = await friendlySeed(ctx.secret, run.body);
   const first = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds: 1 })[0];
   if (first === undefined) {
     return { status: 503, body: { error: "unavailable", detail: "the deck cannot deal a round" } };
@@ -61,12 +79,16 @@ async function start(ctx: RoundContext): Promise<RoundResult> {
 }
 
 async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResult> {
+  const run = await verifyRunId(req.runId, ctx.secret);
+  if (run === undefined) return badRequest("runId is not one this server issued");
   // `now` is the run's date, fixed for the whole run, never the server clock.
-  const now = runDate(req.runId);
-  if (now === undefined) return badRequest("runId is malformed");
+  const now = run.date;
   if (!isRunDateCurrent(now, ctx.clock())) return badRequest("runId is out of date");
 
-  const seed = await friendlySeed(ctx.secret, req.runId);
+  const limited = await ctx.limits?.answer(run.body);
+  if (limited?.ok === false) return rateLimited(limited.retryAfter);
+
+  const seed = await friendlySeed(ctx.secret, run.body);
   // One past the answered round, so the response can carry the next question.
   const maxRounds = Math.min(req.round + 1, MAX_ROUNDS);
   const rounds = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds });
@@ -94,4 +116,8 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
 
 function badRequest(detail: string): RoundResult {
   return { status: 400, body: { error: "bad_request", detail } };
+}
+
+function rateLimited(retryAfter: number): RoundResult {
+  return { status: 429, body: { error: "rate_limited" }, retryAfter };
 }

@@ -167,6 +167,9 @@ is: **retry visibly for a few seconds, then bank and end.** Every round up to th
 verified, so the player keeps the streak they earned and it submits when connectivity returns. The
 tube-tunnel case is covered by the retry window, which is the case that actually happens.
 
+Being rate-limited is not a drop. A `429` shows a calm "slow down" note, waits the time the server
+asks for, then carries on with the same round. It never ends a run.
+
 This is also why **hidden values must never be prefetched**, not even one round ahead. Buffering
 rounds for latency would put several readable answers in memory at all times, which is the exact
 leak the server-authoritative model exists to close.
@@ -243,6 +246,11 @@ Instagram followers is the signature stat: wide range, no ties, nearly everyone 
 should fire often. Club appearances is the one wide-range stat goalkeepers keep, which is what
 keeps them in the deck at all; it plays fair but flat, since few people have real intuitions about
 appearance totals.
+
+**Two different values must never read the same on a card** — that would look like a tie, which is
+never dealt. Followers and fees are stored in millions and shown in thousands below a million
+(`93k`, `€660k`) and in millions from there, with the one decimal the stored value has (`€36.2m`,
+`€36m`, `10.9m`). A test holds every deck value to this.
 
 ### Club trophies — the definition
 

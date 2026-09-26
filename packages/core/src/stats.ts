@@ -23,6 +23,21 @@ export interface StatDef {
 
 const int = (v: number): string => Math.round(v).toLocaleString("en-GB");
 
+/**
+ * A figure stored in millions, as shown on a card: whole thousands below a
+ * million (`0.014` → `14k`), and millions from there with the one decimal the
+ * stored value has (`36.2` → `36.2m`, `36` → `36m`).
+ *
+ * Two different stored values must never show the same string — the round
+ * would look like a tie, which the engine never deals. A test holds every deck
+ * value to that, so nothing here may round harder than the data is entered.
+ */
+export function formatMillions(v: number): string {
+  const thousands = Math.round(v * 1000);
+  if (thousands < 1000) return `${thousands}k`;
+  return `${Number(v.toFixed(1))}m`;
+}
+
 /** Whole years at `now`. Deliberately reference-dated so runs stay reproducible. */
 export function ageAt(dob: string, now: Date): number | undefined {
   const born = new Date(`${dob}T00:00:00Z`);
@@ -63,7 +78,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "basic",
     volatile: true,
     get: (p) => p.stats.ig?.value,
-    format: (v) => (v >= 10 ? `${Math.round(v)}m` : `${Number(v.toFixed(1))}m`),
+    format: formatMillions,
     qualifier: (p) => p.stats.ig?.asOf,
   },
   fee: {
@@ -71,7 +86,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     label: "Highest transfer fee",
     tier: "uncommon",
     get: (p) => p.stats.fee?.value,
-    format: (v) => `€${Number.isInteger(v) ? v : Number(v.toFixed(1))}m`,
+    format: (v) => `€${formatMillions(v)}`,
     qualifier: (p) => (p.stats.fee ? String(p.stats.fee.year) : undefined),
   },
   igoals: {
@@ -112,6 +127,35 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
 };
 
 export const STAT_KEYS: readonly StatKey[] = Object.keys(STATS) as StatKey[];
+
+/**
+ * Every pair of different values of one stat, across `players`, that format to
+ * the same string. Empty for a deck whose figures can all be told apart on a
+ * card — which the tests require of every deck they can see.
+ */
+export function formatCollisions(
+  players: readonly Player[],
+  now: Date,
+): {
+  readonly stat: StatKey;
+  readonly values: readonly [number, number];
+  readonly shown: string;
+}[] {
+  const out: { stat: StatKey; values: readonly [number, number]; shown: string }[] = [];
+  for (const key of STAT_KEYS) {
+    const def = STATS[key];
+    const seen = new Map<string, number>();
+    for (const player of players) {
+      const value = def.get(player, now);
+      if (value === undefined) continue;
+      const shown = def.format(value);
+      const earlier = seen.get(shown);
+      if (earlier === undefined) seen.set(shown, value);
+      else if (earlier !== value) out.push({ stat: key, values: [earlier, value], shown });
+    }
+  }
+  return out;
+}
 
 /**
  * Target share of rounds played, **per stat**, by tier (DESIGN.md §7): four

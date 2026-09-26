@@ -6,16 +6,18 @@
 <script lang="ts">
   import type { Guess } from "@bt/core";
   import { onMount, tick } from "svelte";
-  import { CORRECTIONS_EMAIL } from "../../config";
+  import { CORRECTIONS_EMAIL, IMAGE_BASE } from "../../config";
   import { statLabel, t } from "../../i18n";
   import { TIER_COLOUR } from "../../lib/tiers";
   import { createApi } from "../../game/api";
+  import type { Fetch } from "../../game/api";
   import { GameController } from "../../game/controller";
   import { initialState, shouldSpin } from "../../game/machine";
   import type { GameState } from "../../game/machine";
+  import { createPreloader } from "../../game/photos";
   import { TIMINGS, readTimings } from "../../game/timing";
   import type { Timings } from "../../game/timing";
-  import { announcement, overCaption, qualifierText, reportHref } from "../../game/view";
+  import { announcement, hitchText, overCaption, qualifierText, reportHref } from "../../game/view";
   import TitleBar from "../TitleBar.svelte";
   import Counter from "./Counter.svelte";
   import Figure from "./Figure.svelte";
@@ -39,8 +41,20 @@
     const root = getComputedStyle(document.documentElement);
     timings = readTimings((property) => root.getPropertyValue(property));
 
+    let fetchFn: Fetch = (input, init) => fetch(input, init);
+    let removeDevPanel: (() => void) | undefined;
+    // pnpm dev only: the delay switch. The dynamic import sits in a branch a
+    // production build removes, so neither it nor the panel ships.
+    if (import.meta.env.DEV) {
+      const dev = import("../../game/dev");
+      const plain = fetchFn;
+      fetchFn = async (input, init) => (await dev).withDevDelay(plain)(input, init);
+      void dev.then((d) => (removeDevPanel = d.mountDevPanel()));
+    }
+
     const c = new GameController({
-      api: createApi((input, init) => fetch(input, init)),
+      api: createApi(fetchFn),
+      preload: createPreloader(IMAGE_BASE, () => new Image()),
       timings,
       now: () => performance.now(),
       schedule: (fn, ms) => {
@@ -53,6 +67,7 @@
     controller = c;
 
     return () => {
+      removeDevPanel?.();
       unsubscribe();
       c.destroy();
       motion.removeEventListener("change", onMotion);
@@ -72,6 +87,9 @@
       : null,
   );
   const tier = $derived(game.plaque?.tier ?? "basic");
+  // A slow-down is a pause, not a wait on the network: the number rests at "?"
+  // rather than scrambling until it's over.
+  const resting = $derived(game.hitch?.kind === "slowDown");
   const newBest = $derived(game.streak > 0 && game.streak > game.bestBefore);
 
   function start(): void {
@@ -133,7 +151,7 @@
       qualifier={judged && round && reveal ? qualifierText(round.stat.key, reveal.qualifier) : ""}
     >
       {#snippet value()}
-        {#if phase === "revealing" && round && game.count}
+        {#if phase === "revealing" && round && game.count && !resting}
           <Counter
             count={game.count}
             stat={round.stat.key}
@@ -161,6 +179,9 @@
           </button>
           <button class="pick" onclick={() => pick("lower")}>{t("pick.lower")}</button>
         </div>
+        <p class="hitch" role="status" hidden={phase !== "revealing" || game.hitch === null}>
+          {phase === "revealing" ? hitchText(game.hitch) : ""}
+        </p>
       {/if}
     </Side>
 
@@ -184,6 +205,9 @@
           {#if game.startFailed}
             <p class="problem" role="alert">{t("start.failed")}</p>
           {/if}
+          <p class="problem" role="status" hidden={!(phase === "starting" && resting)}>
+            {phase === "starting" && resting ? t("start.slowDown") : ""}
+          </p>
         </div>
       </div>
     {:else if phase === "over"}
@@ -254,6 +278,20 @@
   .picks[hidden] {
     display: none;
   }
+  .hitch {
+    position: relative;
+    margin-top: 16px;
+    padding: 7px 14px;
+    border-radius: var(--radius-pill);
+    background: var(--hitch-bg);
+    font-size: var(--fs-qual);
+    color: var(--chalk);
+    font-variation-settings: var(--fv-caption);
+  }
+  .hitch[hidden],
+  .problem[hidden] {
+    display: none;
+  }
   .pick {
     min-width: var(--pick-min-w);
     padding: 11px 20px;
@@ -306,7 +344,7 @@
   .sublegend {
     margin-top: 8px;
     font-family: var(--font-display);
-    font-weight: 900;
+    font-weight: var(--fw-sublegend);
     font-size: var(--fs-sublegend);
     letter-spacing: var(--tracking-sublegend);
     background: var(--legends-gradient);

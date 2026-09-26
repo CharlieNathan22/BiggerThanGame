@@ -1,11 +1,12 @@
 <!--
-  One full-bleed half of the pitch: a player's monogram, name, country and
-  figure. Photos arrive in M4; for now every card is the monogram treatment.
+  One full-bleed half of the pitch: a player's photo (or monogram), name,
+  country and figure.
 -->
 <script lang="ts">
   import type { PlayerCard } from "@bt/core";
   import type { Snippet } from "svelte";
   import { initial } from "../../game/view";
+  import Photo from "./Photo.svelte";
 
   interface Props {
     side: "a" | "b";
@@ -25,7 +26,9 @@
 
 <div class="side {side}" class:hit={verdict === "hit"} class:miss={verdict === "miss"}>
   {#if player}
-    <div class="monogram" aria-hidden="true">{initial(player.name)}</div>
+    {#key player.id}
+      <Photo image={player.image} initial={initial(player.name)} />
+    {/key}
     <div class="who">
       <div class="name">{player.name}</div>
       <div class="meta">{player.country}</div>
@@ -51,6 +54,8 @@
     padding: 16px 20px;
     text-align: center;
     transition: background-color var(--dur-side) var(--ease);
+    /* The photo blends into this half's colour and nothing behind it. */
+    isolation: isolate;
   }
   .side.a {
     background: var(--night);
@@ -63,20 +68,6 @@
   }
   .side.miss {
     background: var(--miss);
-  }
-  .monogram {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-weight: 900;
-    font-size: var(--fs-monogram);
-    color: var(--monogram);
-    pointer-events: none;
-    user-select: none;
-    line-height: var(--lh-tight);
   }
   .who {
     position: relative;

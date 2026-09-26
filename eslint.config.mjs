@@ -1,5 +1,6 @@
 // @ts-check
 import js from "@eslint/js";
+import astro from "eslint-plugin-astro";
 import { defineConfig, globalIgnores } from "eslint/config";
 import svelte from "eslint-plugin-svelte";
 import tseslint from "typescript-eslint";
@@ -38,6 +39,13 @@ export default defineConfig(
     extends: [tseslint.configs.recommended, svelte.configs.recommended],
     languageOptions: { parserOptions: { parser: tseslint.parser } },
     rules: { "no-undef": "off" },
+  },
+
+  // Astro pages and layouts, with TypeScript in the frontmatter and scripts.
+  ...astro.configs["flat/recommended"],
+  {
+    files: ["**/*.astro"],
+    languageOptions: { parserOptions: { parser: tseslint.parser } },
   },
 
   // CLAUDE.md invariant 5: seeded PRNG only. Applies to tests too — a test
@@ -113,7 +121,7 @@ export default defineConfig(
   // ARCHITECTURE.md §4, invariant 1: no deck data in the client, ever. The
   // leak scan of apps/web/dist is the backstop; this stops it at the import.
   {
-    files: ["apps/web/**/*.{js,mjs,ts,svelte}", "apps/web/**/*.svelte.ts"],
+    files: ["apps/web/**/*.{js,mjs,ts,svelte,astro}", "apps/web/**/*.svelte.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

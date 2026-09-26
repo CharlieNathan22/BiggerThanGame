@@ -3,7 +3,15 @@ import type { StatKey } from "@bt/core";
 import { describe, expect, it } from "vitest";
 import { initialState, reduce } from "../machine";
 import type { GameEvent, GameState } from "../machine";
-import { announcement, initial, overCaption, qualifierText, reelStrip, reportHref } from "../view";
+import {
+  announcement,
+  hitchText,
+  initial,
+  overCaption,
+  qualifierText,
+  reelStrip,
+  reportHref,
+} from "../view";
 import { cont, round, wrong } from "./fixtures";
 
 describe("initial", () => {
@@ -116,5 +124,19 @@ describe("reportHref", () => {
     expect(subject).toBe(
       "Correction: Zinedine Zidane v Luís Figo, Highest transfer fee (€77.5m v €62m)",
     );
+  });
+});
+
+describe("hitchText", () => {
+  it("says nothing when all is well", () => {
+    expect(hitchText(null)).toBe("");
+  });
+
+  it("names a reconnect and a slow-down differently", () => {
+    const reconnecting = hitchText({ kind: "reconnecting", since: 0, retries: 0 });
+    const slowDown = hitchText({ kind: "slowDown", until: 10_000 });
+    expect(reconnecting).not.toBe("");
+    expect(slowDown).not.toBe("");
+    expect(reconnecting).not.toBe(slowDown);
   });
 });

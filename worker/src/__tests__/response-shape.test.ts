@@ -13,15 +13,14 @@ import { describe, expect, it } from "vitest";
 import { STATS, valueOf } from "@bt/core";
 import type { AnswerResponse, Player, RoundPayload, StartResponse } from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
-import { runDate } from "../run-id.js";
-import { FIXTURE_DECK, SAMPLE_DECK, context, fakeImages, walkRun } from "./helpers.js";
+import { FIXTURE_DECK, SAMPLE_DECK, context, fakeImages, runDay, walkRun } from "./helpers.js";
 
 const CARD_KEYS = ["country", "id", "image", "name", "position"];
 const ANCHOR_KEYS = [...CARD_KEYS, "display", "qualifier", "value"];
 const STAT_KEYS = ["key", "label", "statChanged", "tier"];
 const ROUND_KEYS = ["anchor", "challenger", "index", "stat"];
 const REVEAL_KEYS = ["correct", "display", "qualifier", "round", "value"];
-const IMAGE_KEYS = ["height", "key", "width"];
+const IMAGE_KEYS = ["focus", "height", "key", "width"];
 
 /** Where a number may legitimately appear. Anything else is a leak. */
 const NUMERIC_PATHS = [
@@ -42,6 +41,7 @@ const SHOWN_FIELDS = new Set([
   "height",
   "key",
   "runId",
+  "focus",
 ]);
 
 function numericLeaves(value: unknown, path = ""): { path: string; value: number }[] {
@@ -90,10 +90,7 @@ function checkResponse(
   const keys = allKeys(response);
   const playerKeys = ["stats", "dob", "deceased", "iconic", "era", "leagues"];
   const themedKeys = ["mainClubs", "main_clubs"];
-  // Image focus is display data, but it reaches the payload in M4 with the CSS
-  // that uses it, not before.
-  const focusKeys = ["focus", "imageFocus"];
-  for (const forbidden of [...playerKeys, ...themedKeys, ...focusKeys, "band", "relaxation"]) {
+  for (const forbidden of [...playerKeys, ...themedKeys, "band", "relaxation"]) {
     expect(keys).not.toContain(forbidden);
   }
 
@@ -126,7 +123,7 @@ describe.each([
     let responses = 0;
     for (let i = 0; i < runs; i++) {
       const { runId, started, answers } = await walkRun(context({ deck }), deck);
-      const now = runDate(runId)!;
+      const now = runDay(runId);
       for (const response of [started, ...answers]) {
         checkResponse(response, deck, now);
         responses += 1;
@@ -135,11 +132,43 @@ describe.each([
     expect(responses).toBeGreaterThan(runs);
   });
 
+  it("carry a photo's focus with the photo, and only there", async () => {
+    // Every other player gets a crop focus, so runs meet both kinds.
+    const focused = deck.map((p, i) => (i % 2 === 0 ? { ...p, imageFocus: `50 ${i % 100}` } : p));
+    const images = fakeImages(focused);
+    let withFocus = 0;
+    for (let i = 0; i < 5; i++) {
+      const { runId, started, answers } = await walkRun(
+        context({ deck: focused, images }),
+        focused,
+      );
+      const now = runDay(runId);
+      for (const response of [started, ...answers]) {
+        checkResponse(response, focused, now);
+        const round =
+          "round" in response ? response.round : "next" in response ? response.next : null;
+        for (const card of round ? [round.anchor, round.challenger] : []) {
+          const player = focused.find((p) => p.id === card.id)!;
+          expect(card.image?.focus).toBe(player.imageFocus);
+          if (card.image?.focus !== undefined) withFocus++;
+        }
+      }
+    }
+    expect(withFocus).toBeGreaterThan(0);
+  });
+
+  it("leave focus out when a player has one but no photo", async () => {
+    const focused = deck.map((p) => ({ ...p, imageFocus: "50 10" }));
+    const { started } = await walkRun(context({ deck: focused }), focused);
+    expect(started.round.challenger).not.toHaveProperty("image");
+    expect(JSON.stringify(started)).not.toContain("focus");
+  });
+
   it("keep the image path clean when every player has a photo", async () => {
     const images = fakeImages(deck);
     for (let i = 0; i < 5; i++) {
       const { runId, started, answers } = await walkRun(context({ deck, images }), deck);
-      const now = runDate(runId)!;
+      const now = runDay(runId);
       expect(started.round.challenger.image).toEqual(images[started.round.challenger.id]);
       for (const response of [started, ...answers]) checkResponse(response, deck, now);
     }
@@ -151,7 +180,7 @@ describe("the checks themselves", () => {
   // exists to catch and make sure it does.
   it("fail on a challenger that carries its value", async () => {
     const { runId, started } = await walkRun(context());
-    const now = runDate(runId)!;
+    const now = runDay(runId);
     const leaky = {
       ...started,
       round: { ...started.round, challenger: { ...started.round.challenger, value: 1 } },
@@ -159,20 +188,19 @@ describe("the checks themselves", () => {
     expect(() => checkResponse(leaky as StartResponse, SAMPLE_DECK, now)).toThrow();
   });
 
-  it("fail on an image focus, until M4 adds it on purpose", async () => {
+  it("fail on a focus outside the image", async () => {
     const { runId, started } = await walkRun(context());
-    const now = runDate(runId)!;
-    const image = { key: "legends/originals/x.jpg", width: 800, height: 1000, focus: "50 15" };
+    const now = runDay(runId);
     const leaky = {
       ...started,
-      round: { ...started.round, challenger: { ...started.round.challenger, image } },
+      round: { ...started.round, challenger: { ...started.round.challenger, focus: "50 15" } },
     };
     expect(() => checkResponse(leaky as StartResponse, SAMPLE_DECK, now)).toThrow();
   });
 
   it("fail on a serialised Player", async () => {
     const { runId, started } = await walkRun(context());
-    const now = runDate(runId)!;
+    const now = runDay(runId);
     const player = SAMPLE_DECK.find((p) => p.id === started.round.challenger.id)!;
     const leaky = { ...started, round: { ...started.round, challenger: player } };
     expect(() => checkResponse(leaky as unknown as StartResponse, SAMPLE_DECK, now)).toThrow();

@@ -5,7 +5,7 @@
 
 import type { Reveal, RoundPayload, StatKey } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
-import type { GameState } from "./machine";
+import type { GameState, Hitch } from "./machine";
 
 /** The monogram: the first character of the name, whole even if it's accented or astral. */
 export function initial(name: string): string {
@@ -63,6 +63,12 @@ export function announcement(state: GameState): string {
       : t("live.wrong", params);
   }
   return "";
+}
+
+/** The note under the challenger while a request waits to go again. */
+export function hitchText(hitch: Hitch | null): string {
+  if (hitch === null) return "";
+  return hitch.kind === "slowDown" ? t("hitch.slowDown") : t("hitch.reconnecting");
 }
 
 /** "in a row", or "correct, then out" for a streak of one. */

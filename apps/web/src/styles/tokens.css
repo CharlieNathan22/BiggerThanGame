@@ -26,6 +26,25 @@
   --miss: #5b1d19;
   --veil: rgba(6, 18, 26, 0.97);
 
+  /*
+   * Player photos (DESIGN.md §12): a background layer, never the hero. Drained
+   * of colour and darkened, then blended by luminosity into the half's own
+   * colour, so the photo takes the night teal at rest and the verdict's green
+   * or red after a guess. The scrim keeps the name and number legible.
+   */
+  --photo-focus: 50% 25%;
+  --photo-filter: grayscale(1) contrast(1.1) brightness(0.62);
+  --photo-blend: luminosity;
+  --photo-opacity: 0.55;
+  --photo-scrim: radial-gradient(
+    ellipse 75% 65% at 50% 50%,
+    rgba(6, 18, 26, 0.62) 0%,
+    rgba(6, 18, 26, 0.3) 70%,
+    rgba(6, 18, 26, 0.15) 100%
+  );
+  /* The connection note under the challenger during a reconnect or slow-down. */
+  --hitch-bg: rgba(6, 18, 26, 0.72);
+
   /* Tiers (DESIGN.md §6). `--tier` is the live stat's tier, set by the game. */
   --t-basic: #ffc24d;
   --t-unc: #5ab9f0;
@@ -39,6 +58,16 @@
   /* ---------- type ---------- */
   --font-ui: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
   --font-display: "Cinzel", Georgia, serif;
+
+  /*
+   * Cinzel weights, as the prototype renders them rather than as its CSS asks
+   * (900): an inherited "wght" axis setting overrides that on the variable
+   * font, giving 600 in the title bar and 400 elsewhere. Only 400 and 600 are
+   * loaded (fonts.css).
+   */
+  --fw-legends: 600;
+  --fw-sublegend: 400;
+  --fw-monogram: 400;
 
   /* Archivo is one variable family; width and weight carry the whole hierarchy. */
   --fv-body: "wdth" 100, "wght" 400;

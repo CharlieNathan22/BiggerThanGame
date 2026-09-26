@@ -56,6 +56,56 @@ describe("counterFrame", () => {
     expect(counterFrame(count, 50, 2000 + TIMINGS.settle, TIMINGS, false).kind).toBe("done");
   });
 
+  // The dev delay switch's settings (0, 200, 800 ms, 3 s), played frame by
+  // frame at 60 fps: the scramble never stalls while the answer is out, and
+  // once it lands the count rises smoothly from zero to the value.
+  it.each([0, 200, 800, 3000])(
+    "holds and settles without a snap or a freeze when the answer takes %i ms",
+    (delay) => {
+      const target = 1234;
+      const frame = 1000 / 60;
+      const count = { tappedAt: 0, arrivedAt: null };
+      const arrived = { tappedAt: 0, arrivedAt: delay };
+
+      let lastTick = -1;
+      let lastChange = 0;
+      let last = -1;
+      let counted = 0;
+      let doneAt: number | null = null;
+      for (let now = 0; doneAt === null && now < delay + 5000; now += frame) {
+        const f = counterFrame(
+          now < delay ? count : arrived,
+          now < delay ? null : target,
+          now,
+          TIMINGS,
+          false,
+        );
+        if (f.kind === "scramble") {
+          expect(now).toBeLessThan(delay);
+          if (f.tick !== lastTick) {
+            lastTick = f.tick;
+            lastChange = now;
+          }
+          // Never frozen: a new number at least every scramble tick (plus a frame).
+          expect(now - lastChange).toBeLessThanOrEqual(TIMINGS.scramble + frame);
+        } else if (f.kind === "count") {
+          expect(f.value).toBeGreaterThanOrEqual(last);
+          // No snap: no frame covers more than a fifth of the distance.
+          if (last >= 0) expect(f.value - last).toBeLessThanOrEqual(target / 5);
+          last = f.value;
+          counted++;
+        } else {
+          expect(f.kind).toBe("done");
+          doneAt = now;
+        }
+      }
+
+      expect(doneAt).not.toBeNull();
+      expect(doneAt!).toBeGreaterThanOrEqual(Math.max(TIMINGS.count, delay + TIMINGS.settle));
+      expect(counted).toBeGreaterThanOrEqual(Math.floor(TIMINGS.settle / frame) - 1);
+    },
+  );
+
   it("with reduced motion, keeps the ? until the answer, then shows it at once", () => {
     expect(counterFrame(tapped, null, 1500, TIMINGS, true)).toEqual({ kind: "hidden" });
     expect(counterFrame({ tappedAt: 1000, arrivedAt: 1200 }, 8, 1200, TIMINGS, true)).toEqual({

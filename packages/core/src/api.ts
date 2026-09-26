@@ -45,6 +45,15 @@ export interface StatPayload {
   readonly statChanged: boolean;
 }
 
+/**
+ * A card's photo: the manifest entry, plus where to centre the crop when the
+ * default (`50% 25%`) cuts the face off. Display data, like the rest of the card.
+ */
+export interface CardImage extends PlayerImage {
+  /** `"x y"`, whole percentages 0–100, as the deck's `image.focus`. */
+  readonly focus?: string;
+}
+
 /** What any card shows before a guess. Display data only. */
 export interface PlayerCard {
   readonly id: string;
@@ -52,7 +61,7 @@ export interface PlayerCard {
   readonly country: string;
   readonly position: Position;
   /** Absent when the player has no synced photo; the card shows the monogram. */
-  readonly image?: PlayerImage;
+  readonly image?: CardImage;
 }
 
 /** The anchor's value is already on screen, so it travels with the round. */

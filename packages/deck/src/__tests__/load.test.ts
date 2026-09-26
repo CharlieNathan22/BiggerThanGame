@@ -16,6 +16,7 @@ import {
   manifestPathFor,
 } from "../load.js";
 import { runSync } from "../sync-cli.js";
+import { formatCollisions } from "@bt/core";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -38,6 +39,10 @@ describe("the sample deck", () => {
   it("produces engine-shaped players", () => {
     const withIg = deck.players.find((p) => p.stats.ig !== undefined);
     expect(withIg?.stats.ig?.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("never formats two different values of a stat the same way", () => {
+    expect(formatCollisions(deck.players, new Date("2026-09-26T00:00:00Z"))).toEqual([]);
   });
 });
 

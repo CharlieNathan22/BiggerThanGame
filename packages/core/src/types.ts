@@ -74,8 +74,7 @@ export interface Player {
   readonly leagues?: readonly string[];
   /**
    * Crop focus for the photo, `"x y"` percentages (`image.focus` in YAML).
-   * Carried in the deck so the Worker has it; no round payload includes it
-   * yet — M4 adds it with the card CSS.
+   * Reaches the round payload as `image.focus`, only alongside a photo.
    */
   readonly imageFocus?: string;
   readonly stats: PlayerStats;

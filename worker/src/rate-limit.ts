@@ -2,14 +2,21 @@
  * Rate limiting for `/api/round/next`.
  *
  * This limit is the only thing between the deck and a scraper (DESIGN.md §3,
- * §15), so it is load-bearing rather than hygiene. It has to be invisible to a
- * fast honest player — about one answer every two seconds, nearer one a second
- * with reduced motion — while making reconstruction of the deck slow.
+ * §15), so it is load-bearing rather than hygiene. It has to be invisible to
+ * honest players — including a classroom, an office or a mobile carrier's CGNAT
+ * putting dozens of them behind one IP — while keeping the deck slow to pull.
  *
- * Two Workers Rate Limiting bindings, configured in `wrangler.toml`. The
- * numbers live there; `RATE_LIMITS` mirrors them so code and tests can name
- * them, and a test fails if the two drift apart. Counters are per Cloudflare
- * location and deliberately approximate — this is a speed bump, not accounting.
+ * So the tight limit is on the **run**, not the IP. Answers are counted per
+ * signed run id (run-id.ts): a caller can't mint a fresh id per request,
+ * because only the server can sign one, and each run start is itself counted
+ * per IP. The per-IP limit on everything is a generous flood backstop only.
+ * ARCHITECTURE.md §12 has the numbers and the trade-off.
+ *
+ * Three Workers Rate Limiting bindings, configured in `wrangler.toml` (periods
+ * can only be 10 or 60 seconds). The numbers live there; `RATE_LIMITS` mirrors
+ * them so code and tests can name them, and a test fails if the two drift
+ * apart. Counters are per Cloudflare location and deliberately approximate —
+ * this is a speed bump, not accounting.
  */
 
 /** Structural, so this compiles under Workers types and Node test types alike. */
@@ -18,16 +25,17 @@ export interface RateLimiter {
 }
 
 export const RATE_LIMITS = {
-  /** Catches a tight loop quickly. */
-  burst: { binding: "ROUND_BURST", limit: 20, period: 10 },
-  /** Caps what a single client can pull per minute. */
-  sustained: { binding: "ROUND_SUSTAINED", limit: 90, period: 60 },
+  /** Answers per signed run id. A fast honest player answers about every two seconds. */
+  answers: { binding: "RUN_ANSWERS", limit: 20, period: 10 },
+  /** Run starts per IP (IPv4, or the IPv6 /64). */
+  starts: { binding: "RUN_STARTS", limit: 60, period: 60 },
+  /** Every request per IP. A flood backstop, sized for a full classroom. */
+  flood: { binding: "ROUND_FLOOD", limit: 800, period: 60 },
 } as const;
 
-export interface RateLimiters {
-  readonly burst: RateLimiter;
-  readonly sustained: RateLimiter;
-}
+export type RateRule = keyof typeof RATE_LIMITS;
+
+export type RateLimiters = { readonly [K in RateRule]: RateLimiter };
 
 export type RateDecision =
   | { readonly ok: true }
@@ -37,23 +45,24 @@ export type RateDecision =
       readonly retryAfter: number;
     };
 
-export async function checkRateLimits(limiters: RateLimiters, key: string): Promise<RateDecision> {
-  if (!(await limiters.burst.limit({ key })).success) {
-    return { ok: false, retryAfter: RATE_LIMITS.burst.period };
-  }
-  if (!(await limiters.sustained.limit({ key })).success) {
-    return { ok: false, retryAfter: RATE_LIMITS.sustained.period };
-  }
-  return { ok: true };
+/** One limiter, one key. Over the limit, retry after the rule's whole period. */
+export async function checkRateLimit(
+  limiters: RateLimiters,
+  rule: RateRule,
+  key: string,
+): Promise<RateDecision> {
+  const { success } = await limiters[rule].limit({ key });
+  return success ? { ok: true } : { ok: false, retryAfter: RATE_LIMITS[rule].period };
 }
 
 /**
- * The client key: the IPv4 address, or the IPv6 /64.
+ * The IP key for run starts and the flood backstop: the IPv4 address, or the
+ * IPv6 /64.
  *
  * Cloudflare's docs advise against IP keys because addresses are shared (CGNAT,
- * offices, schools). A stateless endpoint has nothing else to key on, which is
- * why the limits are generous. IPv6 is cut to its /64 because one subscriber is
- * usually handed a whole /64 and could otherwise rotate through it freely.
+ * offices, schools), which is why neither IP limit is the tight one — answers
+ * are limited per run. IPv6 is cut to its /64 because one subscriber is usually
+ * handed a whole /64 and could otherwise rotate through it freely.
  */
 export function rateLimitKey(ip: string | null): string {
   if (ip === null || ip.trim() === "") return "unknown";

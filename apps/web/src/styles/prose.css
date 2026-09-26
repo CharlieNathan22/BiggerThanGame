@@ -29,7 +29,7 @@
 .prose .sublegend {
   margin-top: 8px;
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: var(--fw-sublegend);
   font-size: var(--fs-sublegend);
   letter-spacing: var(--tracking-sublegend);
   background: var(--legends-gradient);

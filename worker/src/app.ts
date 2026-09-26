@@ -12,8 +12,8 @@
 
 import type { ApiError, Player } from "@bt/core";
 import type { ImageLookup } from "./payload.js";
-import { checkRateLimits, rateLimitKey } from "./rate-limit.js";
-import type { RateLimiter } from "./rate-limit.js";
+import { checkRateLimit, rateLimitKey } from "./rate-limit.js";
+import type { RateLimiter, RateLimiters } from "./rate-limit.js";
 import { handleNextRound } from "./round.js";
 
 /** Bindings, typed structurally so this module compiles under Node test types too. */
@@ -21,8 +21,12 @@ export interface Env {
   readonly ASSETS: { fetch(request: Request): Promise<Response> };
   /** A Worker secret. Locally from `.dev.vars`. */
   readonly RUN_SECRET?: string;
-  readonly ROUND_BURST: RateLimiter;
-  readonly ROUND_SUSTAINED: RateLimiter;
+  /** Answers per signed run id. */
+  readonly RUN_ANSWERS: RateLimiter;
+  /** Run starts per IP. */
+  readonly RUN_STARTS: RateLimiter;
+  /** Every request per IP: the flood backstop. */
+  readonly ROUND_FLOOD: RateLimiter;
 }
 
 export interface AppDeps {
@@ -49,13 +53,17 @@ export function createApp(deps: AppDeps): {
       if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
       if (pathname !== ROUND_PATH) return error(404, "not_found");
 
-      const limited = await checkRateLimits(
-        { burst: env.ROUND_BURST, sustained: env.ROUND_SUSTAINED },
-        rateLimitKey(request.headers.get("cf-connecting-ip")),
-      );
-      if (!limited.ok) {
-        return error(429, "rate_limited", undefined, { "retry-after": String(limited.retryAfter) });
-      }
+      const limiters: RateLimiters = {
+        answers: env.RUN_ANSWERS,
+        starts: env.RUN_STARTS,
+        flood: env.ROUND_FLOOD,
+      };
+      const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+
+      // The backstop comes before any work, so a flood stays cheap. The run
+      // start and answer limits need the parsed request, so round.ts applies them.
+      const flood = await checkRateLimit(limiters, "flood", ip);
+      if (!flood.ok) return rateLimited(flood.retryAfter);
 
       if (request.method !== "POST") {
         return error(405, "method_not_allowed", undefined, { allow: "POST" });
@@ -83,7 +91,12 @@ export function createApp(deps: AppDeps): {
           secret,
           clock,
           uuid,
+          limits: {
+            start: () => checkRateLimit(limiters, "starts", ip),
+            answer: (run) => checkRateLimit(limiters, "answers", run),
+          },
         });
+        if (result.status === 429) return rateLimited(result.retryAfter);
         return json(result.status, result.body);
       } catch (err) {
         console.error("round handler failed", err);
@@ -91,6 +104,10 @@ export function createApp(deps: AppDeps): {
       }
     },
   };
+}
+
+function rateLimited(retryAfter: number): Response {
+  return error(429, "rate_limited", undefined, { "retry-after": String(retryAfter) });
 }
 
 function error(

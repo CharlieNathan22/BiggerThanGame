@@ -14,11 +14,17 @@
  * network calls that produce events.
  *
  * Friendly Mode has no clock, so `awaiting` waits for the player indefinitely.
+ *
+ * A request that fails doesn't end the run on the spot. A 429 is waited out
+ * and the same request sent again; a dropped connection is retried visibly for
+ * a few seconds and only then banked (DESIGN.md §3, Connectivity). Both show as
+ * a `hitch` while the reveal (or the start) waits.
  */
 
 import type {
   AnswerResponse,
   Guess,
+  PlayerCard,
   Reveal,
   RoundPayload,
   RunEnd,
@@ -43,6 +49,42 @@ export interface RoundRecord {
   readonly stat: StatKey;
   readonly tier: Tier;
   readonly correct: boolean;
+}
+
+/** Why a request failed, as far as the run is concerned (api.ts `classifyFailure`). */
+export type Failure =
+  /** No answer, a timeout or a server error: worth retrying for a while. */
+  | { readonly kind: "network" }
+  /** Too many requests: wait `retryAfterMs`, then send the same one again. */
+  | { readonly kind: "rateLimited"; readonly retryAfterMs: number }
+  /** A refusal retrying can't fix. */
+  | { readonly kind: "fatal" };
+
+/** A request that has to be sent again before the run can carry on. */
+export type Hitch =
+  | {
+      readonly kind: "reconnecting";
+      /** When the first failure in this spell happened. */
+      readonly since: number;
+      /** Retries sent so far in this spell. */
+      readonly retries: number;
+    }
+  | {
+      readonly kind: "slowDown";
+      /** When to send again: the failure's time plus `retry-after`. */
+      readonly until: number;
+    };
+
+/**
+ * The reconnect loop: retry after 0.5 s, 1 s, then every 2 s, and give up —
+ * banking the streak — once a failure lands this long after the first.
+ * Network policy rather than animation, so these aren't design tokens.
+ */
+export const RECONNECT = { firstDelay: 500, maxDelay: 2000, giveUpAfter: 5000 } as const;
+
+/** How long to wait before retry number `retries + 1` of a reconnecting spell. */
+export function reconnectDelay(retries: number): number {
+  return Math.min(RECONNECT.firstDelay * 2 ** retries, RECONNECT.maxDelay);
 }
 
 /** When the guess went, and when the answer came back. `performance.now()` ms. */
@@ -77,17 +119,21 @@ export interface GameState {
   readonly end: EndReason | null;
   /** The last start attempt failed; the start panel says so. */
   readonly startFailed: boolean;
+  /** A request waiting to be sent again; null when all is well. */
+  readonly hitch: Hitch | null;
 }
 
 export type GameEvent =
   | { readonly type: "start" }
   | { readonly type: "started"; readonly runId: string; readonly round: RoundPayload }
-  | { readonly type: "startFailed" }
+  | { readonly type: "startFailed"; readonly failure: Failure; readonly at: number }
   | { readonly type: "dealt" }
   | { readonly type: "spun" }
   | { readonly type: "guess"; readonly guess: Guess; readonly at: number }
   | { readonly type: "answered"; readonly response: AnswerResponse; readonly at: number }
-  | { readonly type: "answerFailed" }
+  | { readonly type: "answerFailed"; readonly failure: Failure; readonly at: number }
+  /** A hitch's wait is over: send the request again. */
+  | { readonly type: "retry"; readonly at: number }
   | { readonly type: "settled" }
   | { readonly type: "advance" };
 
@@ -107,6 +153,7 @@ export function initialState(best = 0): GameState {
     history: [],
     end: null,
     startFailed: false,
+    hitch: null,
   };
 }
 
@@ -131,7 +178,14 @@ export function reduce(state: GameState, event: GameEvent): GameState {
 
     case "startFailed":
       if (state.phase !== "starting") return state;
-      return { ...state, phase: "idle", startFailed: true };
+      // A 429 before the run exists: wait it out, then start again.
+      if (event.failure.kind === "rateLimited") {
+        return {
+          ...state,
+          hitch: { kind: "slowDown", until: event.at + event.failure.retryAfterMs },
+        };
+      }
+      return { ...state, phase: "idle", startFailed: true, hitch: null };
 
     case "dealt":
       if (state.phase !== "dealing" || state.round === null) return state;
@@ -164,6 +218,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       }
       return {
         ...state,
+        hitch: null,
         count: { ...state.count, arrivedAt: event.at },
         reveal: response.reveal,
         next: "next" in response ? response.next : null,
@@ -171,9 +226,34 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       };
     }
 
-    case "answerFailed":
+    case "answerFailed": {
       if (state.phase !== "revealing" || state.reveal !== null) return state;
-      return over(state, "network");
+      const { failure, at } = event;
+      if (failure.kind === "fatal") return over(state, "network");
+      // Never ends the run: wait out the limit, then send the same answer.
+      if (failure.kind === "rateLimited") {
+        return { ...state, hitch: { kind: "slowDown", until: at + failure.retryAfterMs } };
+      }
+      const spell = state.hitch?.kind === "reconnecting" ? state.hitch : null;
+      const since = spell?.since ?? at;
+      if (at - since >= RECONNECT.giveUpAfter) return over(state, "network");
+      return { ...state, hitch: { kind: "reconnecting", since, retries: spell?.retries ?? 0 } };
+    }
+
+    case "retry": {
+      const { hitch } = state;
+      if (hitch === null) return state;
+      if (state.phase === "starting") return { ...state, hitch: null };
+      if (state.phase !== "revealing" || state.reveal !== null || state.count === null) {
+        return state;
+      }
+      // After a slow-down the number has sat at "?"; the count starts afresh
+      // from the retry, so the reveal plays in full rather than snapping.
+      if (hitch.kind === "slowDown") {
+        return { ...state, hitch: null, count: { tappedAt: event.at, arrivedAt: null } };
+      }
+      return { ...state, hitch: { ...hitch, retries: hitch.retries + 1 } };
+    }
 
     case "settled": {
       if (state.phase !== "revealing" || state.reveal === null || state.round === null) {
@@ -220,7 +300,28 @@ function deal(state: GameState, round: RoundPayload): GameState {
 }
 
 function over(state: GameState, end: EndReason): GameState {
-  return { ...state, phase: "over", end, next: null };
+  return { ...state, phase: "over", end, next: null, hitch: null };
+}
+
+/**
+ * How long the controller waits before sending a hitched request again: to the
+ * end of a slow-down, or the next step of the reconnect loop. Null when
+ * nothing is waiting.
+ */
+export function retryDelay(state: GameState, now: number): number | null {
+  const { hitch } = state;
+  if (hitch === null) return null;
+  if (hitch.kind === "slowDown") return Math.max(0, hitch.until - now);
+  return reconnectDelay(hitch.retries);
+}
+
+/**
+ * The one card a new round payload brings that isn't on screen yet: the
+ * challenger. The anchor is the challenger just revealed, whose photo has
+ * already loaded. Round one brings both.
+ */
+export function newCards(round: RoundPayload): readonly PlayerCard[] {
+  return round.index === 1 ? [round.anchor, round.challenger] : [round.challenger];
 }
 
 // ---------------------------------------------------------------- timings

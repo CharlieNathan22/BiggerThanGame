@@ -11,7 +11,7 @@ import { fixtureDeck } from "../../../packages/core/src/__fixtures__/deck.js";
 import type { ImageLookup } from "../payload.js";
 import { handleNextRound } from "../round.js";
 import type { RoundContext, RoundResult } from "../round.js";
-import { runDate } from "../run-id.js";
+import { mintRunId, parseRunId } from "../run-id.js";
 
 export const SECRET = "test-secret-not-for-production";
 
@@ -34,6 +34,18 @@ const deckRoot = resolve(
  */
 export const SAMPLE_DECK: readonly Player[] = loadSampleDeck(deckRoot).players;
 export const FIXTURE_DECK: readonly Player[] = fixtureDeck;
+
+/** A run id's reference date, from an id the test knows is well formed. */
+export function runDay(runId: string): Date {
+  const run = parseRunId(runId);
+  if (run === undefined) throw new Error(`not a run id: ${runId}`);
+  return run.date;
+}
+
+/** A genuine run id for `day` (`YYYY-MM-DD`), signed with the test secret. */
+export function signedRunId(day: string, uuid: string, secret = SECRET): Promise<string> {
+  return mintRunId(new Date(`${day}T12:00:00Z`), uuid, secret);
+}
 
 /** Deterministic, well-formed v4-style uuids. */
 export function uuidFrom(n: number): string {
@@ -79,7 +91,7 @@ export async function answer(
  * the server, which the test can't see into.
  */
 export function correctGuess(deck: readonly Player[], runId: string, round: RoundPayload): Guess {
-  const now = runDate(runId)!;
+  const now = runDay(runId);
   const challenger = deck.find((p) => p.id === round.challenger.id)!;
   const hidden = valueOf(challenger, round.stat.key, now)!;
   return hidden > round.anchor.value ? "higher" : "lower";

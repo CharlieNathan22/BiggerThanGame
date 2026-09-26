@@ -4,11 +4,14 @@
  * Hand-written rather than zod: the Worker bundle stays small, and the shapes
  * are two flat objects. Anything unexpected — an unknown mode, an extra key, a
  * round that isn't a positive integer — is a 400, never a best guess.
+ *
+ * This checks the run id's shape only. Whether the server signed it needs the
+ * secret, and is checked in round.ts.
  */
 
 import { MAX_ROUNDS } from "@bt/core";
 import type { AnswerRequest, Guess, NextRoundRequest } from "@bt/core";
-import { runDate } from "./run-id.js";
+import { parseRunId } from "./run-id.js";
 
 export type Parsed<T> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly detail: string };
@@ -31,7 +34,7 @@ export function parseNextRoundRequest(body: unknown): Parsed<NextRoundRequest> {
   }
 
   const { runId, round, guess } = record;
-  if (typeof runId !== "string" || runDate(runId) === undefined) {
+  if (typeof runId !== "string" || parseRunId(runId) === undefined) {
     return fail("runId is malformed");
   }
   if (typeof round !== "number" || !Number.isInteger(round) || round < 1 || round > MAX_ROUNDS) {

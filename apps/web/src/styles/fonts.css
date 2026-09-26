@@ -3,11 +3,13 @@
  *
  * Archivo is the width-axis variable build, registered as "Archivo Variable".
  * Its package stylesheet also declares a Vietnamese subset, so the faces are
- * declared here rather than importing it. Cinzel is weight 900 only, used for
- * the word "Legends"; its package stylesheet is already Latin + Latin Ext.
+ * declared here rather than importing it. Cinzel is weights 400 and 600, the
+ * weights the prototype actually renders (tokens.css, `--fw-*`); its package
+ * stylesheets are already Latin + Latin Ext.
  */
 
-@import "@fontsource/cinzel/900.css";
+@import "@fontsource/cinzel/400.css";
+@import "@fontsource/cinzel/600.css";
 
 @font-face {
   font-family: "Archivo Variable";

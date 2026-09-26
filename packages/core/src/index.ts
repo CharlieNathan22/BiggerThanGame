@@ -32,6 +32,7 @@ export {
   CORRELATED_PAIRS,
   areCorrelated,
   ageAt,
+  formatCollisions,
 } from "./stats.js";
 export type { StatDef } from "./stats.js";
 
@@ -76,6 +77,7 @@ export type {
   AnswerResponse,
   ApiError,
   ApiErrorCode,
+  CardImage,
   ContinueResponse,
   EndResponse,
   Guess,

@@ -77,7 +77,7 @@
   }
   .legends {
     font-family: var(--font-display);
-    font-weight: 900;
+    font-weight: var(--fw-legends);
     font-style: normal;
     font-size: var(--fs-legends);
     letter-spacing: var(--tracking-legends);

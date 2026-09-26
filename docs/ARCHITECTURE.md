@@ -52,9 +52,9 @@ Astro is configured for **static output**, not SSR. Every page is prerendered at
 Worker only executes for `/api/*`. No Astro Cloudflare adapter is needed.
 
 **Bindings:** `ASSETS`, `DB` (D1), `BOARDS` (KV), `RUNS` (Durable Object namespace), `RUN_SECRET` (secret),
-`TURNSTILE_SECRET` (secret), `ROUND_BURST` and `ROUND_SUSTAINED` (Workers Rate Limiting).
+`TURNSTILE_SECRET` (secret), `RUN_ANSWERS`, `RUN_STARTS` and `ROUND_FLOOD` (Workers Rate Limiting).
 
-Phase 3 (Friendly) uses only `ASSETS`, `RUN_SECRET` and the two rate limiters. The rest arrive with
+Phase 3 (Friendly) uses only `ASSETS`, `RUN_SECRET` and the three rate limiters. The rest arrive with
 Ranked and Endless.
 
 There is **no R2 binding**. Images are served from R2 through a custom domain
@@ -349,16 +349,25 @@ stat, how many anchors have any iconic challenger in the opening band.
 ```
 seed(ranked,   gameNo) = HMAC-SHA256(RUN_SECRET, "ranked:"   + gameNo)
 seed(endless,  runId)  = HMAC-SHA256(RUN_SECRET, "endless:"  + runId)
-seed(friendly, runId)  = HMAC-SHA256(RUN_SECRET, "friendly:" + runId)
+seed(friendly, runId)  = HMAC-SHA256(RUN_SECRET, "friendly:" + runBody)
 ```
 
 Ranked's seed depends only on the game number, so **every player gets the same sequence** — that is what
 makes the board comparable. Endless and Friendly are per-run.
 
-**Friendly run ids** are `YYYYMMDD-<uuid>`, minted by the server with the UTC date. The date fixes
-the run's reference `now` (00:00 UTC that day), from which age is computed, so no value moves
-between rounds of one run. The server refuses a run id dated more than one day from its own UTC
-date, so a caller can't choose an arbitrary reference date. The client never sees or chooses a seed.
+**Friendly run ids** are `YYYYMMDD-<uuid>.<sig>`, minted by the server with the UTC date. The body,
+`YYYYMMDD-<uuid>` (`runBody` above), names the run; `sig` is the first 16 bytes of
+`HMAC-SHA256(RUN_SECRET, "run:" + runBody)` as unpadded base64url (22 characters). The server
+answers only run ids it signed: unsigned, tampered and malformed ids are `400`. The signature is
+what lets answers be rate-limited per run (§12) — a caller can't mint a fresh id per request — and
+M5's challenge links reuse it. **The seed derives from the body alone**: the signature is itself a
+function of the body and the secret, so it would add nothing, and leaving it out means the sequence
+doesn't depend on how the signature is encoded or truncated.
+
+The date fixes the run's reference `now` (00:00 UTC that day), from which age is computed, so no
+value moves between rounds of one run. The server refuses a run id dated more than one day from its
+own UTC date, so a caller can't choose an arbitrary reference date. The client never sees or
+chooses a seed.
 
 > **Phase 5 note — seeds collapse to 32 bits.** `createRng` turns the seed string into the
 > generator's state through `hashSeed` (FNV-1a, 32-bit), so however strong the HMAC, there are at
@@ -440,7 +449,7 @@ timer. Types live in `packages/core/src/api.ts`, shared by the Worker and the we
 ```jsonc
 // start
 → { "mode": "friendly" }
-← { "runId": "20260919-<uuid>", "round": RoundPayload }            // round 1
+← { "runId": "20260919-<uuid>.<sig>", "round": RoundPayload }      // round 1
 
 // answer
 → { "mode": "friendly", "runId": "…", "round": 7, "guess": "higher" | "lower" }
@@ -453,14 +462,16 @@ timer. Types live in `packages/core/src/api.ts`, shared by the Worker and the we
 anchor carries `id, name, country, position, image?` plus its `value`, `display` and `qualifier?`;
 the challenger carries **only** `id, name, country, position, image?`. The challenger's qualifier
 (fee year, follower snapshot date) is stat-derived, so it is withheld with the value and arrives in
-`reveal`. `display` is always `STATS[key].format(value)`.
+`reveal`. `display` is always `STATS[key].format(value)`. `image` is
+`{ key, width, height, focus? }`: the manifest entry plus the deck's optional crop focus (`"x y"`
+percentages), present only alongside a photo.
 
 Each request derives the seed from `runId` (§7), replays the run in mode `friendly` to one round
 past the one answered,
 and **decides correctness server-side**. A run that reaches `MAX_ROUNDS` (60) — or can deal no next
 round — ends with `deck-exhausted`. Every response is an explicitly declared DTO built field by field
 in `worker/src/payload.ts`; a `Round` is never returned. Requests are validated strictly — unknown
-mode, extra keys, malformed or out-of-range `runId`, a `round` that isn't an integer in 1–60, or a
+mode, extra keys, a malformed, unsigned, tampered or out-of-range `runId`, a `round` that isn't an integer in 1–60, or a
 bad guess are all `400` — and every `/api/*` response is `cache-control: no-store`.
 
 Because it is stateless, anyone can mint run ids or ask any round of a run. Each request still
@@ -638,7 +649,14 @@ So:
 
 - The **3s timer grace** (section 8) absorbs slow rounds so a laggy connection does not cost the
   player their run.
-- **Bank and end** covers a genuine drop.
+- **Bank and end** covers a genuine drop. The client retries a failed request visibly —
+  "Connection lost. Trying again…" under the challenger, with the number still scrambling — after
+  0.5s, 1s, then every 2s, and banks the streak once the connection has been gone for 5s
+  (`RECONNECT` in `apps/web/src/game/machine.ts`). A request unanswered for 8s counts as dropped.
+  A refusal retrying can't fix (a `4xx` other than `429`) banks at once.
+- **A `429` never ends a run.** The client shows a calm "slow down" note, rests the number at "?",
+  waits out `retry-after` and sends the same request again; the count-up then plays in full from
+  the retry. A `429` on a run start waits the same way on the start panel.
 - There is **no offline mode**. Friendly gave that up when it moved behind the endpoint, which was
   the price of not shipping the deck to every browser.
 
@@ -698,16 +716,41 @@ path entirely — the board is the same for everyone, so it should be served fro
 
 - **Turnstile** on run start and on submission.
 - **Rate limits** per device and per IP: Endless run starts, submissions, error reports.
-- **Friendly (`/api/round/next`)** is limited by two Workers Rate Limiting bindings, keyed on the
-  IPv4 address or the IPv6 /64 (a subscriber is usually handed a whole /64 and could otherwise
-  rotate through it): `ROUND_BURST` **20 per 10s** and `ROUND_SUSTAINED` **90 per 60s**. A fast
-  honest player makes about one request every two seconds, nearer one a second with reduced
-  motion, so neither is visible in play. Over the limit is `429` with `retry-after`, and the UI shows
-  a calm "slow down" state rather than ending the run. Cloudflare advises against IP keys because
-  addresses are shared (CGNAT, offices); a stateless endpoint has nothing else to key on, which is
-  why the numbers are generous. Counters are per location and approximate — a speed bump that makes
-  reconstructing the deck take many IP-hours, not a wall. The numbers live in `wrangler.toml` and
-  are mirrored by `RATE_LIMITS` in `worker/src/rate-limit.ts`; a test fails if they drift.
+- **Friendly (`/api/round/next`)** is limited by three Workers Rate Limiting bindings. The tight
+  limit is on the **run**, not the IP, because schools, offices, VPNs and mobile carriers put many
+  players behind one address and Cloudflare advises against IP-only keys:
+
+  | Binding       | Counts                   | Key                       | Limit           |
+  | ------------- | ------------------------ | ------------------------- | --------------- |
+  | `RUN_ANSWERS` | answers                  | the signed run id's body  | **20 per 10s**  |
+  | `RUN_STARTS`  | run starts               | IPv4 address, or IPv6 /64 | **60 per 60s**  |
+  | `ROUND_FLOOD` | every request (backstop) | IPv4 address, or IPv6 /64 | **800 per 60s** |
+
+  Keying answers on the run only works because run ids are **signed** (§7): a caller can't invent a
+  fresh id per request, and a forged or tampered id is refused with `400` before it is counted
+  against any run. Each new run costs a start, counted per IP. IPv6 is cut to its /64 because a
+  subscriber is usually handed a whole /64 and could otherwise rotate through it.
+
+  A fast honest player answers about once every two seconds — the quickest round the game can show
+  is 1.78s from tap to the next pick with no wheel spin, 3.3s with one — so no single run comes near
+  20 in 10s. The flood backstop is sized for a classroom: 30 players at a fast 2.4s per answer is
+  750 requests a minute; at a flat 2s it would allow about 26. Real play, with thinking time and
+  spins, is slower. Over any limit is `429` with `retry-after` (the limit's period), and the UI
+  shows a calm "slow down" state and then carries on with the same round — it never ends the run.
+  Counters are per Cloudflare location and approximate: a speed bump, not accounting. The numbers
+  live in `wrangler.toml` and are mirrored by `RATE_LIMITS` in `worker/src/rate-limit.ts`; a test
+  fails if they drift. Periods can only be 10 or 60 seconds.
+
+  **The trade-off: shared IPs against scraping cost.** Each answer reveals one hidden value, so the
+  per-IP ceiling is what a scraper on one address gets: 800 values a minute, where the old IP-only
+  limits allowed 90. Reconstructing the deck (DESIGN.md §3) drops from hours per IP to under an
+  hour. That is the price of never blocking a classroom. Two things keep it bounded: a run's
+  pairings are fixed by its seed, so one run yields at most 60 distinct hidden values however often
+  it is asked, and every run start is counted. **If scraping becomes a problem, the next step is an
+  invisible Turnstile check at run start**: each run then costs a solved challenge, which caps a
+  scraper at about 60 values per challenge without adding friction for players. Friendly already
+  has the single start request to hang it on.
+
 - **Nicknames:** default to a generated name (adjective + football noun + number); most people keep
   the suggestion, which shrinks the moderation surface to the minority who type their own.
   Validation normalises first — strip zero-width characters, fold unicode homoglyphs to ASCII,
@@ -760,7 +803,7 @@ anti-cheat work, under the same no-personal-data rule.
   sizes, dimensions, radii, shadows, easings, durations — so a restyle edits one file. Global
   styles live in `styles/` (`base.css`, `fonts.css`, `prose.css`); component styles are scoped.
 - **Fonts are self-hosted** from `@fontsource-variable/archivo` (width axis, `"Archivo Variable"`)
-  and `@fontsource/cinzel` (900 only), Latin and Latin Extended subsets, with the two Latin faces
+  and `@fontsource/cinzel` (400 and 600 — the weights the prototype renders), Latin and Latin Extended subsets, with the two Latin faces
   preloaded. No third-party font requests.
 - `TitleBar.svelte` renders server-side with no JS on static pages; the game island reuses it.
   Only `/` gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag).
@@ -773,6 +816,17 @@ anti-cheat work, under the same no-personal-data rule.
   the hold-don't-snap rule, and the image prefetch requirement. The challenger's number scrambles
   from the tap until the response lands, then counts up from zero until the nominal 640ms or, for a
   late response, for at least `--dur-settle` (240ms), so it never snaps.
+- **Photos** are a background layer in each half (`Photo.svelte`): `object-fit: cover`, positioned
+  by the payload's `focus` through `--focus`, else `--photo-focus` (`50% 25%`); drained, darkened
+  and blended by luminosity into the half's colour, under a scrim, so the number stays the hero
+  (tokens `--photo-*`). `srcset` comes from `srcsetFor`; `sizes` from `photoSizes`, which allows for
+  a wide photo drawn wider than its half by the cover crop. The monogram shows when there is no
+  photo or it fails to load, including a `403`. The controller preloads round one's two photos when
+  the run starts and each new challenger's photo when an answer lands, through an off-screen
+  `Image` with the card's own `sizes` and `srcset` (`game/photos.ts`).
+- **Dev-only delay switch** (`pnpm dev`): 0, 200, 800ms or 3s before every round request, from a
+  small panel or `?delay=800`. It lives in `game/dev.ts`, loaded by a dynamic import behind
+  `import.meta.env.DEV`, so production builds don't contain it.
 - The island's flow is a plain-TS state machine in `apps/web/src/game/` (`machine.ts`, a pure
   reducer: idle → starting → dealing → spinning → awaiting → revealing → verdict → over), run by
   `controller.ts` with the API, clock and timers injected so it is tested in Node. It keeps a

@@ -12,7 +12,7 @@ import { ROUND_PATH, createApp } from "../app.js";
 import type { Env } from "../app.js";
 import { RATE_LIMITS } from "../rate-limit.js";
 import type { RateLimiter } from "../rate-limit.js";
-import { SAMPLE_DECK, SECRET, TODAY, uuidFrom } from "./helpers.js";
+import { SAMPLE_DECK, SECRET, TODAY, signedRunId, uuidFrom } from "./helpers.js";
 
 const app = createApp({
   deck: SAMPLE_DECK,
@@ -29,8 +29,9 @@ function env(overrides: Partial<Env> = {}): Env {
   return {
     ASSETS: { fetch: vi.fn(async () => new Response("<html>site</html>", { status: 200 })) },
     RUN_SECRET: SECRET,
-    ROUND_BURST: limiter(),
-    ROUND_SUSTAINED: limiter(),
+    RUN_ANSWERS: limiter(),
+    RUN_STARTS: limiter(),
+    ROUND_FLOOD: limiter(),
     ...overrides,
   };
 }
@@ -71,7 +72,7 @@ describe("routing", () => {
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as StartResponse;
-    expect(body.runId).toBe(`20260919-${uuidFrom(1)}`);
+    expect(body.runId).toBe(await signedRunId("2026-09-19", uuidFrom(1)));
   });
 });
 
@@ -102,50 +103,79 @@ describe("bad requests", () => {
 });
 
 describe("rate limiting", () => {
-  it("keys both limiters on the client IP", async () => {
+  const answer = async () =>
+    post({
+      mode: "friendly",
+      runId: await signedRunId("2026-09-19", uuidFrom(1)),
+      round: 1,
+      guess: "higher",
+    });
+
+  it("keys a run start on the client IP", async () => {
     const e = env();
     await app.fetch(post({ mode: "friendly" }), e);
-    expect(e.ROUND_BURST.limit).toHaveBeenCalledWith({ key: "203.0.113.7" });
-    expect(e.ROUND_SUSTAINED.limit).toHaveBeenCalledWith({ key: "203.0.113.7" });
+    expect(e.ROUND_FLOOD.limit).toHaveBeenCalledWith({ key: "203.0.113.7" });
+    expect(e.RUN_STARTS.limit).toHaveBeenCalledWith({ key: "203.0.113.7" });
+    expect(e.RUN_ANSWERS.limit).not.toHaveBeenCalled();
   });
 
-  it("returns 429 with retry-after when the burst limit trips", async () => {
-    const res = await app.fetch(post({ mode: "friendly" }), env({ ROUND_BURST: limiter(false) }));
+  it("keys an answer on the run, and only the flood backstop on the IP", async () => {
+    const e = env();
+    await app.fetch(await answer(), e);
+    expect(e.ROUND_FLOOD.limit).toHaveBeenCalledWith({ key: "203.0.113.7" });
+    expect(e.RUN_ANSWERS.limit).toHaveBeenCalledWith({ key: `20260919-${uuidFrom(1)}` });
+    expect(e.RUN_STARTS.limit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["answers", "RUN_ANSWERS", true],
+    ["starts", "RUN_STARTS", false],
+    ["flood", "ROUND_FLOOD", true],
+  ] as const)("returns 429 with the %s window in retry-after", async (rule, binding, isAnswer) => {
+    const request = isAnswer ? await answer() : post({ mode: "friendly" });
+    const res = await app.fetch(request, env({ [binding]: limiter(false) }));
     expect(res.status).toBe(429);
-    expect(res.headers.get("retry-after")).toBe(String(RATE_LIMITS.burst.period));
+    expect(res.headers.get("retry-after")).toBe(String(RATE_LIMITS[rule].period));
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await res.json()).toEqual({ error: "rate_limited" });
   });
 
-  it("returns 429 with retry-after when the sustained limit trips", async () => {
-    const res = await app.fetch(
-      post({ mode: "friendly" }),
-      env({ ROUND_SUSTAINED: limiter(false) }),
-    );
-    expect(res.status).toBe(429);
-    expect(res.headers.get("retry-after")).toBe(String(RATE_LIMITS.sustained.period));
-  });
-
-  it("limits before doing any work, so rejected requests stay cheap", async () => {
-    const e = env({ ROUND_BURST: limiter(false), RUN_SECRET: "" });
+  it("floods out before doing any work, so rejected requests stay cheap", async () => {
+    const e = env({ ROUND_FLOOD: limiter(false), RUN_SECRET: "" });
     const res = await app.fetch(post("{not json"), e);
     expect(res.status).toBe(429);
+  });
+
+  it("refuses a forged run id with 400 and counts it against no run", async () => {
+    const e = env();
+    const forged = await signedRunId("2026-09-19", uuidFrom(1), "not-the-secret");
+    const res = await app.fetch(
+      post({ mode: "friendly", runId: forged, round: 1, guess: "higher" }),
+      e,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "bad_request" });
+    expect(e.RUN_ANSWERS.limit).not.toHaveBeenCalled();
   });
 
   it("does not touch the limiters for static assets", async () => {
     const e = env();
     await app.fetch(new Request("https://biggerthangame.com/"), e);
-    expect(e.ROUND_BURST.limit).not.toHaveBeenCalled();
+    expect(e.ROUND_FLOOD.limit).not.toHaveBeenCalled();
   });
 
   it("matches the numbers configured in wrangler.toml", () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
     const toml = readFileSync(resolve(root, "wrangler.toml"), "utf8");
+    const blocks = toml.split("[[ratelimits]]").slice(1);
+    expect(blocks).toHaveLength(Object.keys(RATE_LIMITS).length);
     for (const { binding, limit, period } of Object.values(RATE_LIMITS)) {
-      const block = toml.split("[[ratelimits]]").find((b) => b.includes(`name = "${binding}"`));
+      const block = blocks.find((b) => b.includes(`name = "${binding}"`));
       expect(block, `wrangler.toml has no ${binding} binding`).toBeDefined();
       expect(block).toMatch(new RegExp(`limit = ${limit}\\b`));
       expect(block).toMatch(new RegExp(`period = ${period}\\b`));
+      // Workers Rate Limiting accepts only these two periods.
+      expect([10, 60]).toContain(period);
     }
   });
 });

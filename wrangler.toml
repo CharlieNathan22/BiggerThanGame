@@ -11,22 +11,32 @@ directory = "./apps/web/dist"
 binding = "ASSETS"
 not_found_handling = "404-page"
 run_worker_first = ["/api/*"]
-# Rate limits for POST /api/round/next, keyed on the IPv4 address or IPv6 /64.
-# The only thing between the deck and a scraper (DESIGN.md §3). Mirrored as
-# RATE_LIMITS in worker/src/rate-limit.ts; a test fails if the two drift.
-# namespace_id must be unique per binding within the Cloudflare account.
+# Rate limits for POST /api/round/next — the only thing between the deck and a
+# scraper (DESIGN.md §3), without blocking many players behind one shared IP.
+# Answers are limited per signed run id; run starts and every request per IP
+# (IPv4, or the IPv6 /64). ARCHITECTURE.md §12. Periods can only be 10 or 60.
+# Mirrored as RATE_LIMITS in worker/src/rate-limit.ts; a test fails if the two
+# drift. namespace_id must be unique per binding within the Cloudflare account.
 [[ratelimits]]
-name = "ROUND_BURST"
-namespace_id = "1001"
+name = "RUN_ANSWERS"
+namespace_id = "1003"
 
   [ratelimits.simple]
   limit = 20
   period = 10
 
 [[ratelimits]]
-name = "ROUND_SUSTAINED"
-namespace_id = "1002"
+name = "RUN_STARTS"
+namespace_id = "1004"
 
   [ratelimits.simple]
-  limit = 90
+  limit = 60
+  period = 60
+
+[[ratelimits]]
+name = "ROUND_FLOOD"
+namespace_id = "1005"
+
+  [ratelimits.simple]
+  limit = 800
   period = 60
