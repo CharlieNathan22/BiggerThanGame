@@ -49,8 +49,9 @@ pnpm dev:api      # builds the deck, then the Worker on :8787 (wrangler dev, sec
 pnpm test         # unit tests (vitest) — core, deck and Worker
 pnpm simulate     # 10k-run difficulty simulation → simulation.md
 pnpm deck:import  # players.csv (+ image-log.csv, focus.csv) → players/*.yaml; --dry-run, --prune
-pnpm build        # validates deck, emits artifacts, builds site (sample deck allowed)
+pnpm build        # validates deck, emits artifacts, builds site, leak-scans it (sample deck allowed)
 pnpm build:prod   # same, but refuses the sample deck — production and deploy only
+pnpm scan:dist    # the leak scan alone: player ids, or values beside names, in apps/web/dist
 pnpm typecheck    # tsc, then astro check + svelte-check for apps/web; needs the deck artifacts:
                   # run a deck build first on a clean checkout
 pnpm lint

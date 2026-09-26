@@ -14,3 +14,9 @@ export const CORRECTIONS_EMAIL = "corrections@biggerthangame.com";
  * URLs are built only through `imageUrl` / `srcsetFor` from `@bt/core`.
  */
 export const IMAGE_BASE = "https://img.biggerthangame.com";
+
+/** The site's origin, for challenge links. Matches `site` in astro.config.mjs. */
+export const SITE_URL = "https://biggerthangame.com";
+
+/** How the site's address is written on the share image. */
+export const SITE_LABEL = "biggerthangame.com";

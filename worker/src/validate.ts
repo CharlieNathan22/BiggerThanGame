@@ -7,10 +7,14 @@
  *
  * This checks the run id's shape only. Whether the server signed it needs the
  * secret, and is checked in round.ts.
+ *
+ * A challenge start is held to its types here, but not its contents: a link
+ * that has been mangled on its way through a chat app still starts a run, a
+ * fresh one, with a note saying the link didn't check out (challenge.ts).
  */
 
 import { MAX_ROUNDS } from "@bt/core";
-import type { AnswerRequest, Guess, NextRoundRequest } from "@bt/core";
+import type { AnswerRequest, ChallengeStartRequest, Guess, NextRoundRequest } from "@bt/core";
 import { parseRunId } from "./run-id.js";
 
 export type Parsed<T> =
@@ -18,7 +22,11 @@ export type Parsed<T> =
 
 const GUESSES: readonly Guess[] = ["higher", "lower"];
 const START_KEYS = ["mode"];
+const CHALLENGE_KEYS = ["challenge", "mode", "score", "sig"];
 const ANSWER_KEYS = ["guess", "mode", "round", "runId"];
+
+/** Far past a real run id (84 characters) or signature (22): anything longer is not a link. */
+const MAX_CHALLENGE_FIELD = 128;
 
 export function parseNextRoundRequest(body: unknown): Parsed<NextRoundRequest> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
@@ -29,8 +37,12 @@ export function parseNextRoundRequest(body: unknown): Parsed<NextRoundRequest> {
 
   const keys = Object.keys(record).sort();
   if (sameKeys(keys, START_KEYS)) return { ok: true, value: { mode: "friendly" } };
+  if (sameKeys(keys, CHALLENGE_KEYS)) return parseChallengeStart(record);
   if (!sameKeys(keys, ANSWER_KEYS)) {
-    return fail("expected { mode } to start, or { mode, runId, round, guess } to answer");
+    return fail(
+      "expected { mode } to start, { mode, challenge, score, sig } to replay a challenge, " +
+        "or { mode, runId, round, guess } to answer",
+    );
   }
 
   const { runId, round, guess } = record;
@@ -48,8 +60,26 @@ export function parseNextRoundRequest(body: unknown): Parsed<NextRoundRequest> {
   return { ok: true, value: answer };
 }
 
+function parseChallengeStart(record: Record<string, unknown>): Parsed<ChallengeStartRequest> {
+  const { challenge, score, sig } = record;
+  if (typeof challenge !== "string" || challenge.length > MAX_CHALLENGE_FIELD) {
+    return fail("challenge must be a run id");
+  }
+  if (typeof score !== "number" || !Number.isInteger(score) || score < 0 || score > MAX_ROUNDS) {
+    return fail(`score must be an integer from 0 to ${MAX_ROUNDS}`);
+  }
+  if (typeof sig !== "string" || sig.length > MAX_CHALLENGE_FIELD) {
+    return fail("sig must be a signature");
+  }
+  return { ok: true, value: { mode: "friendly", challenge, score, sig } };
+}
+
 export function isAnswer(req: NextRoundRequest): req is AnswerRequest {
   return "runId" in req;
+}
+
+export function isChallengeStart(req: NextRoundRequest): req is ChallengeStartRequest {
+  return "challenge" in req;
 }
 
 function sameKeys(sorted: readonly string[], expected: readonly string[]): boolean {

@@ -71,6 +71,9 @@ export type { RunOptions } from "./sequence.js";
 export { DISPLAY_WIDTHS, IMAGE_QUALITY, imageUrl, originalUrl, srcsetFor } from "./images.js";
 export type { DisplayWidth, PlayerImage } from "./images.js";
 
+export { STREAK_TITLES, challengeOutcome, streakTitle } from "./titles.js";
+export type { ChallengeOutcome, StreakTitle, StreakTitleId } from "./titles.js";
+
 export type {
   AnchorCard,
   AnswerRequest,
@@ -78,6 +81,9 @@ export type {
   ApiError,
   ApiErrorCode,
   CardImage,
+  ChallengeLink,
+  ChallengeStartRequest,
+  ChallengeStatus,
   ContinueResponse,
   EndResponse,
   Guess,

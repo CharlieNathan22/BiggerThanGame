@@ -30,7 +30,9 @@ describe("run ids", () => {
     const id = await mintRunId(new Date("2026-09-19T18:00:00Z"), uuidFrom(1), "s");
     expect(parseRunId(id)).toEqual({
       body: `20260919-${uuidFrom(1)}`,
+      origin: `20260919-${uuidFrom(1)}`,
       date: new Date("2026-09-19T00:00:00.000Z"),
+      replay: false,
     });
   });
 
@@ -52,6 +54,9 @@ describe("run ids", () => {
     `2026091-${uuidFrom(1)}.${"A".repeat(22)}`,
     `20261301-${uuidFrom(1)}.${"A".repeat(22)}`,
     `20260230-${uuidFrom(1)}.${"A".repeat(22)}`,
+    `20260919-${uuidFrom(1)}~.${"A".repeat(22)}`,
+    `20260919-${uuidFrom(1)}~${uuidFrom(2)}~${uuidFrom(3)}.${"A".repeat(22)}`,
+    `20260919-${uuidFrom(1)}~20260919-${uuidFrom(2)}.${"A".repeat(22)}`,
   ])("reject %j as malformed", (id) => {
     expect(parseRunId(id)).toBeUndefined();
   });

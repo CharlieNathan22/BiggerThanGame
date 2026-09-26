@@ -49,7 +49,9 @@ export function announcement(state: GameState): string {
   const { round, reveal } = state;
   if (round === null) return "";
   if (state.phase === "awaiting") {
-    return t("live.question", {
+    // Say so when the stat has just changed: the plaque is the question.
+    const key = round.stat.statChanged ? "live.statChanged" : "live.question";
+    return t(key, {
       stat: statLabel(round.stat.key),
       anchor: round.anchor.name,
       value: round.anchor.display,
@@ -63,6 +65,18 @@ export function announcement(state: GameState): string {
       : t("live.wrong", params);
   }
   return "";
+}
+
+/**
+ * The note for a challenge link that didn't start a replay: shown on the start
+ * panel for a link too broken to send, and over round one when the server
+ * refused it. Empty otherwise.
+ */
+export function challengeNotice(state: GameState): string {
+  const { challenge, phase, round } = state;
+  if (challenge?.status !== "refused" || phase === "over") return "";
+  if (round !== null && round.index !== 1) return "";
+  return challenge.reason === "expired" ? t("challenge.expired") : t("challenge.invalid");
 }
 
 /** The note under the challenger while a request waits to go again. */

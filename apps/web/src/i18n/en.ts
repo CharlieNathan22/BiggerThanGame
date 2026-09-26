@@ -18,6 +18,7 @@ export const en = {
   "brand.football": "Football",
   "brand.legends": "Legends",
   "brand.footballLegends": "Football Legends",
+  "brand.heading": "Bigger Than — Football Legends",
   "scores.streak": "Streak",
   "scores.best": "Best",
 
@@ -51,6 +52,8 @@ export const en = {
 
   // Screen reader announcements
   "live.question": "{stat}. {anchor}: {value}. Is {challenger} higher or lower?",
+  "live.statChanged":
+    "The stat changes to {stat}. {anchor}: {value}. Is {challenger} higher or lower?",
   "live.correct": "{challenger}: {value}. Correct. Streak {streak}.",
   "live.wrong": "{challenger}: {value}. Wrong. The run is over.",
 
@@ -67,6 +70,46 @@ export const en = {
   "over.reportEmail": "Or email {email}",
   "over.reportSubject":
     "Correction: {anchor} v {challenger}, {stat} ({anchorValue} v {challengerValue})",
+  "over.share": "Share result",
+  "over.shareImage": "Share image",
+  "over.saveImage": "Save image",
+  "over.copied": "Copied — paste it anywhere.",
+  "over.copyFailed": "Couldn't copy. Select the text below and copy it.",
+  "over.shareText": "Your result, to copy",
+  "over.imageSaved": "Image saved.",
+  "over.imageFailed": "Couldn't make the image. Try sharing the result instead.",
+
+  // Streak titles, by StreakTitleId (@bt/core STREAK_TITLES)
+  "title.squad": "Squad player",
+  "title.starter": "Starter",
+  "title.captain": "Captain",
+  "title.legend": "Legend",
+  "title.goat": "GOAT",
+
+  // Challenge links
+  "challenge.heading": "Beat {score}",
+  "challenge.intro":
+    "A friend got {score} in a row on this run. Same players, same stats, same order. Can you beat it?",
+  "challenge.cta": "Take the challenge",
+  "challenge.invalid": "That challenge link didn't check out, so here's a fresh run instead.",
+  "challenge.expired": "That challenge has expired — links last 10 days — so here's a fresh run.",
+  "challenge.beat": "You beat {score}.",
+  "challenge.matched": "You matched {score}. So close.",
+  "challenge.short": "{score} to beat. Not this time.",
+
+  // The run's grid, for screen readers
+  "grid.label": "Your run: {basic} basic, {uncommon} uncommon and {rare} rare stats right.",
+  "grid.miss": "Out on {stat}.",
+
+  // What gets shared
+  "share.heading": "Bigger Than — Football Legends",
+  "share.score.one": "{score} correct, then out",
+  "share.score.other": "{score} in a row",
+  "share.endedOn": "Ended on: {stat}",
+  "share.endedLabel": "Ended on",
+  "share.exhausted": "Went the distance: every pairing dealt",
+  "share.challenge": "Can you beat {score}? {url}",
+  "share.fileName": "bigger-than-{score}.png",
 
   // Stat labels, by StatKey
   "stat.club_goals": "Club goals",

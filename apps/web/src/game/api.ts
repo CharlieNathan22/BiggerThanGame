@@ -8,6 +8,8 @@ import type {
   AnswerRequest,
   AnswerResponse,
   ApiErrorCode,
+  ChallengeLink,
+  ChallengeStartRequest,
   Guess,
   StartRequest,
   StartResponse,
@@ -27,7 +29,8 @@ export const REQUEST_TIMEOUT_MS = 8000;
 export const DEFAULT_RETRY_AFTER_S = 10;
 
 export interface GameApi {
-  start(): Promise<StartResponse>;
+  /** Starts a run; from a challenge link, when one is given. */
+  start(challenge?: ChallengeLink): Promise<StartResponse>;
   answer(runId: string, round: number, guess: Guess): Promise<AnswerResponse>;
 }
 
@@ -56,7 +59,7 @@ export function createApi(fetchFn: Fetch, options: ApiOptions = {}): GameApi {
   const endpoint = options.endpoint ?? ROUND_ENDPOINT;
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
 
-  async function post<T>(body: StartRequest | AnswerRequest): Promise<T> {
+  async function post<T>(body: StartRequest | ChallengeStartRequest | AnswerRequest): Promise<T> {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), timeoutMs);
     let response: Response;
@@ -88,7 +91,17 @@ export function createApi(fetchFn: Fetch, options: ApiOptions = {}): GameApi {
   }
 
   return {
-    start: () => post<StartResponse>({ mode: "friendly" }),
+    start: (challenge) =>
+      post<StartResponse>(
+        challenge === undefined
+          ? { mode: "friendly" }
+          : {
+              mode: "friendly",
+              challenge: challenge.runId,
+              score: challenge.score,
+              sig: challenge.sig,
+            },
+      ),
     answer: (runId, round, guess) =>
       post<AnswerResponse>({ mode: "friendly", runId, round, guess }),
   };

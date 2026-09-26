@@ -27,7 +27,8 @@ const credits = loadCredits();
       {credits.map((credit) => (
         <li>
           <strong>{credit.name}</strong>
-          <p>
+          {/* The leak scan skips attribution: photographers' names can hold numbers. */}
+          <p data-scan="attribution">
             Photo by {credit.author} ·{" "}
             {credit.licenceUrl !== undefined ? (
               <a href={credit.licenceUrl} rel="license">

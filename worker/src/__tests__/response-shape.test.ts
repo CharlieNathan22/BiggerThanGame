@@ -21,6 +21,7 @@ const STAT_KEYS = ["key", "label", "statChanged", "tier"];
 const ROUND_KEYS = ["anchor", "challenger", "index", "stat"];
 const REVEAL_KEYS = ["correct", "display", "qualifier", "round", "value"];
 const IMAGE_KEYS = ["focus", "height", "key", "width"];
+const CHALLENGE_LINK_KEYS = ["runId", "score", "sig"];
 
 /** Where a number may legitimately appear. Anything else is a leak. */
 const NUMERIC_PATHS = [
@@ -28,6 +29,8 @@ const NUMERIC_PATHS = [
   /^(round|next)\.anchor\.value$/,
   /^(round|next)\.(anchor|challenger)\.image\.(width|height)$/,
   /^reveal\.(round|value)$/,
+  // The player's own score, signed into the challenge link at a run's end.
+  /^challenge\.score$/,
 ];
 
 /** Fields that carry values the player has been shown, stripped before the scan. */
@@ -42,6 +45,9 @@ const SHOWN_FIELDS = new Set([
   "key",
   "runId",
   "focus",
+  // The challenge link: the player's own score and a signature over it.
+  "score",
+  "sig",
 ]);
 
 function numericLeaves(value: unknown, path = ""): { path: string; value: number }[] {
@@ -109,8 +115,16 @@ function checkResponse(
   if ("round" in response) {
     checkRound(response.round, deck, now);
   } else {
-    expectKeysWithin(response, ["end", "next", "reveal"]);
+    expectKeysWithin(response, ["challenge", "end", "next", "reveal"]);
     expectKeysWithin(response.reveal, REVEAL_KEYS);
+    if ("end" in response) {
+      expectKeysWithin(response.challenge, CHALLENGE_LINK_KEYS);
+      expect(response.challenge.score).toBe(
+        response.reveal.correct ? response.reveal.round : response.reveal.round - 1,
+      );
+    } else {
+      expect(response).not.toHaveProperty("challenge");
+    }
     if ("next" in response) checkRound(response.next, deck, now);
   }
 }
@@ -130,7 +144,8 @@ describe.each([
       }
     }
     expect(responses).toBeGreaterThan(runs);
-  });
+    // Forty full runs, each scanned against the deck: seconds, not milliseconds.
+  }, 30_000);
 
   it("carry a photo's focus with the photo, and only there", async () => {
     // Every other player gets a crop focus, so runs meet both kinds.

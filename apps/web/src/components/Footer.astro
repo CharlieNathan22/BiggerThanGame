@@ -29,12 +29,24 @@ const links = [
     text-align: center;
     font-variation-settings: var(--fv-meta);
   }
+  /* The links read at --dim (4.5:1 and up); only the separators stay faint. */
   a {
-    color: inherit;
+    position: relative;
+    color: var(--dim);
     text-decoration: none;
   }
   a:hover {
-    color: var(--dim);
+    color: var(--chalk);
     text-decoration: underline;
+  }
+  /* A 44px touch target around small text, without moving the line. */
+  a::after {
+    content: "";
+    position: absolute;
+    left: -6px;
+    right: -6px;
+    top: 50%;
+    height: var(--target-min);
+    transform: translateY(-50%);
   }
 </style>

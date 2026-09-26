@@ -115,6 +115,13 @@
     border-radius: var(--radius-pill);
     background: var(--plaque-gloss);
   }
+  /* Short landscape screens: at the top of the divide, clear of both cards
+     (Side.svelte reserves the strip). The pop's translate still centres it. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .plaque {
+      top: calc(var(--plaque-h) / 2 + var(--plaque-top-gap));
+    }
+  }
   .plaque.pop {
     animation: pop var(--dur-pop) var(--ease);
   }

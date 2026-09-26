@@ -23,12 +23,13 @@ import {
   dealDelay,
   initialState,
   newCards,
+  offeredLink,
   reduce,
   retryDelay,
   spinDelay,
   verdictAt,
 } from "./machine";
-import type { GameEvent, GameState } from "./machine";
+import type { Challenge, GameEvent, GameState } from "./machine";
 import type { Timings } from "./timing";
 
 export interface ControllerDeps {
@@ -41,6 +42,10 @@ export interface ControllerDeps {
   readonly reducedMotion: () => boolean;
   /** Best streak to show before any run. */
   readonly best?: number;
+  /** Called whenever the best streak rises, to keep it (best.ts). */
+  readonly saveBest?: (best: number) => void;
+  /** A challenge link the first run starts from. */
+  readonly challenge?: Challenge | null;
   /** Starts fetching a card's photo into the browser cache. */
   readonly preload?: (image: CardImage | undefined) => void;
 }
@@ -56,7 +61,7 @@ export class GameController {
 
   constructor(deps: ControllerDeps) {
     this.#deps = deps;
-    this.#state = initialState(deps.best ?? 0);
+    this.#state = initialState(deps.best ?? 0, deps.challenge ?? null);
   }
 
   get state(): GameState {
@@ -104,6 +109,7 @@ export class GameController {
     const current = (): boolean => generation === this.#generation;
 
     if (after.phase !== before.phase) this.#clearTimer();
+    if (after.best > before.best) this.#deps.saveBest?.(after.best);
 
     if (event.type === "started") this.#preload(event.round);
     if (event.type === "answered" && "next" in event.response) this.#preload(event.response.next);
@@ -118,9 +124,15 @@ export class GameController {
     switch (after.phase) {
       case "starting":
         if (before.phase === "starting" && event.type !== "retry") return;
-        api.start().then(
+        api.start(offeredLink(after)).then(
           (res) =>
-            current() && this.#dispatch({ type: "started", runId: res.runId, round: res.round }),
+            current() &&
+            this.#dispatch({
+              type: "started",
+              runId: res.runId,
+              round: res.round,
+              ...(res.challenge !== undefined ? { challenge: res.challenge } : {}),
+            }),
           (err: unknown) =>
             current() &&
             this.#dispatch({

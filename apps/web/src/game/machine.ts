@@ -19,10 +19,17 @@
  * and the same request sent again; a dropped connection is retried visibly for
  * a few seconds and only then banked (DESIGN.md §3, Connectivity). Both show as
  * a `hitch` while the reveal (or the start) waits.
+ *
+ * A run can start from a challenge link (DESIGN.md §13). The link is offered
+ * with the start; the server says whether it replays the challenged run or,
+ * for a link it can't verify, deals a fresh one. Every run the server ends
+ * comes back with a signed link of its own, for the share.
  */
 
 import type {
   AnswerResponse,
+  ChallengeLink,
+  ChallengeStatus,
   Guess,
   PlayerCard,
   Reveal,
@@ -87,6 +94,18 @@ export function reconnectDelay(retries: number): number {
   return Math.min(RECONNECT.firstDelay * 2 ** retries, RECONNECT.maxDelay);
 }
 
+/**
+ * A challenge link, through the run it started.
+ *
+ * - `offered`: from the page's URL, sent with the start. Framed as "Beat n".
+ * - `accepted`: the server verified it; this run replays the challenged one.
+ * - `refused`: broken, forged or too old; this run is a fresh one, with a note.
+ */
+export type Challenge =
+  | { readonly status: "offered"; readonly link: ChallengeLink }
+  | { readonly status: "accepted"; readonly score: number }
+  | { readonly status: "refused"; readonly reason: "invalid" | "expired" };
+
 /** When the guess went, and when the answer came back. `performance.now()` ms. */
 export interface CountClock {
   readonly tappedAt: number;
@@ -121,11 +140,23 @@ export interface GameState {
   readonly startFailed: boolean;
   /** A request waiting to be sent again; null when all is well. */
   readonly hitch: Hitch | null;
+  /** The challenge link this run came from, if any. */
+  readonly challenge: Challenge | null;
+  /**
+   * The signed link to challenge a friend with, from the server's end of the
+   * run. Null until then, and for a run banked after a dropped connection.
+   */
+  readonly link: ChallengeLink | null;
 }
 
 export type GameEvent =
   | { readonly type: "start" }
-  | { readonly type: "started"; readonly runId: string; readonly round: RoundPayload }
+  | {
+      readonly type: "started";
+      readonly runId: string;
+      readonly round: RoundPayload;
+      readonly challenge?: ChallengeStatus;
+    }
   | { readonly type: "startFailed"; readonly failure: Failure; readonly at: number }
   | { readonly type: "dealt" }
   | { readonly type: "spun" }
@@ -137,7 +168,7 @@ export type GameEvent =
   | { readonly type: "settled" }
   | { readonly type: "advance" };
 
-export function initialState(best = 0): GameState {
+export function initialState(best = 0, challenge: Challenge | null = null): GameState {
   return {
     phase: "idle",
     runId: null,
@@ -154,6 +185,8 @@ export function initialState(best = 0): GameState {
     end: null,
     startFailed: false,
     hitch: null,
+    challenge,
+    link: null,
   };
 }
 
@@ -170,11 +203,18 @@ export function reduce(state: GameState, event: GameEvent): GameState {
   switch (event.type) {
     case "start":
       if (state.phase !== "idle" && state.phase !== "over") return state;
-      return { ...initialState(state.best), phase: "starting" };
+      // A challenge belongs to the first run from the link. "Play again" is a fresh run.
+      return {
+        ...initialState(state.best, state.phase === "idle" ? state.challenge : null),
+        phase: "starting",
+      };
 
     case "started":
       if (state.phase !== "starting") return state;
-      return deal({ ...state, runId: event.runId }, event.round);
+      return deal(
+        { ...state, runId: event.runId, challenge: settleChallenge(state.challenge, event) },
+        event.round,
+      );
 
     case "startFailed":
       if (state.phase !== "starting") return state;
@@ -223,6 +263,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         reveal: response.reveal,
         next: "next" in response ? response.next : null,
         end: "end" in response ? response.end : null,
+        link: "end" in response ? response.challenge : null,
       };
     }
 
@@ -288,6 +329,24 @@ export function reduce(state: GameState, event: GameEvent): GameState {
   }
 }
 
+/** What the server made of the offered link. A refusal made before the start stands. */
+function settleChallenge(
+  offered: Challenge | null,
+  event: Extract<GameEvent, { type: "started" }>,
+): Challenge | null {
+  if (offered?.status !== "offered") return offered;
+  const { challenge } = event;
+  if (challenge === undefined) return null;
+  return challenge.accepted
+    ? { status: "accepted", score: challenge.score }
+    : { status: "refused", reason: challenge.reason };
+}
+
+/** The link the start request should carry, if the run is starting from one. */
+export function offeredLink(state: GameState): ChallengeLink | undefined {
+  return state.challenge?.status === "offered" ? state.challenge.link : undefined;
+}
+
 function deal(state: GameState, round: RoundPayload): GameState {
   return {
     ...state,
@@ -300,7 +359,7 @@ function deal(state: GameState, round: RoundPayload): GameState {
 }
 
 function over(state: GameState, end: EndReason): GameState {
-  return { ...state, phase: "over", end, next: null, hitch: null };
+  return { ...state, phase: "over", end, next: null, hitch: null, link: null };
 }
 
 /**

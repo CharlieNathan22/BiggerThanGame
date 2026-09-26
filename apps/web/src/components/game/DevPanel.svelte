@@ -4,25 +4,34 @@
   it. Developer-facing, so its labels aren't in i18n/en.ts.
 -->
 <script lang="ts">
-  import { DEV_DELAYS, devDelay, setDevDelay } from "../../game/dev";
+  import { DEV_DELAYS, devDelay, runAxe, setDevDelay } from "../../game/dev";
   import type { DevDelay } from "../../game/dev";
 
   let current: DevDelay = $state(devDelay());
+
+  let axe = $state("a11y");
 
   function choose(ms: DevDelay): void {
     current = ms;
     setDevDelay(ms);
   }
+
+  async function check(): Promise<void> {
+    axe = "…";
+    const findings = await runAxe();
+    axe = `a11y ${findings.length}`;
+  }
 </script>
 
-<div class="dev" role="group" aria-label="Dev: round-trip delay">
+<aside class="dev" aria-label="Dev: round-trip delay and a11y check">
   <span>delay</span>
   {#each DEV_DELAYS as ms (ms)}
     <button aria-pressed={current === ms} onclick={() => choose(ms)}>
       {ms >= 1000 ? `${ms / 1000}s` : `${ms}ms`}
     </button>
   {/each}
-</div>
+  <button onclick={check} title="Run axe-core; results in the console">{axe}</button>
+</aside>
 
 <style>
   /* Deliberately plain and off to one side: this is scaffolding, not design. */

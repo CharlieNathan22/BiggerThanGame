@@ -29,13 +29,16 @@
     {#key player.id}
       <Photo image={player.image} initial={initial(player.name)} />
     {/key}
-    <div class="who">
-      <div class="name">{player.name}</div>
-      <div class="meta">{player.country}</div>
-    </div>
-    <div class="value">
-      {@render value?.()}
-      <div class="qual">{qualifier}</div>
+    <!-- The plate keeps the text on a guaranteed-dark patch over any photo. -->
+    <div class="plate">
+      <div class="who">
+        <div class="name">{player.name}</div>
+        <div class="meta">{player.country}</div>
+      </div>
+      <div class="value">
+        {@render value?.()}
+        <div class="qual">{qualifier}</div>
+      </div>
     </div>
     {@render children?.()}
   {/if}
@@ -57,6 +60,13 @@
     /* The photo blends into this half's colour and nothing behind it. */
     isolation: isolate;
   }
+  /* Short landscape screens: keep the strip under the plaque clear (Plaque.svelte). */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .side {
+      padding-top: calc(var(--plaque-h) + var(--plaque-top-gap) * 2);
+      padding-bottom: 10px;
+    }
+  }
   .side.a {
     background: var(--night);
   }
@@ -68,6 +78,19 @@
   }
   .side.miss {
     background: var(--miss);
+  }
+  .plate {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--plate-pad);
+    border-radius: var(--plate-radius);
+    background: var(--plate-bg);
+    /* A soft edge outside the plate; inside it, the opacity is exactly --plate-bg. */
+    box-shadow: 0 0 var(--plate-feather) var(--plate-feather) var(--plate-bg);
+    -webkit-backdrop-filter: blur(var(--plate-blur));
+    backdrop-filter: blur(var(--plate-blur));
   }
   .who {
     position: relative;

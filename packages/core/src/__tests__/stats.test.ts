@@ -113,9 +113,13 @@ describe("formatters", () => {
     expect(STATS.fee.format(0.0011)).toBe("€1k");
   });
 
-  it("shows the one decimal a fee has, and none when it has none", () => {
+  it("shows the decimals a figure has, up to two, and none when it has none", () => {
     expect(STATS.fee.format(36.2)).toBe("€36.2m");
     expect(STATS.fee.format(36.0)).toBe("€36m");
+    expect(STATS.fee.format(10.75)).toBe("€10.75m");
+    expect(STATS.fee.format(10.7)).toBe("€10.7m");
+    expect(STATS.ig.format(1.05)).toBe("1.05m");
+    expect(STATS.ig.format(212.34)).toBe("212.34m");
   });
 
   it("never rounds a count-up frame just under a million to 1000k", () => {
@@ -132,6 +136,10 @@ describe("formatters", () => {
     ["fee", 36.2, 36.0],
     ["fee", 0.014, 0.0011],
     ["fee", 0.94, 1],
+    // A stored second decimal must survive: 10.75 once read "10.8m", like 10.8.
+    ["fee", 10.75, 10.8],
+    ["fee", 10.75, 10.7],
+    ["ig", 1.05, 1.1],
   ] as const)("formats %s %d and %d differently", (key, a, b) => {
     expect(STATS[key].format(a)).not.toBe(STATS[key].format(b));
   });
@@ -145,8 +153,9 @@ describe("formatters", () => {
       const p = byId(id);
       return { ...p, stats: { ...p.stats, ig: { value, asOf: "2026-09-01" } } };
     };
-    expect(formatCollisions([withIg("alpha", 10.9), withIg("bravo", 10.94)], NOW)).toEqual([
-      { stat: "ig", values: [10.9, 10.94], shown: "10.9m" },
+    // Three decimals is past what a card shows, so these two read the same.
+    expect(formatCollisions([withIg("alpha", 10.9), withIg("bravo", 10.904)], NOW)).toEqual([
+      { stat: "ig", values: [10.9, 10.904], shown: "10.9m" },
     ]);
   });
 

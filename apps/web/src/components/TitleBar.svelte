@@ -46,6 +46,7 @@
     flex-wrap: wrap;
   }
   .title {
+    position: relative;
     display: flex;
     align-items: baseline;
     gap: 9px;
@@ -53,6 +54,17 @@
     line-height: var(--lh-tight);
     color: inherit;
     text-decoration: none;
+  }
+  /* As a link, a 44px touch target however small the type. */
+  a.title::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    min-height: var(--target-min);
+    height: 100%;
+    transform: translateY(-50%);
   }
   .bt {
     font-size: var(--fs-brand);

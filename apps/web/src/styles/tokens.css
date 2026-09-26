@@ -14,9 +14,12 @@
   --night-2: #0f2935;
   --ink: #06121a;
   --chalk: #eef3f1;
-  --dim: rgba(238, 243, 241, 0.58);
+  /* Raised from the prototype's 0.58 so small print on a card meets 4.5:1 over
+     the brightest photo, on the verdict colours too (M5 contrast pass). */
+  --dim: rgba(238, 243, 241, 0.66);
   --faint: rgba(238, 243, 241, 0.3);
-  --unknown: rgba(238, 243, 241, 0.16);
+  /* The hidden value's "?". Raised from 0.16 so it reads at 3:1 as large text. */
+  --unknown: rgba(238, 243, 241, 0.44);
   --rule: rgba(238, 243, 241, 0.13);
   --gold: #ffb020;
   --gold-rule: rgba(255, 176, 32, 0.28);
@@ -42,8 +45,25 @@
     rgba(6, 18, 26, 0.22) 70%,
     rgba(6, 18, 26, 0.08) 100%
   );
+  /*
+   * The card plate: a soft dark panel behind the name, meta line and figure, so
+   * the text sits on a guaranteed-dark area over any photo while the half's
+   * colour — teal, or the verdict's green or red — stays strong around it.
+   * Sized by the contrast pass: at this opacity, chalk, --dim and all three
+   * tier colours hold AA over a white photo pixel under the lightest scrim.
+   */
+  --plate-bg: rgba(6, 18, 26, 0.62);
+  --plate-blur: 6px;
+  --plate-feather: 18px;
+  --plate-radius: 22px;
+  --plate-pad: 12px 22px 14px;
+  /* Higher / Lower sit below the plate, on the photo: the same fill keeps their
+     text at AA. On a card with no photo it all but vanishes into --night. */
+  --pick-bg: var(--plate-bg);
   /* The connection note under the challenger during a reconnect or slow-down. */
   --hitch-bg: rgba(6, 18, 26, 0.72);
+  /* Notes over the pitch: a refused challenge link. */
+  --notice-bg: rgba(6, 18, 26, 0.86);
 
   /* Tiers (DESIGN.md §6). `--tier` is the live stat's tier, set by the game. */
   --t-basic: #ffc24d;
@@ -141,6 +161,8 @@
   --plaque-w: min(80vw, 290px);
   --plaque-h: 50px;
   --plaque-halo: 7px;
+  /* Short landscape screens: the plaque sits this far below the top of the divide. */
+  --plaque-top-gap: 10px;
   --pick-min-w: 110px;
   --panel-w: 34ch;
   --prose-w: 62ch;
@@ -149,6 +171,12 @@
   --focus-ring: 3px;
   --focus-ring-thin: 2px;
   --focus-offset: 3px;
+  /* The smallest touch target (WCAG 2.5.5). Small links grow an invisible hit area to it. */
+  --target-min: 44px;
+  /* The game-over panel's grid of rounds: one square per answered round. */
+  --grid-cell: 14px;
+  --grid-gap: 4px;
+  --grid-radius: 3px;
 
   /* ---------- shape ---------- */
   --radius-pill: 100px;
@@ -197,6 +225,36 @@
   --dur-next: 1400ms;
   /* From a wrong answer's colour to the game-over panel. */
   --dur-over: 1400ms;
+}
+
+/*
+ * The share image (game/share-image.ts): a 1080×1350 PNG drawn on a canvas.
+ * Pixels on the image, not on screen. Colours and faces come from the tokens
+ * above; a test keeps share-image.ts's fallbacks equal to these.
+ */
+:root {
+  --share-w: 1080px;
+  --share-h: 1350px;
+  --share-pad: 84px;
+  --share-bar-h: 132px;
+  --share-gap: 44px;
+  --share-fs-brand: 40px;
+  --share-fs-legends: 52px;
+  --share-fs-score: 280px;
+  --share-fs-caption: 40px;
+  --share-fs-title: 58px;
+  --share-fs-label: 30px;
+  --share-fs-plaque: 36px;
+  --share-plaque-w: 560px;
+  --share-plaque-h: 88px;
+  --share-fs-name: 40px;
+  --share-fs-value: 76px;
+  --share-fs-note: 34px;
+  --share-fs-url: 34px;
+  --share-cell: 56px;
+  --share-cell-gap: 12px;
+  --share-cell-radius: 12px;
+  --share-columns: 10;
 }
 
 @media (min-width: 560px) {

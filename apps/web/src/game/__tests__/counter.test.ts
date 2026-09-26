@@ -127,8 +127,8 @@ describe("formatFigure", () => {
   it("formats in-between figures as the stat formats real ones", () => {
     expect(formatFigure("caps", 41.6)).toBe("42");
     expect(formatFigure("apps", 1234)).toBe("1,234");
-    expect(formatFigure("ig", 3.14)).toBe("3.1m");
-    expect(formatFigure("fee", 77.52)).toBe("€77.5m");
+    expect(formatFigure("ig", 3.141)).toBe("3.14m");
+    expect(formatFigure("fee", 77.524)).toBe("€77.52m");
   });
 });
 

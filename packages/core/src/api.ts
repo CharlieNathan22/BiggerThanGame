@@ -35,7 +35,23 @@ export interface AnswerRequest {
   readonly guess: Guess;
 }
 
-export type NextRoundRequest = StartRequest | AnswerRequest;
+/**
+ * Starts a replay of someone else's run, from a challenge link
+ * (`/?challenge=<runId>&score=<n>&sig=<sig>`). The fields are the link's own.
+ * If the server can't verify the link it starts a fresh run instead, and says
+ * why in `StartResponse.challenge`.
+ */
+export interface ChallengeStartRequest {
+  readonly mode: "friendly";
+  /** The challenged run's id, `YYYYMMDD-<uuid>.<sig>`. */
+  readonly challenge: string;
+  /** The score to beat. */
+  readonly score: number;
+  /** Signs `challenge` and `score` together, so neither can be edited. */
+  readonly sig: string;
+}
+
+export type NextRoundRequest = StartRequest | ChallengeStartRequest | AnswerRequest;
 
 export interface StatPayload {
   readonly key: StatKey;
@@ -85,9 +101,29 @@ export interface RoundPayload {
   readonly challenger: PlayerCard;
 }
 
+/** What became of a challenge link a run was started from. */
+export type ChallengeStatus =
+  /** The run is a replay of the challenged one: the same rounds, in the same order. */
+  | { readonly accepted: true; readonly score: number }
+  /** The link didn't check out, or is too old; the run is a fresh one. */
+  | { readonly accepted: false; readonly reason: "invalid" | "expired" };
+
 export interface StartResponse {
   readonly runId: string;
   readonly round: RoundPayload;
+  /** Present only when the start came from a challenge link. */
+  readonly challenge?: ChallengeStatus;
+}
+
+/**
+ * A signed challenge for the run just played, at the score it reached: the
+ * three query parameters of `/?challenge=<runId>&score=<score>&sig=<sig>`.
+ */
+export interface ChallengeLink {
+  /** The run to replay, `YYYYMMDD-<uuid>.<sig>` — the original, even after a replay. */
+  readonly runId: string;
+  readonly score: number;
+  readonly sig: string;
 }
 
 /** The challenger's figure, released only after the guess. */
@@ -109,6 +145,8 @@ export interface ContinueResponse {
 export interface EndResponse {
   readonly reveal: Reveal;
   readonly end: RunEnd;
+  /** A link challenging a friend to beat this run's score on the same rounds. */
+  readonly challenge: ChallengeLink;
 }
 
 export type AnswerResponse = ContinueResponse | EndResponse;

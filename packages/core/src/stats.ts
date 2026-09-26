@@ -25,8 +25,9 @@ const int = (v: number): string => Math.round(v).toLocaleString("en-GB");
 
 /**
  * A figure stored in millions, as shown on a card: whole thousands below a
- * million (`0.014` → `14k`), and millions from there with the one decimal the
- * stored value has (`36.2` → `36.2m`, `36` → `36m`).
+ * million (`0.014` → `14k`), and millions from there with the decimals the
+ * stored value has, up to two (`10.75` → `10.75m`, `10.7` → `10.7m`, `36` →
+ * `36m`). A stored decimal is never rounded away.
  *
  * Two different stored values must never show the same string — the round
  * would look like a tie, which the engine never deals. A test holds every deck
@@ -35,7 +36,7 @@ const int = (v: number): string => Math.round(v).toLocaleString("en-GB");
 export function formatMillions(v: number): string {
   const thousands = Math.round(v * 1000);
   if (thousands < 1000) return `${thousands}k`;
-  return `${Number(v.toFixed(1))}m`;
+  return `${Number(v.toFixed(2))}m`;
 }
 
 /** Whole years at `now`. Deliberately reference-dated so runs stay reproducible. */

@@ -90,6 +90,7 @@ bucket — see section 9.
 │       ├── schema.ts      # Zod schema
 │       ├── import.ts      # deck:import — CSVs → player YAML (import-cli.ts runs it)
 │       ├── build.ts       # validation + precompute → artifacts in dist/
+│       ├── dist-scan.ts   # the post-build leak scan of apps/web/dist (scan:dist)
 │       └── dist/          # generated, gitignored: deck.full.json, images.json, credits.json, …
 ├── apps/web/              # Astro + Svelte
 ├── worker/
@@ -98,6 +99,8 @@ bucket — see section 9.
 │   │   ├── app.ts         # routing, rate limiting, error mapping
 │   │   ├── round.ts       # /api/round/next as a pure function
 │   │   ├── payload.ts     # Round → declared response DTOs
+│   │   ├── run-id.ts      # signed run ids and replay ids
+│   │   ├── challenge.ts   # signed challenge links
 │   │   └── deck.ts        # the only import of packages/deck/dist
 │   ├── run-do.ts          # Durable Object (Phase 5)
 │   └── token.ts           # sign / verify progress tokens (Phase 5)
@@ -131,8 +134,8 @@ These four are what make the leaderboard defensible. Everything else is negotiab
    the browser — and the build needed a guard to stop that hole widening. Moving Friendly behind
    the endpoint removed the hole rather than policing it.
    Two surfaces still carry the risk, checked differently. The **built site bundle** is scanned
-   with `scanForLeakedValues`, because nothing type-level connects "what was imported" to "what
-   ended up in `dist`". The **round payload** is covered by an explicit response DTO plus a test —
+   after every build (`pnpm scan:dist`, §6), because nothing type-level connects "what was
+   imported" to "what ended up in `dist`". The **round payload** is covered by an explicit response DTO plus a test —
    the compiler does most of the work there, but note that a `Round` carries `anchor` and
    `challenger` as full `Player` objects, so returning one directly leaks everything while
    typechecking cleanly.
@@ -308,10 +311,24 @@ licence is not on the allow-list. Stats no longer carry provenance, so this is t
 provenance guard in the pipeline — which makes it the one that matters. A player with no `image`
 block is valid and renders the monogram fallback.
 
-**No client-bound artifact is emitted**, so there is nothing at build time to police. The leak
-scanner (`scanForLeakedValues`) instead runs against the built site bundle and, from Phase 5,
-against the round payload. It takes text rather than an object deliberately — it must work on a JS
-bundle as readily as on JSON, and it must not trust any object's shape.
+**No client-bound artifact is emitted**, so there is nothing at build time to police. Instead the
+built site itself is scanned: **`pnpm build` and `pnpm build:prod` end with `pnpm scan:dist`**
+(`packages/deck/src/dist-scan.ts`), so CI and every deploy fail if deck data reaches
+`apps/web/dist`. It reads every text file in the output against the deck the build just used and
+fails on:
+
+- **any player id**, anywhere — ids exist only in the deck and the round payload, so one in the
+  bundle means deck data was imported. This check always sees the raw file.
+- **any of a player's stat values within 500 characters of that player's name**, raw (`"caps":105`)
+  or as a card shows it (`€72m`, `1,234`). Names legitimately appear — the credits page lists every
+  photographed player — so a value only counts next to its own player's name. For this check
+  alone, HTML is read as a person would read it: entities decoded, comments, link targets, Astro's
+  scoping attributes, inline styles and licence codes (`CC-BY-SA-2.5`) removed, and the credits
+  page's attribution line (`data-scan="attribution"`) skipped, because photographers' names can
+  hold numbers ("No 10 Downing Street") and `credits.json` holds no stat values.
+
+The round payload is checked by the response-shape test with `scanForLeakedValues`, which takes text
+rather than an object deliberately — it must not trust any object's shape.
 
 Note that **image URLs are display data, not stat values**, and reach the client freely. The
 scanner only looks for numbers.
@@ -360,14 +377,38 @@ makes the board comparable. Endless and Friendly are per-run.
 `HMAC-SHA256(RUN_SECRET, "run:" + runBody)` as unpadded base64url (22 characters). The server
 answers only run ids it signed: unsigned, tampered and malformed ids are `400`. The signature is
 what lets answers be rate-limited per run (§12) — a caller can't mint a fresh id per request — and
-M5's challenge links reuse it. **The seed derives from the body alone**: the signature is itself a
-function of the body and the secret, so it would add nothing, and leaving it out means the sequence
-doesn't depend on how the signature is encoded or truncated.
+what challenge links rely on (below). **The seed derives from the body alone**: the signature is
+itself a function of the body and the secret, so it would add nothing, and leaving it out means the
+sequence doesn't depend on how the signature is encoded or truncated.
 
 The date fixes the run's reference `now` (00:00 UTC that day), from which age is computed, so no
-value moves between rounds of one run. The server refuses a run id dated more than one day from its
-own UTC date, so a caller can't choose an arbitrary reference date. The client never sees or
-chooses a seed.
+value moves between rounds of one run. The server refuses a fresh run id dated more than one day
+from its own UTC date, so a caller can't choose an arbitrary reference date. The client never sees
+or chooses a seed.
+
+**Challenge links** (DESIGN.md §13) replay a finished Friendly run for a friend:
+`/?challenge=<runId>&score=<n>&sig=<sig>`. `sig` signs the run and the score together — the first
+16 bytes of `HMAC-SHA256(RUN_SECRET, "challenge:" + runBody + ":" + score)`, unpadded base64url — so
+neither the run nor the "Beat n" number can be edited. The server issues one with every run's end
+(§8), for the score that run reached.
+
+- A start carrying a genuine link is accepted for **10 days** from the run's date
+  (`CHALLENGE_DAYS`). A forged, edited or broken link, or one past its 10 days, starts a fresh run
+  instead, and the response says why so the page can show a short note.
+- The friend gets a **replay id**, `YYYYMMDD-<uuid>~<uuid>.<sig>`: the challenged run's body, then a
+  fresh uuid of their own, signed like any run id. The seed and `now` come from the challenged
+  body, so the rounds are identical; the whole body is the rate-limit key, so everyone replaying
+  one shared link has their own answer allowance (§12). A replay id is answered for the 10 days
+  plus the usual day's grace; fresh run ids keep the ±1-day rule.
+- A replay's own end links back to the challenged run, at the friend's score, so the challenge can
+  travel on.
+- **A deck change within the 10 days alters the replay**, because the percentile tables behind the
+  ramp depend on the whole deck: the same seed can deal different pairs once a player is added or a
+  figure corrected. Acceptable for Friendly; Ranked will pin the deck and rules versions per game.
+- **The signature proves the server issued the score, not that it was earned in order.** Friendly
+  is stateless, so answering a late round directly yields a signed link for a score never played.
+  That is fine for a leaderboard-exempt mode; Ranked's spent-once token chain (§8) is what proves a
+  run.
 
 > **Phase 5 note — seeds collapse to 32 bits.** `createRng` turns the seed string into the
 > generator's state through `hashSeed` (FNV-1a, 32-bit), so however strong the HMAC, there are at
@@ -451,12 +492,25 @@ timer. Types live in `packages/core/src/api.ts`, shared by the Worker and the we
 → { "mode": "friendly" }
 ← { "runId": "20260919-<uuid>.<sig>", "round": RoundPayload }      // round 1
 
+// start from a challenge link (§7)
+→ { "mode": "friendly", "challenge": "<runId>", "score": 12, "sig": "…" }
+← { "runId": "20260919-<uuid>~<uuid>.<sig>", "round": RoundPayload,
+    "challenge": { "accepted": true, "score": 12 } }                // a replay
+← { "runId": "20260926-<uuid>.<sig>", "round": RoundPayload,
+    "challenge": { "accepted": false, "reason": "invalid" | "expired" } }  // a fresh run
+
 // answer
 → { "mode": "friendly", "runId": "…", "round": 7, "guess": "higher" | "lower" }
 ← { "reveal": { "round": 7, "value": 88, "display": "88m", "qualifier"?: "…", "correct": true },
     "next": RoundPayload }                                          // correct, run continues
-← { "reveal": { … }, "end": "wrong" | "deck-exhausted" }            // run over
+← { "reveal": { … }, "end": "wrong" | "deck-exhausted",
+    "challenge": { "runId": "…", "score": 6, "sig": "…" } }         // run over
 ```
+
+A run's `challenge` is the signed link for the score it reached: the correct answers before the
+wrong one, or every round for `deck-exhausted`. A challenge start is held to its types (`score` an
+integer in 0–60, the strings of bounded length) — anything else is `400` — but not its contents: a
+link mangled on its way through a chat app still starts a run, a fresh one, with the reason.
 
 `RoundPayload` is `{ index, stat: { key, label, tier, statChanged }, anchor, challenger }`. The
 anchor carries `id, name, country, position, image?` plus its `value`, `display` and `qualifier?`;
@@ -471,8 +525,8 @@ past the one answered,
 and **decides correctness server-side**. A run that reaches `MAX_ROUNDS` (60) — or can deal no next
 round — ends with `deck-exhausted`. Every response is an explicitly declared DTO built field by field
 in `worker/src/payload.ts`; a `Round` is never returned. Requests are validated strictly — unknown
-mode, extra keys, a malformed, unsigned, tampered or out-of-range `runId`, a `round` that isn't an integer in 1–60, or a
-bad guess are all `400` — and every `/api/*` response is `cache-control: no-store`.
+mode, extra keys, a malformed, unsigned, tampered or out-of-range `runId`, a `round` that isn't an
+integer in 1–60, or a bad guess are all `400` — and every `/api/*` response is `cache-control: no-store`.
 
 Because it is stateless, anyone can mint run ids or ask any round of a run. Each request still
 reveals at most one hidden value, so the **rate limit** does the real work (DESIGN.md §3): it is the
@@ -728,7 +782,8 @@ path entirely — the board is the same for everyone, so it should be served fro
 
   Keying answers on the run only works because run ids are **signed** (§7): a caller can't invent a
   fresh id per request, and a forged or tampered id is refused with `400` before it is counted
-  against any run. Each new run costs a start, counted per IP. IPv6 is cut to its /64 because a
+  against any run. A challenge replay has its own id (§7), so a link shared to a group chat doesn't
+  put everyone who opens it on one run's allowance; each replay is a run start like any other. Each new run costs a start, counted per IP. IPv6 is cut to its /64 because a
   subscriber is usually handed a whole /64 and could otherwise rotate through it.
 
   A fast honest player answers about once every two seconds — the quickest round the game can show
@@ -811,7 +866,22 @@ anti-cheat work, under the same no-personal-data rule.
   canonical URL.
 - `/credits` reads `packages/deck/dist/credits.json` with `fs` at build time. It is never imported,
   so it can't enter the module graph.
-- Local leaderboard lives in `localStorage`, wrapped in try/catch, and works with no network.
+- **Local best** is one number in `localStorage` (`bt:best`, `game/best.ts`). Every read and write
+  is wrapped: with storage blocked, full or throwing, the best lasts as long as the page and the
+  game plays normally. The local leaderboard, when it comes, lives there the same way.
+- **Sharing** at game over (`game/share.ts`, `share-image.ts`, `share-actions.ts`): the Wordle-style
+  text is built from the round history alone — score, streak title, one square per answered round
+  in tier colour and ❌ for the miss, the stat that ended it, and the challenge link — with no
+  names, values or answers. The **share image** is a 1080×1350 PNG drawn on a canvas from the
+  tokens (sizes are `--share-*`): score, title, grid, ending stat, and the final round's two
+  players with their revealed figures. **No photos**: their licences need attribution a shared
+  image can't carry. It waits for `document.fonts` and uses only fonts and data already on the
+  page, so it works offline once the run has ended. On touch devices both go to the share sheet
+  (the image as a file); elsewhere the text is copied, with a visible "Copied", and the image
+  downloads.
+- **Challenge links** are read from the URL on load (`game/challenge.ts`) and sent with the first
+  start; the start panel says "Beat n". The parameters are removed from the address bar once the
+  run starts, and "Play again" is a fresh run. See §7.
 - The reveal count-up (~1200ms) is what masks the round trip — see section 9 for the full budget,
   the hold-don't-snap rule, and the image prefetch requirement. The challenger's number scrambles
   from the tap until the response lands, then counts up from zero until the nominal 1200ms or, for a
@@ -825,8 +895,20 @@ anti-cheat work, under the same no-personal-data rule.
   photo or it fails to load, including a `403`. The controller preloads round one's two photos when
   the run starts and each new challenger's photo when an answer lands, through an off-screen
   `Image` with the card's own `sizes` and `srcset` (`game/photos.ts`).
+- **Accessibility:** every control is a native button or link with a visible focus ring; the
+  game plays from the keyboard (arrow keys, and focus returns to Higher and to Play again);
+  `prefers-reduced-motion` stops the reel, the count-up and every transition; live regions
+  announce the question (and a stat change), the verdict, slow-downs and share results; the grid
+  has a text label, so tier colour is never the only signal; touch targets are at least 44px
+  (`--target-min`; small footer links grow an invisible hit area). Card text sits on a soft dark
+  **plate** (`--plate-*`) sized so chalk, `--dim` and all three tier colours meet WCAG AA over the
+  brightest photo under the lightest scrim, on `--night`, `--hit` and `--miss` alike.
+- **Short landscape screens** (`orientation: landscape` and at most 500px tall) put the halves side
+  by side and the plaque at the top of the divide, with that strip kept clear, so it never covers
+  a card.
 - **Dev-only delay switch** (`pnpm dev`): 0, 200, 800ms or 3s before every round request, from a
-  small panel or `?delay=800`. It lives in `game/dev.ts`, loaded by a dynamic import behind
+  small panel or `?delay=800`. The same panel runs **axe-core** over the page (the "a11y" button,
+  or `window.__btAxe()` in a headless browser) and logs the violations. It lives in `game/dev.ts`, loaded by a dynamic import behind
   `import.meta.env.DEV`, so production builds don't contain it.
 - The island's flow is a plain-TS state machine in `apps/web/src/game/` (`machine.ts`, a pure
   reducer: idle → starting → dealing → spinning → awaiting → revealing → verdict → over), run by

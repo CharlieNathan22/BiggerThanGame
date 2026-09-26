@@ -31,6 +31,8 @@ const canonicalUrl = new URL(path, Astro.site);
     {canonical && <link rel="canonical" href={canonicalUrl} />}
     <!-- The title bar's --ink. A meta tag can't read a custom property. -->
     <meta name="theme-color" content="#06121a" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <!-- The title bar is on every page, so its two Latin faces are always needed. -->
     <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />
     <link rel="preload" href={cinzelLatin} as="font" type="font/woff2" crossorigin />

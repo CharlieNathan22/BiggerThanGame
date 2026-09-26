@@ -249,8 +249,9 @@ appearance totals.
 
 **Two different values must never read the same on a card** — that would look like a tie, which is
 never dealt. Followers and fees are stored in millions and shown in thousands below a million
-(`93k`, `€660k`) and in millions from there, with the one decimal the stored value has (`€36.2m`,
-`€36m`, `10.9m`). A test holds every deck value to this.
+(`93k`, `€660k`) and in millions from there, with the decimals the stored value has, up to two
+(`€10.75m`, `€10.7m`, `€36m`) — a stored decimal is never rounded away. A test holds every deck
+value to this.
 
 ### Club trophies — the definition
 
@@ -586,6 +587,24 @@ rewritten into a utility framework. Converting it would cost days and guarantee 
 people who already arrived. The shared artefact should carry the score, the stat that ended the
 run, and the two players involved — that last detail is what makes it a conversation rather than
 a number.
+
+### What a finished run shares
+
+- **Streak titles** mark milestones: 5 Squad player, 10 Starter, 20 Captain, 30 Legend, 45+ GOAT;
+  below 5 there is none. One table in `@bt/core` (`STREAK_TITLES`). Shown on the game-over panel
+  and in both shares.
+- **Share text**, Wordle-style: score and title, one square per answered round in its tier colour
+  (🟨 basic, 🟦 uncommon, 🟪 rare, ten to a line), ❌ for the round that ended the run, "Ended on:
+  <stat>", and a challenge link. No player names, no values, no answers — it spoils nothing.
+- **Share image**: the same, plus the final round's two players and the figures the player has just
+  seen, in the game's type and colours. **No player photos** — their CC licences require
+  attribution that can't travel with a shared image.
+- **Challenge links** replay exactly that run for a friend, framed as "Beat <score>": the same
+  pairs, stats and order. At the end the friend sees whether they beat it, matched it or fell
+  short. The number is signed with the run, so it can't be edited; a link that fails the check,
+  or is more than 10 days old, opens a normal run with a short note. Friendly only for now.
+  ARCHITECTURE.md §7 has the mechanics and the limits.
+- **Local best** is kept on the device and works with storage blocked (it then lasts the visit).
 
 ### Daily Ranked board
 

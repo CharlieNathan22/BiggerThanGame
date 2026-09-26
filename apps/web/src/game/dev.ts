@@ -9,6 +9,11 @@
  *
  * The setting survives a reload (localStorage), and `?delay=800` in the URL
  * sets it, which is handy in a headless browser.
+ *
+ * It also runs an accessibility check: axe-core against the page as it
+ * stands, from the panel's "a11y" button or `window.__btAxe()` in a headless
+ * browser. Violations are logged to the console. axe-core is a root
+ * devDependency and, like the rest of this module, never ships.
  */
 
 import { mount, unmount } from "svelte";
@@ -44,10 +49,44 @@ export function withDevDelay(fetchFn: Fetch): Fetch {
   };
 }
 
+/** One axe finding, trimmed to what's worth reading in a console. */
+export interface AxeFinding {
+  readonly id: string;
+  readonly impact: string | null;
+  readonly help: string;
+  readonly targets: readonly string[];
+}
+
+/** Runs axe-core over the page and logs the violations. Dev only. */
+export async function runAxe(): Promise<AxeFinding[]> {
+  const axe = (await import("axe-core")).default;
+  const results = await axe.run(document, { resultTypes: ["violations"] });
+  const findings = results.violations.map((v) => ({
+    id: v.id,
+    impact: v.impact ?? null,
+    help: v.help,
+    targets: v.nodes.map((n) => n.target.join(" ")),
+  }));
+  if (findings.length === 0) console.info("axe: no violations");
+  else console.warn(`axe: ${findings.length} violation(s)`, findings);
+  return findings;
+}
+
+declare global {
+  interface Window {
+    /** `pnpm dev` only: see `runAxe`. */
+    __btAxe?: () => Promise<AxeFinding[]>;
+  }
+}
+
 /** Puts the delay switch on the page. Returns a function that removes it. */
 export function mountDevPanel(): () => void {
+  window.__btAxe = runAxe;
   const panel = mount(DevPanel, { target: document.body });
-  return () => void unmount(panel);
+  return () => {
+    delete window.__btAxe;
+    void unmount(panel);
+  };
 }
 
 function initialDelay(): DevDelay {

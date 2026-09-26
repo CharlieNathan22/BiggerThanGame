@@ -1,5 +1,6 @@
 import type {
   AnchorCard,
+  ChallengeLink,
   ContinueResponse,
   EndResponse,
   PlayerCard,
@@ -43,13 +44,26 @@ export function cont(index: number, next: RoundPayload, value = 80): ContinueRes
   return { reveal: { round: index, value, display: String(value), correct: true }, next };
 }
 
+/** A well-formed run id and signature, for challenge links in tests. */
+export const RUN_ID = "20260919-00000000-0000-4000-8000-000000000001.AAAAAAAAAAAAAAAAAAAAAA";
+export const SIG = "BBBBBBBBBBBBBBBBBBBBBB";
+
+export function link(score: number): ChallengeLink {
+  return { runId: RUN_ID, score, sig: SIG };
+}
+
 export function wrong(index: number, value = 20): EndResponse {
-  return { reveal: { round: index, value, display: String(value), correct: false }, end: "wrong" };
+  return {
+    reveal: { round: index, value, display: String(value), correct: false },
+    end: "wrong",
+    challenge: link(index - 1),
+  };
 }
 
 export function exhausted(index: number, value = 80): EndResponse {
   return {
     reveal: { round: index, value, display: String(value), correct: true },
     end: "deck-exhausted",
+    challenge: link(index),
   };
 }
