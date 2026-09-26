@@ -36,9 +36,9 @@ describe("tokens.css and the script timings", () => {
     expect(TIMINGS.verdict).toBeGreaterThanOrEqual(TIMINGS.count);
   });
 
-  it("keeps the count near 640ms — it is what masks the round trip", () => {
+  it("keeps the count within 500–1200ms — it is what masks the round trip", () => {
     expect(TIMINGS.count).toBeGreaterThanOrEqual(500);
-    expect(TIMINGS.count).toBeLessThanOrEqual(800);
+    expect(TIMINGS.count).toBeLessThanOrEqual(1200);
   });
 });
 

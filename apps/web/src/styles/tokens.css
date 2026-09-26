@@ -22,25 +22,25 @@
   --gold-rule: rgba(255, 176, 32, 0.28);
   --monogram: rgba(255, 176, 32, 0.052);
   --flare: #e2453c;
-  --hit: #13512c;
-  --miss: #5b1d19;
+  --hit: #1f7a45;
+  --miss: #b8322a;
   --veil: rgba(6, 18, 26, 0.97);
 
   /*
-   * Player photos (DESIGN.md §12): a background layer, never the hero. Drained
-   * of colour and darkened, then blended by luminosity into the half's own
-   * colour, so the photo takes the night teal at rest and the verdict's green
-   * or red after a guess. The scrim keeps the name and number legible.
+   * Player photos (DESIGN.md §12): a background layer, never the hero. Lightly
+   * muted and dimmed, then drawn at partial opacity over the half's own colour,
+   * so the night teal at rest and the verdict's green or red after a guess
+   * tint it. The scrim keeps the name and number legible.
    */
   --photo-focus: 50% 25%;
-  --photo-filter: grayscale(1) contrast(1.1) brightness(0.62);
-  --photo-blend: luminosity;
-  --photo-opacity: 0.55;
+  --photo-filter: grayscale(0.35) saturate(0.9) contrast(1.05) brightness(0.8);
+  --photo-blend: normal;
+  --photo-opacity: 0.62;
   --photo-scrim: radial-gradient(
     ellipse 75% 65% at 50% 50%,
-    rgba(6, 18, 26, 0.62) 0%,
-    rgba(6, 18, 26, 0.3) 70%,
-    rgba(6, 18, 26, 0.15) 100%
+    rgba(6, 18, 26, 0.5) 0%,
+    rgba(6, 18, 26, 0.22) 70%,
+    rgba(6, 18, 26, 0.08) 100%
   );
   /* The connection note under the challenger during a reconnect or slow-down. */
   --hitch-bg: rgba(6, 18, 26, 0.72);
@@ -176,27 +176,27 @@
   --dur-tint: 400ms;
   --dur-pop: 420ms;
   /* Players shown, then a beat before the wheel (DESIGN.md §4). */
-  --dur-beat: 480ms;
+  --dur-beat: 700ms;
   /* No spin when the stat holds: the pause before the anchor's value shows. */
   --dur-hold: 340ms;
   /* The wheel (DESIGN.md §7). */
-  --dur-spin: 1300ms;
+  --dur-spin: 1800ms;
   /* The plaque takes the new tier colour this far through the spin. */
   --spin-tint-at: 0.62;
   /* From the reel stopping to the plaque's pop and the anchor's value. */
   --dur-land: 40ms;
   /* The reveal count-up that masks the round trip (ARCHITECTURE.md §9). */
-  --dur-count: 640ms;
+  --dur-count: 1200ms;
   /* The shortest count once a late response lands: it settles, never snaps. */
-  --dur-settle: 240ms;
+  --dur-settle: 380ms;
   /* How often the scrambling number changes while the response is in flight. */
-  --dur-scramble: 60ms;
+  --dur-scramble: 75ms;
   /* From tap to the correct/incorrect colour. */
-  --dur-verdict: 680ms;
+  --dur-verdict: 1240ms;
   /* From the verdict colour to the next deal. */
-  --dur-next: 760ms;
+  --dur-next: 1400ms;
   /* From a wrong answer's colour to the game-over panel. */
-  --dur-over: 820ms;
+  --dur-over: 1400ms;
 }
 
 @media (min-width: 560px) {

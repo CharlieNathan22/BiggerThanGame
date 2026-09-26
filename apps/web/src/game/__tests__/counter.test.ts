@@ -25,7 +25,7 @@ describe("counterFrame", () => {
   it("counts up from zero once the answer lands, settling at the nominal time", () => {
     const count = { tappedAt: 1000, arrivedAt: 1100 };
     expect(counterFrame(count, 80, 1100, TIMINGS, false)).toEqual({ kind: "count", value: 0 });
-    const mid = counterFrame(count, 80, 1370, TIMINGS, false);
+    const mid = counterFrame(count, 80, (1100 + 1000 + TIMINGS.count) / 2, TIMINGS, false);
     expect(mid.kind).toBe("count");
     if (mid.kind === "count") {
       expect(mid.value).toBeGreaterThan(0);
@@ -50,10 +50,11 @@ describe("counterFrame", () => {
   });
 
   it("gives a late answer the full settle time rather than snapping", () => {
-    const count = { tappedAt: 0, arrivedAt: 2000 };
-    expect(counterFrame(count, 50, 2000, TIMINGS, false).kind).toBe("count");
-    expect(counterFrame(count, 50, 2000 + TIMINGS.settle - 1, TIMINGS, false).kind).toBe("count");
-    expect(counterFrame(count, 50, 2000 + TIMINGS.settle, TIMINGS, false).kind).toBe("done");
+    const late = TIMINGS.count + 1000;
+    const count = { tappedAt: 0, arrivedAt: late };
+    expect(counterFrame(count, 50, late, TIMINGS, false).kind).toBe("count");
+    expect(counterFrame(count, 50, late + TIMINGS.settle - 1, TIMINGS, false).kind).toBe("count");
+    expect(counterFrame(count, 50, late + TIMINGS.settle, TIMINGS, false).kind).toBe("done");
   });
 
   // The dev delay switch's settings (0, 200, 800 ms, 3 s), played frame by

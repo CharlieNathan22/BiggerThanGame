@@ -537,7 +537,7 @@ not a database query.
 
 ### What masks it
 
-**The reveal count-up (~640ms) runs on every question**, not only on stat changes — there is a
+**The reveal count-up (~1200ms) runs on every question**, not only on stat changes — there is a
 number to reveal every round. That is the masking budget.
 
 Sequence after a tap:
@@ -545,19 +545,19 @@ Sequence after a tap:
 ```
 0ms      guess sent; challenger's number starts scrambling from local state
 25–430ms response lands (see table)
-640ms    count-up settles on the true value
-~680ms   correct/incorrect colour
-~1400ms  next pair deals
+1200ms   count-up settles on the true value
+~1240ms  correct/incorrect colour
+~2640ms  next pair deals
 ```
 
 On anything but a genuinely bad connection the response arrives well before the animation would
 have finished, so perceived latency is zero.
 
-**If the response has not arrived by 640ms, hold the scramble — never snap or freeze.** The number
+**If the response has not arrived by 1200ms, hold the scramble — never snap or freeze.** The number
 keeps rolling and settles when the answer lands. It degrades as "the reveal took a beat", which is
 tolerable, rather than as a stall, which is not.
 
-The 1.3s wheel spin on stat-change rounds is additional cover, not load-bearing. Do not design
+The 1.8s wheel spin on stat-change rounds is additional cover, not load-bearing. Do not design
 anything to depend on it, since it only fires on a switch.
 
 ### Image pipeline
@@ -628,7 +628,7 @@ are skipped.
 ### Image prefetch — requirement, not optimisation
 
 **Player images must never be fetched at reveal time.** That would put a second round trip inside
-the same 640ms window and is the one thing that would actually make the game feel slow.
+the same 1200ms window and is the one thing that would actually make the game feel slow.
 
 Images are _display_ data, and the next round's display payload arrives with the current answer.
 So:
@@ -812,14 +812,15 @@ anti-cheat work, under the same no-personal-data rule.
 - `/credits` reads `packages/deck/dist/credits.json` with `fs` at build time. It is never imported,
   so it can't enter the module graph.
 - Local leaderboard lives in `localStorage`, wrapped in try/catch, and works with no network.
-- The reveal count-up (~640ms) is what masks the round trip — see section 9 for the full budget,
+- The reveal count-up (~1200ms) is what masks the round trip — see section 9 for the full budget,
   the hold-don't-snap rule, and the image prefetch requirement. The challenger's number scrambles
-  from the tap until the response lands, then counts up from zero until the nominal 640ms or, for a
-  late response, for at least `--dur-settle` (240ms), so it never snaps.
+  from the tap until the response lands, then counts up from zero until the nominal 1200ms or, for a
+  late response, for at least `--dur-settle` (380ms), so it never snaps.
 - **Photos** are a background layer in each half (`Photo.svelte`): `object-fit: cover`, positioned
-  by the payload's `focus` through `--focus`, else `--photo-focus` (`50% 25%`); drained, darkened
-  and blended by luminosity into the half's colour, under a scrim, so the number stays the hero
-  (tokens `--photo-*`). `srcset` comes from `srcsetFor`; `sizes` from `photoSizes`, which allows for
+  by the payload's `focus` through `--focus`, else `--photo-focus` (`50% 25%`); lightly muted and
+  dimmed, drawn at partial opacity over the half's colour, which tints it teal at rest and green or
+  red on the verdict. A background layer, never the hero: a scrim keeps the number legible (tokens
+  `--photo-*`). `srcset` comes from `srcsetFor`; `sizes` from `photoSizes`, which allows for
   a wide photo drawn wider than its half by the cover crop. The monogram shows when there is no
   photo or it fails to load, including a `403`. The controller preloads round one's two photos when
   the run starts and each new challenger's photo when an answer lands, through an off-screen

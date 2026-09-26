@@ -191,7 +191,7 @@ leak the server-authoritative model exists to close.
 Showing the players before the stat is the load-bearing detail. If the stat lands first, people
 evaluate the cards already knowing the question and the dissonance never happens.
 
-The ~640ms count-up on reveal is what hides the network round trip. Keep it. Prefetch the next
+The ~1200ms count-up on reveal is what hides the network round trip. Keep it. Prefetch the next
 card's _visible_ data during the current round so the between-round transition stays instant.
 
 ### The winner does not stay on
@@ -352,7 +352,7 @@ for colourblind players.
   together should stay under about 30% of rounds in every round range**; `simulation.md` reports
   the mix by range (1–5, 6–10, 11–20, 21+) for Friendly. Re-tune against both tables after
   substantial deck changes, never by reasoning about the weights.
-- Spin duration around **1.3 seconds** with a long deceleration. The original sub-second spin was
+- Spin duration around **1.8 seconds** with a long deceleration. The original sub-second spin was
   too quick to read.
 - The switch must be **unmissable** — wheel, colour change on the plaque, and a settle animation.
   Too loud is the correct failure mode; people answering the previous question on autopilot feel

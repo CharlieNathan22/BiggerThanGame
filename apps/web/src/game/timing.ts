@@ -39,18 +39,18 @@ export interface Timings {
 }
 
 export const TIMINGS: Timings = {
-  beat: 480,
+  beat: 700,
   hold: 340,
-  spin: 1300,
+  spin: 1800,
   land: 40,
   pop: 420,
   spinTintAt: 0.62,
-  count: 640,
-  settle: 240,
-  scramble: 60,
-  verdict: 680,
-  next: 760,
-  over: 820,
+  count: 1200,
+  settle: 380,
+  scramble: 75,
+  verdict: 1240,
+  next: 1400,
+  over: 1400,
 };
 
 /** The custom property behind each timing. */

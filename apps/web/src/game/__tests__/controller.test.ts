@@ -149,8 +149,8 @@ describe("GameController", () => {
     await vi.advanceTimersByTimeAsync(TIMINGS.beat + TIMINGS.spin + TIMINGS.land);
     controller.guess("lower");
 
-    // Three seconds with no response: still revealing, never a verdict.
-    await vi.advanceTimersByTimeAsync(3000);
+    // Well past the nominal verdict with no response: still revealing, never a verdict.
+    await vi.advanceTimersByTimeAsync(TIMINGS.verdict + 2000);
     expect(latest.phase).toBe("revealing");
     expect(latest.reveal).toBeNull();
 
@@ -273,7 +273,7 @@ describe("a dropped connection", () => {
     await flush();
     expect(latest.hitch).toBeNull();
     expect(latest.reveal?.correct).toBe(true);
-    await vi.advanceTimersByTimeAsync(TIMINGS.settle + TIMINGS.verdict);
+    await vi.advanceTimersByTimeAsync(TIMINGS.settle + TIMINGS.verdict - TIMINGS.count);
     expect(latest.phase).toBe("verdict");
     expect(latest.streak).toBe(1);
   });

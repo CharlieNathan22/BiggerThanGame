@@ -281,11 +281,12 @@ describe("timings", () => {
   });
 
   it("still counts for the settle time when the answer is late — never a snap", () => {
-    const count = { tappedAt: 1000, arrivedAt: 4000 };
+    const late = 1000 + TIMINGS.count + 2000;
+    const count = { tappedAt: 1000, arrivedAt: late };
     const window = settleWindow(count, TIMINGS, false);
-    expect(window).toEqual({ start: 4000, end: 4000 + TIMINGS.settle });
+    expect(window).toEqual({ start: late, end: late + TIMINGS.settle });
     expect(verdictAt(count, TIMINGS, false)).toBe(
-      4000 + TIMINGS.settle + (TIMINGS.verdict - TIMINGS.count),
+      late + TIMINGS.settle + (TIMINGS.verdict - TIMINGS.count),
     );
   });
 
@@ -300,7 +301,8 @@ describe("timings", () => {
       end: 90,
     });
     expect(verdictAt({ tappedAt: 0, arrivedAt: 90 }, TIMINGS, true)).toBe(TIMINGS.verdict);
-    expect(verdictAt({ tappedAt: 0, arrivedAt: 3000 }, TIMINGS, true)).toBe(3000);
+    const late = TIMINGS.verdict + 1000;
+    expect(verdictAt({ tappedAt: 0, arrivedAt: late }, TIMINGS, true)).toBe(late);
   });
 
   it("deals the next round sooner than it shows the game-over panel", () => {
