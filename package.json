@@ -18,6 +18,7 @@
     "format:check": "prettier --check .",
     "simulate": "pnpm --filter @bt/deck build",
     "images:sync": "pnpm --filter @bt/deck exec tsx src/sync-cli.ts",
+    "deck:import": "pnpm --filter @bt/deck exec tsx src/import-cli.ts",
     "deploy": "pnpm build:prod && wrangler deploy"
   },
   "devDependencies": {

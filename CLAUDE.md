@@ -48,6 +48,7 @@ pnpm dev          # builds the deck, then wrangler dev on :8787 and astro dev to
 pnpm dev:api      # builds the deck, then the Worker on :8787 (wrangler dev, secret from .dev.vars)
 pnpm test         # unit tests (vitest) — core, deck and Worker
 pnpm simulate     # 10k-run difficulty simulation → simulation.md
+pnpm deck:import  # players.csv (+ image-log.csv, focus.csv) → players/*.yaml; --dry-run, --prune
 pnpm build        # validates deck, emits artifacts, builds site (sample deck allowed)
 pnpm build:prod   # same, but refuses the sample deck — production and deploy only
 pnpm typecheck    # tsc, then astro check + svelte-check for apps/web; needs the deck artifacts:
@@ -170,6 +171,15 @@ warning to upgrade. Warnings never fail the sync. See ARCHITECTURE.md §9.
 
 Figures in the original HTML prototype are approximate and from memory. **Do not copy them into the
 deck.** They exist to test the feel of the game, nothing else.
+
+### Entering players
+
+The owner keeps the deck in three CSVs in `packages/deck/data/legends/`: **`players.csv`** (the
+master copy; format in `players-csv-format.md`), **`image-log.csv`** (photo provenance) and
+**`focus.csv`** (crop focus, exceptions only). **`pnpm deck:import`** regenerates `players/*.yaml`
+from them — the YAML is generated output, so edit the CSV, never the YAML. Then **`pnpm
+images:sync`** if any photos changed. Only the owner runs the import on the real files; develop and
+test it on fixtures in temp directories (ARCHITECTURE.md §6).
 
 ---
 

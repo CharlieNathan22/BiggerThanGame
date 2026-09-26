@@ -485,9 +485,13 @@ Store **date of birth**, not age — age is computed, and the player is excluded
 deceased.
 
 **Images are the exception and keep full provenance.** Author, licence and source URL are required
-per image, because a licence is a legal obligation rather than a convenience. See section 13.
+per image, because a licence is a legal obligation rather than a convenience. See section 13. An
+image may also carry an optional **crop focus**, `"x y"` percentages, for the few photos the
+default crop cuts badly. It is display data, kept with the deck; it reaches the card in M4.
 
-**The deck is entered by hand.** Roughly 400 players at up to ten figures each is the largest
+**The deck is entered by hand**, in a spreadsheet: `players.csv` is the master copy, with
+`image-log.csv` and `focus.csv` beside it, and `pnpm deck:import` generates the per-player YAML the
+build reads (ARCHITECTURE.md §6). Roughly 400 players at up to ten figures each is the largest
 single piece of work in the project. Development runs on a 50-player deck; public launch of the
 ranked modes needs around 100; the full deck is 400 and arrives incrementally.
 

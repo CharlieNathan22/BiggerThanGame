@@ -57,6 +57,19 @@ export const statsSchema = z
   })
   .strict();
 
+/**
+ * Where to centre the crop: `"x y"`, two whole-number percentages from 0 to
+ * 100 separated by one space, as CSS `object-position` reads them. `"50 15"`
+ * keeps the top of a tall portrait in frame.
+ */
+const focus = z
+  .string()
+  .regex(/^\d{1,3} \d{1,3}$/, 'must be "x y": two whole numbers 0–100 separated by a space')
+  .refine(
+    (s) => s.split(" ").every((n) => Number(n) <= 100),
+    "each focus percentage must be from 0 to 100",
+  );
+
 export const imageSchema = z
   .object({
     file: z.string().min(1),
@@ -65,6 +78,9 @@ export const imageSchema = z
     // fails the build. See licences.ts.
     licence: z.string().refine(isAllowedLicence, LICENCE_RULE),
     source: z.string().url("must be a source URL"),
+    // Crop focus, "x y" as percentages, for photos the default crop cuts
+    // badly. Carried into deck.full.json; no round payload includes it yet.
+    focus: focus.optional(),
   })
   .strict();
 
@@ -146,6 +162,7 @@ export function toPlayer(raw: RawPlayer): Player {
     ...(raw.era !== undefined ? { era: raw.era } : {}),
     ...(raw.main_clubs !== undefined ? { mainClubs: raw.main_clubs } : {}),
     ...(raw.leagues !== undefined ? { leagues: raw.leagues } : {}),
+    ...(raw.image?.focus !== undefined ? { imageFocus: raw.image.focus } : {}),
     stats,
   };
 }

@@ -72,6 +72,25 @@ describe("buildFullDeck", () => {
       leagues: ["League A"],
     });
   });
+
+  it("carries the image focus through to the JSON", () => {
+    const focused = toPlayer(
+      playerSchema.parse({
+        ...raws[0],
+        image: {
+          file: "one.jpg",
+          author: "A Photographer",
+          licence: "CC-BY-4.0",
+          source: "https://commons.wikimedia.org/wiki/File:One",
+          focus: "50 15",
+        },
+      }),
+    );
+    const json = JSON.parse(JSON.stringify(buildFullDeck([focused], NOW))) as {
+      players: Array<Record<string, unknown>>;
+    };
+    expect(json.players[0]).toMatchObject({ imageFocus: "50 15" });
+  });
 });
 
 describe("buildIndexes", () => {

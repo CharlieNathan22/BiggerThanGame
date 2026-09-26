@@ -57,6 +57,14 @@ export { displayedSize, hashBytes, originalKeyFor, shortHash, syncImages } from 
 export { runSync } from "./sync-cli.js";
 export type { SyncOptions, SyncResult } from "./sync.js";
 
+export { CsvError, parseCsv } from "./csv.js";
+export type { CsvRow, CsvTable } from "./csv.js";
+
+export { GENERATED_HEADER, planImport, playerYaml } from "./import.js";
+export type { ImportFailure, ImportInputs, ImportPlan, SkippedRow } from "./import.js";
+export { runImport } from "./import-cli.js";
+export type { ImportOptions } from "./import-cli.js";
+
 export { MIN_ELIGIBLE_STATS, formatProblems, validateDeck } from "./validate.js";
 export type { Problem } from "./validate.js";
 

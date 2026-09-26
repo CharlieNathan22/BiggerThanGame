@@ -90,7 +90,10 @@ function checkResponse(
   const keys = allKeys(response);
   const playerKeys = ["stats", "dob", "deceased", "iconic", "era", "leagues"];
   const themedKeys = ["mainClubs", "main_clubs"];
-  for (const forbidden of [...playerKeys, ...themedKeys, "band", "relaxation"]) {
+  // Image focus is display data, but it reaches the payload in M4 with the CSS
+  // that uses it, not before.
+  const focusKeys = ["focus", "imageFocus"];
+  for (const forbidden of [...playerKeys, ...themedKeys, ...focusKeys, "band", "relaxation"]) {
     expect(keys).not.toContain(forbidden);
   }
 
@@ -152,6 +155,17 @@ describe("the checks themselves", () => {
     const leaky = {
       ...started,
       round: { ...started.round, challenger: { ...started.round.challenger, value: 1 } },
+    };
+    expect(() => checkResponse(leaky as StartResponse, SAMPLE_DECK, now)).toThrow();
+  });
+
+  it("fail on an image focus, until M4 adds it on purpose", async () => {
+    const { runId, started } = await walkRun(context());
+    const now = runDate(runId)!;
+    const image = { key: "legends/originals/x.jpg", width: 800, height: 1000, focus: "50 15" };
+    const leaky = {
+      ...started,
+      round: { ...started.round, challenger: { ...started.round.challenger, image } },
     };
     expect(() => checkResponse(leaky as StartResponse, SAMPLE_DECK, now)).toThrow();
   });

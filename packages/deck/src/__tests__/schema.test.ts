@@ -200,6 +200,54 @@ describe("playerSchema", () => {
   });
 });
 
+describe("image focus", () => {
+  const withFocus = (focus: unknown) =>
+    playerSchema.safeParse({
+      ...valid,
+      image: {
+        file: "x.jpg",
+        author: "A Photographer",
+        licence: "CC-BY-4.0",
+        source: "https://commons.wikimedia.org/wiki/File:X",
+        focus,
+      },
+    }).success;
+
+  it("accepts two whole percentages separated by a space", () => {
+    for (const focus of ["50 15", "0 0", "100 100", "7 93"])
+      expect(withFocus(focus), focus).toBe(true);
+  });
+
+  it("rejects anything else", () => {
+    for (const focus of [
+      "50",
+      "50 15 5",
+      "50,15",
+      "50  15",
+      "50% 15%",
+      "50.5 15",
+      "101 0",
+      "-1 0",
+      50,
+    ]) {
+      expect(withFocus(focus), String(focus)).toBe(false);
+    }
+  });
+
+  it("is carried to the engine shape as imageFocus, and absent otherwise", () => {
+    const image = {
+      file: "x.jpg",
+      author: "A Photographer",
+      licence: "CC-BY-4.0",
+      source: "https://commons.wikimedia.org/wiki/File:X",
+    };
+    expect(
+      toPlayer(playerSchema.parse({ ...valid, image: { ...image, focus: "50 15" } })).imageFocus,
+    ).toBe("50 15");
+    expect(toPlayer(playerSchema.parse({ ...valid, image }))).not.toHaveProperty("imageFocus");
+  });
+});
+
 describe("toPlayer", () => {
   it("maps as_of to asOf", () => {
     const raw = playerSchema.parse({
