@@ -1,6 +1,7 @@
 /**
- * Player photos: what a card's `<img>` gets, and the preload that fetches the
- * next challenger's photo before it is dealt. ARCHITECTURE.md §9.
+ * Player photos: what a card's `<img>` gets, and the preload that fetches a
+ * challenger's photo before it is dealt — from the round before, as the
+ * payload's `upcoming`, and again when the answer lands. ARCHITECTURE.md §9.
  *
  * URLs come only from `imageUrl` / `srcsetFor` in `@bt/core`. The card and the
  * preload share one `srcset` and one `sizes`, so the browser picks the same

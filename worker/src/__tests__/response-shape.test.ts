@@ -18,7 +18,7 @@ import { FIXTURE_DECK, SAMPLE_DECK, context, fakeImages, runDay, walkRun } from 
 const CARD_KEYS = ["country", "id", "image", "name", "position"];
 const ANCHOR_KEYS = [...CARD_KEYS, "display", "qualifier", "value"];
 const STAT_KEYS = ["key", "label", "statChanged", "tier"];
-const ROUND_KEYS = ["anchor", "challenger", "index", "stat"];
+const ROUND_KEYS = ["anchor", "challenger", "index", "stat", "upcoming"];
 const REVEAL_KEYS = ["correct", "display", "qualifier", "round", "value"];
 const IMAGE_KEYS = ["focus", "height", "key", "width"];
 const CHALLENGE_LINK_KEYS = ["runId", "score", "sig"];
@@ -28,6 +28,8 @@ const NUMERIC_PATHS = [
   /^(round|next)\.index$/,
   /^(round|next)\.anchor\.value$/,
   /^(round|next)\.(anchor|challenger)\.image\.(width|height)$/,
+  // The next round's challenger's photo, so it loads a round early.
+  /^(round|next)\.upcoming\.(width|height)$/,
   /^reveal\.(round|value)$/,
   // The player's own score, signed into the challenge link at a run's end.
   /^challenge\.score$/,
@@ -74,6 +76,11 @@ function checkRound(round: RoundPayload, deck: readonly Player[], now: Date): vo
   expectKeysWithin(round.challenger, CARD_KEYS);
   if (round.anchor.image) expectKeysWithin(round.anchor.image, IMAGE_KEYS);
   if (round.challenger.image) expectKeysWithin(round.challenger.image, IMAGE_KEYS);
+  // The upcoming challenger travels as a photo only: no name, id, value or qualifier.
+  if (round.upcoming) {
+    expectKeysWithin(round.upcoming, IMAGE_KEYS);
+    expect(Object.keys(round.upcoming)).toEqual(expect.arrayContaining(["key", "width", "height"]));
+  }
 
   // The anchor's value is the true one, and formatted by the shared formatter.
   const anchor = deck.find((p) => p.id === round.anchor.id)!;
@@ -179,6 +186,34 @@ describe.each([
     expect(JSON.stringify(started)).not.toContain("focus");
   });
 
+  it("carry the next round's challenger's photo as upcoming, and none on the last round", async () => {
+    const images = fakeImages(deck);
+    for (let i = 0; i < 5; i++) {
+      const { runId, started, answers } = await walkRun(context({ deck, images }), deck);
+      const now = runDay(runId);
+      const rounds = [started.round, ...answers.flatMap((a) => ("next" in a ? [a.next] : []))];
+      rounds.forEach((round, n) => {
+        const following = rounds[n + 1];
+        if (following === undefined) expect(round).not.toHaveProperty("upcoming");
+        else expect(round.upcoming).toEqual(following.challenger.image);
+      });
+      for (const response of [started, ...answers]) checkResponse(response, deck, now);
+    }
+  });
+
+  it("leave upcoming out when that player has no photo", async () => {
+    // Photos for every other player only.
+    const images = fakeImages(deck.filter((_, i) => i % 2 === 0));
+    const { runId, started, answers } = await walkRun(context({ deck, images }), deck);
+    const now = runDay(runId);
+    const rounds = [started.round, ...answers.flatMap((a) => ("next" in a ? [a.next] : []))];
+    rounds.slice(0, -1).forEach((round, n) => {
+      expect(round.upcoming).toEqual(rounds[n + 1]?.challenger.image);
+    });
+    expect(rounds.some((r) => r.upcoming === undefined)).toBe(true);
+    for (const response of [started, ...answers]) checkResponse(response, deck, now);
+  });
+
   it("keep the image path clean when every player has a photo", async () => {
     const images = fakeImages(deck);
     for (let i = 0; i < 5; i++) {
@@ -211,6 +246,19 @@ describe("the checks themselves", () => {
       round: { ...started.round, challenger: { ...started.round.challenger, focus: "50 15" } },
     };
     expect(() => checkResponse(leaky as StartResponse, SAMPLE_DECK, now)).toThrow();
+  });
+
+  it("fail on an upcoming photo that brings its player's name or value", async () => {
+    const { runId, started } = await walkRun(context({ images: fakeImages(SAMPLE_DECK) }));
+    const now = runDay(runId);
+    const upcoming = started.round.upcoming!;
+    for (const extra of [{ name: "Anyone" }, { id: "x" }, { value: 1 }, { qualifier: "2001" }]) {
+      const leaky = {
+        ...started,
+        round: { ...started.round, upcoming: { ...upcoming, ...extra } },
+      };
+      expect(() => checkResponse(leaky as StartResponse, SAMPLE_DECK, now)).toThrow();
+    }
   });
 
   it("fail on a serialised Player", async () => {

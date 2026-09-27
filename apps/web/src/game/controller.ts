@@ -113,6 +113,11 @@ export class GameController {
 
     if (event.type === "started") this.#preload(event.round);
     if (event.type === "answered" && "next" in event.response) this.#preload(event.response.next);
+    // Once a round is on screen, the photo of the challenger after it: a whole
+    // round's head start on a cold resize (ARCHITECTURE.md §9).
+    if (after.phase === "dealing" && before.phase !== "dealing") {
+      this.#deps.preload?.(after.round?.upcoming);
+    }
 
     // A request that has to go again: wait, then retry.
     if (event.type === "startFailed" || event.type === "answerFailed") {

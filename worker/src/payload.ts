@@ -24,13 +24,25 @@ import type {
 
 export type ImageLookup = Readonly<Record<string, PlayerImage>>;
 
-export function toRoundPayload(round: Round, now: Date, images: ImageLookup): RoundPayload {
+/**
+ * `following` is the round after this one, when the run can deal it. Only its
+ * challenger's photo travels, as `upcoming`, so the client can load it a round
+ * early (ARCHITECTURE.md §9) — never its name, stat or value.
+ */
+export function toRoundPayload(
+  round: Round,
+  now: Date,
+  images: ImageLookup,
+  following?: Round,
+): RoundPayload {
   const def = STATS[round.stat];
+  const upcoming = following === undefined ? undefined : imageFor(following.challenger, images);
   return {
     index: round.index,
     stat: { key: def.key, label: def.label, tier: def.tier, statChanged: round.statChanged },
     anchor: toAnchorCard(round.anchor, round.stat, now, images),
     challenger: toPlayerCard(round.challenger, images),
+    ...(upcoming !== undefined ? { upcoming } : {}),
   };
 }
 
@@ -51,14 +63,20 @@ export function isCorrect(round: Round, now: Date, guess: Guess): boolean {
 }
 
 function toPlayerCard(player: Player, images: ImageLookup): PlayerCard {
-  const image = images[player.id];
+  const image = imageFor(player, images);
   return {
     id: player.id,
     name: player.name,
     country: player.country,
     position: player.position,
-    ...(image !== undefined ? { image: toCardImage(image, player.imageFocus) } : {}),
+    ...(image !== undefined ? { image } : {}),
   };
+}
+
+/** A player's photo as a card shows it, or undefined when they have none. */
+function imageFor(player: Player, images: ImageLookup): CardImage | undefined {
+  const image = images[player.id];
+  return image === undefined ? undefined : toCardImage(image, player.imageFocus);
 }
 
 function toCardImage(image: PlayerImage, focus: string | undefined): CardImage {

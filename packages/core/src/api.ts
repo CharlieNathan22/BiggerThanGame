@@ -99,6 +99,13 @@ export interface RoundPayload {
   readonly stat: StatPayload;
   readonly anchor: AnchorCard;
   readonly challenger: PlayerCard;
+  /**
+   * The photo of the challenger in the round after this one, so it loads a
+   * round early (ARCHITECTURE.md §9). The run doesn't depend on answers, so the
+   * server knows it now. The image only — no name, no value, no qualifier.
+   * Absent on the last round the run can deal, and when that player has no photo.
+   */
+  readonly upcoming?: CardImage;
 }
 
 /** What became of a challenge link a run was started from. */

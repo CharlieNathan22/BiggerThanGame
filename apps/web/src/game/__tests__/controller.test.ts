@@ -387,14 +387,42 @@ describe("photo preloading", () => {
       ...r,
       anchor: { ...r.anchor, image: photo(r.anchor.id) },
       challenger: { ...r.challenger, image: photo(r.challenger.id) },
+      // The challenger of the round after: p{index + 2}.
+      upcoming: photo(`p${index + 2}`),
     };
   };
 
-  it("fetches both of round one's photos as soon as the run starts", async () => {
+  it("fetches both of round one's photos as the run starts, then round two's challenger", async () => {
     controller.start();
     api.starts[0]?.resolve({ runId: "20260926-a", round: withPhotos(1) });
     await flush();
-    expect(preloaded).toEqual([photo("p1"), photo("p2")]);
+    expect(latest.phase).toBe("dealing");
+    expect(preloaded).toEqual([photo("p1"), photo("p2"), photo("p3")]);
+  });
+
+  it("fetches round two's upcoming photo when round two is dealt, not when its payload lands", async () => {
+    controller.start();
+    api.starts[0]?.resolve({ runId: "20260926-a", round: withPhotos(1) });
+    await flush();
+    await vi.advanceTimersByTimeAsync(TIMINGS.beat + TIMINGS.spin + TIMINGS.land);
+    controller.guess("higher");
+    preloaded = [];
+
+    api.answers[0]?.reply.resolve(cont(1, withPhotos(2)));
+    await flush();
+    expect(preloaded).toEqual([photo("p3")]);
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.verdict + TIMINGS.next);
+    expect(latest.phase).toBe("dealing");
+    expect(latest.round?.index).toBe(2);
+    expect(preloaded).toEqual([photo("p3"), photo("p4")]);
+  });
+
+  it("asks for nothing extra when a round has no upcoming photo", async () => {
+    controller.start();
+    api.starts[0]?.resolve({ runId: "20260926-a", round: round(1) });
+    await flush();
+    expect(preloaded).toEqual([undefined, undefined, undefined]);
   });
 
   it("fetches only the new challenger's photo when an answer lands, before the verdict", async () => {

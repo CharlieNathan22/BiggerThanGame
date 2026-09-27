@@ -520,13 +520,15 @@ wrong one, or every round for `deck-exhausted`. A challenge start is held to its
 integer in 0–60, the strings of bounded length) — anything else is `400` — but not its contents: a
 link mangled on its way through a chat app still starts a run, a fresh one, with the reason.
 
-`RoundPayload` is `{ index, stat: { key, label, tier, statChanged }, anchor, challenger }`. The
-anchor carries `id, name, country, position, image?` plus its `value`, `display` and `qualifier?`;
-the challenger carries **only** `id, name, country, position, image?`. The challenger's qualifier
-(fee year, follower snapshot date) is stat-derived, so it is withheld with the value and arrives in
-`reveal`. `display` is always `STATS[key].format(value)`. `image` is
+`RoundPayload` is `{ index, stat: { key, label, tier, statChanged }, anchor, challenger,
+upcoming? }`. The anchor carries `id, name, country, position, image?` plus its `value`,
+`display` and `qualifier?`; the challenger carries **only** `id, name, country, position, image?`.
+The challenger's qualifier (fee year, follower snapshot date) is stat-derived, so it is withheld
+with the value and arrives in `reveal`. `display` is always `STATS[key].format(value)`. `image` is
 `{ key, width, height, focus? }`: the manifest entry plus the deck's optional crop focus (`"x y"`
-percentages), present only alongside a photo.
+percentages), present only alongside a photo. `upcoming` is the `image` of the challenger in the
+round after this one — nothing else about that player — so its photo loads a round early (§9). It
+is absent on the last round the run can deal and when that player has no photo.
 
 Each request derives the seed from `runId` (§7), replays the run in mode `friendly` to one round
 past the one answered,
@@ -735,6 +737,11 @@ So:
    revealed, already on screen with its image loaded. Preload the same URL the `srcset` will pick
    (same `srcset` and `sizes`), or the browser fetches twice. The player spends several seconds
    thinking while the fetch completes, and the image is in cache before it is needed.
+   **The round payload also carries the upcoming challenger's image** (`upcoming`), so that photo
+   starts loading a round early, as soon as the current round is on screen — a whole round's head
+   start on a cold resize. It is the image only, never a value: the sequence doesn't depend on
+   answers, so the server knows who is next without revealing anything the player hasn't been
+   shown. The per-answer preload stays as a backstop.
 2. **Serve R2 through a custom domain**, never `r2.dev` — it is rate-limited and unsupported for
    production, and Transformations need a hostname on the zone.
 3. **Resized at the edge, not HD originals.** An 800w AVIF of a portrait is typically well under
@@ -963,8 +970,9 @@ pages. **Svelte** hydrates one island: the game, on its own page. The URL tree i
   `--photo-*`). `srcset` comes from `srcsetFor`; `sizes` from `photoSizes`, which allows for
   a wide photo drawn wider than its half by the cover crop. The monogram shows when there is no
   photo or it fails to load, including a `403`. The controller preloads round one's two photos when
-  the run starts and each new challenger's photo when an answer lands, through an off-screen
-  `Image` with the card's own `sizes` and `srcset` (`game/photos.ts`).
+  the run starts, each new challenger's photo when an answer lands, and the round's `upcoming`
+  photo as soon as the round is dealt, through an off-screen `Image` with the card's own `sizes`
+  and `srcset` (`game/photos.ts`). A photo already fetched is not fetched again.
 - **Accessibility:** every control is a native button or link with a visible focus ring; the
   game plays from the keyboard (arrow keys, and focus returns to Higher and to Play again);
   `prefers-reduced-motion` stops the reel, the count-up and every transition; live regions

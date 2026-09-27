@@ -88,7 +88,8 @@ async function start(
   const now = run.date;
 
   const seed = await friendlySeed(ctx.secret, run.origin);
-  const first = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds: 1 })[0];
+  // Round two too, for the photo round one carries as `upcoming`.
+  const [first, second] = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds: 2 });
   if (first === undefined) {
     return { status: 503, body: { error: "unavailable", detail: "the deck cannot deal a round" } };
   }
@@ -96,7 +97,7 @@ async function start(
   const status = isChallengeStart(req) && challenge ? challengeStatus(req, challenge) : undefined;
   const response: StartResponse = {
     runId,
-    round: toRoundPayload(first, now, ctx.images),
+    round: toRoundPayload(first, now, ctx.images, second),
     ...(status !== undefined ? { challenge: status } : {}),
   };
   return { status: 200, body: response };
@@ -119,8 +120,9 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
   if (limited?.ok === false) return rateLimited(limited.retryAfter);
 
   const seed = await friendlySeed(ctx.secret, run.origin);
-  // One past the answered round, so the response can carry the next question.
-  const maxRounds = Math.min(req.round + 1, MAX_ROUNDS);
+  // Two past the answered round: the next question, and the round after it,
+  // whose challenger's photo the next question carries as `upcoming`.
+  const maxRounds = Math.min(req.round + 2, MAX_ROUNDS);
   const rounds = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds });
 
   const round = rounds[req.round - 1];
@@ -145,7 +147,10 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
   const next = req.round < MAX_ROUNDS ? rounds[req.round] : undefined;
   if (next === undefined) return ended("deck-exhausted", req.round);
 
-  const response: ContinueResponse = { reveal, next: toRoundPayload(next, now, ctx.images) };
+  const response: ContinueResponse = {
+    reveal,
+    next: toRoundPayload(next, now, ctx.images, rounds[req.round + 1]),
+  };
   return { status: 200, body: response };
 }
 
