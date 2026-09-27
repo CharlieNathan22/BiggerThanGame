@@ -10,11 +10,14 @@ import {
   retryDelay,
   settleWindow,
   shouldSpin,
+  slideDelay,
+  slides,
   spinDelay,
   verdictAt,
 } from "../machine";
 import type { GameEvent, GameState } from "../machine";
 import { TIMINGS } from "../timing";
+import type { AnswerResponse } from "@bt/core";
 import { cont, exhausted, round, won, wrong } from "./fixtures";
 
 function run(events: readonly GameEvent[], from: GameState = initialState()): GameState {
@@ -157,6 +160,50 @@ describe("reduce — the happy path", () => {
     expect(s.end).toBe("won");
     expect(s.streak).toBe(1);
     expect(s.history.at(-1)?.correct).toBe(true);
+  });
+});
+
+describe("reduce — the slide to the next pair", () => {
+  const atVerdict = (response: AnswerResponse) =>
+    run(
+      [
+        { type: "guess", guess: "higher", at: 0 },
+        { type: "answered", response, at: 50 },
+        { type: "settled" },
+      ],
+      run(toAwaiting),
+    );
+
+  it("slides only from a right answer's verdict with a next round", () => {
+    const right = atVerdict(cont(1, r2));
+    expect(reduce(right, { type: "slide" }).phase).toBe("sliding");
+    const lost = atVerdict(wrong(1));
+    expect(reduce(lost, { type: "slide" })).toBe(lost);
+    const winning = atVerdict(won(1));
+    expect(reduce(winning, { type: "slide" })).toBe(winning);
+  });
+
+  it("deals the next pair after the slide, carrying the revealed figure to the anchor", () => {
+    const right = atVerdict(cont(1, r2, 80));
+    const sliding = reduce(right, { type: "slide" });
+    expect(sliding.next).toEqual(r2);
+    const dealt = reduce(sliding, { type: "advance" });
+    expect(dealt.phase).toBe("dealing");
+    expect(dealt.round).toEqual(r2);
+    expect(dealt.carried).toEqual(right.reveal);
+    expect(dealt.reveal).toBeNull();
+  });
+
+  it("still deals straight from the verdict when there's no slide", () => {
+    const right = atVerdict(cont(1, r2));
+    expect(reduce(right, { type: "advance" }).phase).toBe("dealing");
+  });
+
+  it("slides in the last part of the usual gap", () => {
+    expect(slideDelay(TIMINGS) + TIMINGS.slide).toBe(TIMINGS.next);
+    expect(slides(atVerdict(cont(1, r2)), false)).toBe(true);
+    expect(slides(atVerdict(cont(1, r2)), true)).toBe(false);
+    expect(slides(atVerdict(wrong(1)), false)).toBe(false);
   });
 });
 

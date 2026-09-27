@@ -4,7 +4,7 @@
  */
 
 import { WIN_ROUNDS, isFinalRound } from "@bt/core";
-import type { Mode, StatKey, Tier } from "@bt/core";
+import type { Mode, PlayerCard, StatKey, Tier } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
 import type { GameState, Hitch, RoundRecord } from "./machine";
 
@@ -161,19 +161,114 @@ export function verdictLabel(state: GameState): string | null {
 }
 
 /**
- * Where the first deal's "floodlights on" kick-off is:
- * - `intro`: the lights coming up and the two cards sliding in, names and
- *   plaque not shown yet (the machine's `intro` phase);
- * - `enter`: round one's beat before the wheel, as the names appear and the
- *   plaque drops into place;
- * - null the rest of the run. Later rounds deal without it.
+ * A card on the pitch and the place it sits in: 0 the anchor's half, 1 the
+ * challenger's, -1 just off the anchor's side (leaving), each a half's length
+ * along. The pitch draws each at its place by transform, so a card that moves
+ * place slides there.
  */
-export type Entrance = "intro" | "enter" | null;
+export type CardPlace = -1 | 0 | 1;
 
-export function entrance(state: GameState): Entrance {
-  if (state.phase === "intro") return "intro";
-  if (state.phase === "dealing" && state.round?.index === 1) return "enter";
+/**
+ * What a card is doing:
+ * - `anchor`, `challenger`: the round on screen;
+ * - `leaving`, `carried`, `incoming`: the slide to the next pair. The anchor
+ *   leaves, the challenger is carried into the anchor's place with its figure,
+ *   and the next challenger comes in with "?".
+ */
+export type CardRole = "anchor" | "challenger" | "leaving" | "carried" | "incoming";
+
+export interface PitchCard {
+  /**
+   * Stable for the card's whole time on the pitch: a challenger keeps its key
+   * when it becomes the next anchor, so its element (and its photo) carries
+   * over rather than being built again.
+   */
+  readonly key: string;
+  readonly player: PlayerCard;
+  readonly place: CardPlace;
+  readonly role: CardRole;
+}
+
+/** The cards on the pitch, in drawing order. None before a run is dealt. */
+export function pitchCards(state: GameState): PitchCard[] {
+  const { round } = state;
+  if (round === null) return [];
+  const run = state.runId ?? "";
+  // A card is named by the round it was dealt as challenger; round one's
+  // anchor, dealt on its own, is "a1".
+  const anchorKey = round.index === 1 ? `${run}:a1` : `${run}:c${round.index - 1}`;
+  const challengerKey = `${run}:c${round.index}`;
+  if (state.phase === "sliding" && state.next !== null) {
+    return [
+      { key: anchorKey, player: round.anchor, place: -1, role: "leaving" },
+      { key: challengerKey, player: round.challenger, place: 0, role: "carried" },
+      {
+        key: `${run}:c${state.next.index}`,
+        player: state.next.challenger,
+        place: 1,
+        role: "incoming",
+      },
+    ];
+  }
+  return [
+    { key: anchorKey, player: round.anchor, place: 0, role: "anchor" },
+    { key: challengerKey, player: round.challenger, place: 1, role: "challenger" },
+  ];
+}
+
+/** A figure on a card, with the stat that formats its qualifier. */
+export interface ShownFigure {
+  readonly display: string;
+  readonly qualifier: string | undefined;
+  readonly stat: StatKey;
+}
+
+/**
+ * The anchor's figure, or null while it isn't shown. From the wheel landing
+ * to the game-over panel it is the anchor's value. Before that, after a slide,
+ * the card still shows the figure it was revealed with: the same number when
+ * the stat holds, and on a stat change the old stat's figure until the wheel
+ * lands on the new one. Round one's anchor shows nothing until then.
+ */
+export function anchorFigure(state: GameState): ShownFigure | null {
+  const { phase, round } = state;
+  if (round === null) return null;
+  const own: ShownFigure = {
+    display: round.anchor.display,
+    qualifier: round.anchor.qualifier,
+    stat: round.stat.key,
+  };
+  if (phase === "awaiting" || phase === "revealing" || phase === "verdict" || phase === "over") {
+    return own;
+  }
+  if (phase === "sliding") return own;
+  if ((phase === "dealing" || phase === "spinning") && round.index > 1) {
+    if (!round.stat.statChanged) return own;
+    const { carried, plaque } = state;
+    if (carried === null || plaque === null) return null;
+    return { display: carried.display, qualifier: carried.qualifier, stat: plaque.key };
+  }
   return null;
+}
+
+/** The first deal's kick-off is playing: round one's cards sliding in. */
+export function isIntro(state: GameState): boolean {
+  return state.phase === "intro";
+}
+
+/**
+ * What the plaque reads before round one's wheel has spun: "Question 1 of 20"
+ * in a mode with a win target, else "Question 1". Null once a stat is on it,
+ * and when no run is on the pitch. The wheel spins from it into the stat.
+ */
+export function plaqueLead(state: GameState, mode: Mode): string | null {
+  const { phase, round } = state;
+  if (round === null || round.index !== 1 || state.plaque !== null) return null;
+  if (phase === "idle" || phase === "starting" || phase === "over") return null;
+  const target = WIN_ROUNDS[mode];
+  return target === null
+    ? t("plaque.question", { round: 1 })
+    : t("plaque.questionOf", { round: 1, target });
 }
 
 /** The note under the challenger while a request waits to go again. */

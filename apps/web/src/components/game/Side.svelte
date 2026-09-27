@@ -2,15 +2,23 @@
   One full-bleed half of the pitch: a player's photo (or monogram), name,
   country and figure.
 
-  On the first deal (`entrance`) the half slides in from its own edge, to
-  meet the other in the middle, with its text held back; the text then
-  appears in the beat before the first spin. No slide with reduced motion.
+  A card is drawn at its `place` by transform: 0 the anchor's half, 1 the
+  challenger's, -1 just off the anchor's side. Moving place is a slide:
+  - the carousel to the next pair (`gliding`): the challenger's card moves
+    into the anchor's place, the anchor's slides off, and the next
+    challenger's comes in (`incoming`) from beyond the far edge. The moving
+    card's text glides to where the anchor's text sits, so nothing jumps;
+  - the first deal (`intro`): each half slides in from its own edge, name and
+    country on it, to meet the other in the middle.
+  With reduced motion nothing slides: the intro's text fades in, and the
+  carousel is skipped (the pair simply changes).
 -->
 <script lang="ts">
   import type { PlayerCard } from "@bt/core";
+  import { untrack } from "svelte";
   import type { Snippet } from "svelte";
   import { initial } from "../../game/view";
-  import type { Entrance } from "../../game/view";
+  import type { CardPlace } from "../../game/view";
   import Photo from "./Photo.svelte";
 
   interface Props {
@@ -24,8 +32,14 @@
     value?: Snippet;
     /** Anything below the figure — the challenger's Higher / Lower. */
     children?: Snippet;
-    /** The first deal's kick-off, if it's playing. */
-    entrance?: Entrance;
+    /** The first deal's kick-off is playing. */
+    intro?: boolean;
+    /** Where the card sits: 0 the anchor's half, 1 the challenger's, -1 off the anchor's side. */
+    place?: CardPlace;
+    /** The carousel slide's length in ms while it runs, else 0. */
+    gliding?: number;
+    /** The next challenger, coming in during the slide. */
+    incoming?: boolean;
   }
 
   let {
@@ -35,16 +49,49 @@
     qualifier = "",
     value,
     children,
-    entrance = null,
+    intro = false,
+    place = side === "a" ? 0 : 1,
+    gliding = 0,
+    incoming = false,
   }: Props = $props();
+
+  let text: HTMLDivElement | undefined = $state();
+
+  // The anchor's and the challenger's halves place their text differently
+  // (stacked, the anchor's sits above the plaque, the challenger's below it).
+  // When the carousel carries a card into the anchor's place its layout
+  // changes; the text is moved back to where it was by a transform and glides
+  // to its new place with the card (FLIP), so it never jumps.
+  // The layout the text was last measured in; starts as the first one.
+  let laidOut = untrack(() => side);
+  let before: number | null = null;
+  $effect.pre(() => {
+    if (side !== laidOut && text !== undefined) before = text.offsetTop;
+  });
+  $effect(() => {
+    if (side === laidOut) return;
+    laidOut = side;
+    const from = before;
+    before = null;
+    if (from === null || text === undefined || gliding <= 0) return;
+    const shift = from - text.offsetTop;
+    if (Math.abs(shift) < 1) return;
+    const easing = getComputedStyle(text).getPropertyValue("--ease-slide").trim() || "ease-in-out";
+    text.animate([{ transform: `translateY(${shift}px)` }, { transform: "none" }], {
+      duration: gliding,
+      easing,
+    });
+  });
 </script>
 
 <div
   class="side {side}"
   class:hit={verdict === "hit"}
   class:miss={verdict === "miss"}
-  class:intro={entrance === "intro"}
-  class:enter={entrance === "enter"}
+  class:intro
+  class:gliding={gliding > 0}
+  class:incoming
+  style:--place={place}
 >
   {#if player}
     {#key player.id}
@@ -56,7 +103,7 @@
       country carry a deeper shadow that follows their letters, so the photo
       stays open around them (DESIGN.md §12).
     -->
-    <div class="text">
+    <div class="text" bind:this={text}>
       <div class="who">
         <div class="name">{player.name}</div>
         <div class="meta">{player.country}</div>
@@ -71,10 +118,20 @@
 </div>
 
 <style>
+  /* Every card has the same box, the first half of the pitch, and is moved to
+     its place along the pitch by transform: down when stacked, across side
+     by side. --before and --after are one place either side, where a card
+     slides in from or out to. */
   .side {
-    flex: 1;
-    min-height: 0;
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    --along: calc(var(--place) * 100%);
+    --before: translateY(calc((var(--place) - 1) * 100%));
+    --after: translateY(calc((var(--place) + 1) * 100%));
+    transform: translateY(var(--along));
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -212,40 +269,52 @@
     align-items: center;
     justify-content: center;
   }
+  @media (min-width: 780px), (orientation: landscape) and (max-height: 500px) {
+    .side {
+      width: 50%;
+      height: 100%;
+      --before: translateX(calc((var(--place) - 1) * 100%));
+      --after: translateX(calc((var(--place) + 1) * 100%));
+      transform: translateX(var(--along));
+    }
+  }
   /* The first deal. Each half starts off its own edge (above and below when
      stacked, left and right side by side) and slides to meet the other. */
-  .side.a {
-    --intro-from: translateY(calc(-1 * var(--intro-slide-from)));
+  .side.a.intro {
+    animation: slide-from var(--dur-intro-slide) var(--ease-intro) both;
+    --slide-from: var(--before);
   }
-  .side.b {
-    --intro-from: translateY(var(--intro-slide-from));
+  .side.b.intro {
+    animation: slide-from var(--dur-intro-slide) var(--ease-intro) both;
+    --slide-from: var(--after);
   }
-  @media (min-width: 780px), (orientation: landscape) and (max-height: 500px) {
-    .side.a {
-      --intro-from: translateX(calc(-1 * var(--intro-slide-from)));
-    }
-    .side.b {
-      --intro-from: translateX(var(--intro-slide-from));
-    }
+  /* The carousel: a card changing place slides there, and its verdict colour
+     fades back to the resting look on the way. The next challenger comes in
+     from beyond the far edge. Reduced motion never gets here. */
+  .side.gliding {
+    transition:
+      transform var(--dur-slide) var(--ease-slide),
+      background-color var(--dur-slide) var(--ease);
   }
-  .side.intro {
-    animation: slide-in var(--dur-intro-slide) var(--ease-intro) var(--intro-slide-delay) both;
+  .side.gliding.incoming {
+    animation: slide-from var(--dur-slide) var(--ease-slide) both;
+    --slide-from: var(--after);
   }
-  .side.intro .text {
-    opacity: 0;
-  }
-  .side.enter .text {
-    animation: names-in var(--dur-intro-names) var(--ease) both;
-  }
-  @keyframes slide-in {
+  @keyframes slide-from {
     from {
-      transform: var(--intro-from);
+      transform: var(--slide-from);
     }
   }
-  @keyframes names-in {
+  /* Reduced motion stops every animation (base.css): no slide, and the text
+     fades in instead. */
+  @media (prefers-reduced-motion: reduce) {
+    .side.intro .text {
+      animation: text-in var(--dur-intro-fade) var(--ease) both !important;
+    }
+  }
+  @keyframes text-in {
     from {
       opacity: 0;
-      transform: translateY(var(--intro-names-rise));
     }
   }
 

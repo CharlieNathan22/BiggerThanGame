@@ -74,22 +74,23 @@ const feedback = [
   nav {
     white-space: nowrap;
   }
-  /* The links read at --dim (4.5:1 and up); only the separators stay faint. */
+  /* The links read at --dim (4.5:1 and up); only the separators stay faint.
+     As in the title bar: no underlines, and hover, press and keyboard focus
+     turn a link gold with a stronger glow. */
   a {
     position: relative;
     color: var(--dim);
     text-decoration: none;
     text-shadow: var(--glow);
-    transition: text-shadow var(--dur-hover);
-  }
-  a:hover {
-    color: var(--chalk);
-    text-decoration: underline;
+    transition:
+      color var(--dur-hover),
+      text-shadow var(--dur-hover);
   }
   a:hover,
   a:active,
   a:focus-visible {
-    text-shadow: var(--glow-hover);
+    color: var(--gold);
+    text-shadow: var(--glow-strong);
   }
   /* A 44px touch target around small text, without moving the line. */
   a::after {

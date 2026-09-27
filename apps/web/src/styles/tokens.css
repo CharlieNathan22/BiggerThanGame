@@ -297,23 +297,6 @@
   /* A round of the challenge the run didn't reach: an empty square with an edge. */
   --grid-empty-edge: rgba(238, 243, 241, 0.28);
 
-  /* The first deal's intro: the pitch starts dark (--intro-dark) and the
-     floodlights come up with a flicker, dipping to --intro-flicker-* on the
-     way; a warm wash from the two top corners peaks at --intro-warm-peak and
-     fades. The cards slide in from --intro-slide-from away; the plaque drops
-     from --intro-drop above its place. With reduced motion the whole pitch
-     simply fades in from dark over --dur-intro-min. */
-  --intro-dark: rgba(var(--ink-rgb), 0.92);
-  --intro-flicker-low: 0.45;
-  --intro-flicker-mid: 0.75;
-  --intro-warm:
-    radial-gradient(ellipse 60% 55% at 0% 0%, rgba(255, 224, 168, 0.22), transparent 70%),
-    radial-gradient(ellipse 60% 55% at 100% 0%, rgba(255, 224, 168, 0.22), transparent 70%);
-  --intro-warm-peak: 1;
-  --intro-slide-from: 100%;
-  --intro-drop: 28px;
-  --intro-names-rise: 6px;
-
   /* The progress track under the title bar, in a mode with a win target
      (Friendly's twenty): one segment per round, thin enough to cost the game
      almost no height on a phone. */
@@ -513,26 +496,26 @@
   --dur-side: 300ms;
   --dur-tint: 400ms;
   --dur-pop: 420ms;
-  /* The first deal's "floodlights on" intro: at least --dur-intro-min, longer
-     while round one's photos load, never more than --dur-intro-max. Read by
-     the game's script (game/timing.ts). */
+  /* The first deal's kick-off: the two cards slide in from opposite edges
+     to meet, names on them, while the plaque reads
+     "Question 1 of 20". It lasts at least --dur-intro-min, read by the game's
+     script (game/timing.ts), then the wheel spins as usual. With reduced
+     motion nothing slides: the cards' text fades in over --dur-intro-fade.
+     Each card slides one half's length. */
   --dur-intro-min: 1000ms;
-  --dur-intro-max: 2000ms;
-  /* Inside it: the lights warming up with a flicker, then the two cards
-     sliding in from opposite sides to meet. */
-  --dur-intro-lights: 900ms;
-  --intro-slide-delay: 200ms;
   --dur-intro-slide: 700ms;
   --ease-intro: cubic-bezier(0.22, 1, 0.36, 1);
-  /* Then, in the beat before the first spin: the names, and the plaque
-     dropping into place (it overshoots a little, --ease-win). Both finish
-     inside --dur-beat. */
-  --dur-intro-names: 320ms;
-  --intro-drop-delay: 120ms;
-  --dur-intro-drop: 460ms;
-  /* A photo fading up as it loads, over the monogram. None for a photo that
-     was already cached, and none with reduced motion. */
-  --dur-photo-in: 450ms;
+  --dur-intro-fade: 400ms;
+  /* A photo "developing" in, on every card, as soon as it has loaded: it
+     fades up behind the text and settles from --photo-develop-scale. Until
+     then the half is its plain tinted panel. The monogram shows only if the
+     photo fails, or hasn't arrived after --photo-wait; a photo arriving
+     later develops over it. With reduced motion: a fade, no settle. */
+  --dur-photo-develop: 500ms;
+  --photo-develop-scale: 1.04;
+  --ease-photo-develop: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --photo-wait: 2000ms;
+  --dur-monogram-in: 300ms;
   /* Players shown, then a beat before the wheel (DESIGN.md §4). */
   --dur-beat: 700ms;
   /* No spin when the stat holds: the pause before the anchor's value shows. */
@@ -556,6 +539,12 @@
   --dur-verdict: 2540ms;
   /* From the verdict colour to the next deal. */
   --dur-next: 1400ms;
+  /* The carousel to the next pair after a right answer: the last part of
+     --dur-next, so rounds take no longer. The challenger's card slides into
+     the anchor's place, the anchor's slides off, the next comes in. Read by
+     the game's script (game/timing.ts); none with reduced motion. */
+  --dur-slide: 600ms;
+  --ease-slide: cubic-bezier(0.65, 0, 0.35, 1);
   /* From a wrong answer's colour to the game-over panel. */
   --dur-over: 1400ms;
   /* The feedback modal fading in and out. Off with reduced motion. */

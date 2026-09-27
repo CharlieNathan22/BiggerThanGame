@@ -3,14 +3,16 @@
  *
  *   idle → starting → intro → dealing → [spinning] → awaiting → revealing → verdict
  *                               ↑                                             │
- *                               └──────────── correct, next round ────────────┤
+ *                               └────── [sliding] ← correct, next round ──────┤
  *                                                                             ↓
  *                                                                            over
  *
- * `intro` is the first deal's "floodlights on" kick-off: round one is on the
- * pitch while the lights come up and the cards slide in. The controller ends
- * it once round one's photos have loaded, within `introMin` to `introMax`.
- * Later rounds deal straight from the verdict.
+ * `intro` is the first deal's kick-off: round one's cards slide in while the
+ * plaque reads "Question 1 of 20", for `introMin`, before round one's usual
+ * beat and spin. `sliding` is the carousel to the next pair after a right
+ * answer: the challenger's card moves into the anchor's place, the anchor's
+ * leaves, and the next challenger comes in. It is the last `slide` ms of the
+ * usual `next` gap, and skipped with reduced motion.
  *
  * The server decides everything that matters — the pair, the stat, whether a
  * guess was right. This module only sequences what the player sees, so it holds
@@ -55,6 +57,7 @@ export type Phase =
   | "awaiting"
   | "revealing"
   | "verdict"
+  | "sliding"
   | "over";
 
 /** Why a run stopped: the server's reasons, or the connection dropping. */
@@ -142,6 +145,11 @@ export interface GameState {
   readonly reveal: Reveal | null;
   /** The next question, held until the verdict has been shown. */
   readonly next: RoundPayload | null;
+  /**
+   * The last round's reveal, carried by its card into the anchor's place. On
+   * a stat change the anchor shows it until the wheel lands on the new stat.
+   */
+  readonly carried: Reveal | null;
   readonly streak: number;
   /** Best streak, including the run in progress. */
   readonly best: number;
@@ -181,6 +189,8 @@ export type GameEvent =
   /** A hitch's wait is over: send the request again. */
   | { readonly type: "retry"; readonly at: number }
   | { readonly type: "settled" }
+  /** Start the carousel to the next pair. */
+  | { readonly type: "slide" }
   | { readonly type: "advance" };
 
 export function initialState(best = 0, challenge: Challenge | null = null): GameState {
@@ -193,6 +203,7 @@ export function initialState(best = 0, challenge: Challenge | null = null): Game
     count: null,
     reveal: null,
     next: null,
+    carried: null,
     streak: 0,
     best,
     bestBefore: best,
@@ -341,14 +352,29 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       };
     }
 
+    case "slide":
+      if (state.phase !== "verdict" || state.reveal?.correct !== true || state.next === null) {
+        return state;
+      }
+      return { ...state, phase: "sliding" };
+
     case "advance":
-      if (state.phase !== "verdict") return state;
+      if (state.phase !== "verdict" && state.phase !== "sliding") return state;
       if (state.reveal?.correct === true && state.next !== null) {
         return deal(
-          { ...state, guess: null, count: null, reveal: null, next: null, end: null },
+          {
+            ...state,
+            guess: null,
+            count: null,
+            carried: state.reveal,
+            reveal: null,
+            next: null,
+            end: null,
+          },
           state.next,
         );
       }
+      if (state.phase === "sliding") return state;
       return { ...state, phase: "over", end: state.end ?? "deck-exhausted" };
   }
 }
@@ -454,4 +480,21 @@ export function verdictAt(count: CountClock, timings: Timings, reducedMotion: bo
 /** From the verdict colour to the next deal, or to the game-over panel. */
 export function advanceDelay(state: GameState, timings: Timings): number {
   return state.reveal?.correct === true && state.next !== null ? timings.next : timings.over;
+}
+
+/**
+ * Whether this verdict hands over to the next pair with the carousel slide:
+ * a right answer with a next round, and motion allowed. A wrong answer or a
+ * win goes to the game-over panel instead.
+ */
+export function slides(state: GameState, reducedMotion: boolean): boolean {
+  return !reducedMotion && state.reveal?.correct === true && state.next !== null;
+}
+
+/**
+ * From the verdict colour to the start of the slide: the slide is the last
+ * `slide` ms of the usual `next` gap, so a round takes no longer.
+ */
+export function slideDelay(timings: Timings): number {
+  return Math.max(0, timings.next - timings.slide);
 }

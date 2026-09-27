@@ -127,6 +127,9 @@ export const en = {
   "progress.label": "Progress",
   "progress.question": "Question {round} of {target}",
   "progress.final": "Final question — question {round} of {target}",
+  // On the plaque while round one's cards slide in, before the wheel spins
+  "plaque.question": "Question {round}",
+  "plaque.questionOf": "Question {round} of {target}",
   // On the plaque and under the track while the last question is on screen
   "final.tag": "Final question",
 

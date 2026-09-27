@@ -4,12 +4,15 @@ import { describe, expect, it } from "vitest";
 import { initialState, reduce } from "../machine";
 import type { GameEvent, GameState } from "../machine";
 import {
+  anchorFigure,
   announcement,
-  entrance,
   hitchText,
   initial,
   isFinalQuestion,
+  isIntro,
   overCaption,
+  pitchCards,
+  plaqueLead,
   progressText,
   qualifierText,
   reelStrip,
@@ -127,24 +130,120 @@ describe("announcement", () => {
   });
 });
 
-describe("entrance", () => {
+describe("the cards on the pitch", () => {
+  const r1 = round(1, { stat: "caps", anchorValue: 50 });
+  const r2 = round(2, { stat: "caps", anchorValue: 80 });
+  const base: GameEvent[] = [
+    { type: "start" },
+    { type: "started", runId: "run", round: r1 },
+    { type: "introDone" },
+    { type: "dealt" },
+    { type: "spun" },
+    { type: "guess", guess: "higher", at: 0 },
+    { type: "answered", response: cont(1, r2, 80), at: 1 },
+    { type: "settled" },
+  ];
+  const at = (extra: GameEvent[] = []): GameState =>
+    [...base, ...extra].reduce(reduce, initialState());
+
+  it("shows the round's anchor and challenger in their places", () => {
+    expect(pitchCards(at()).map((c) => [c.player.id, c.place, c.role])).toEqual([
+      ["p1", 0, "anchor"],
+      ["p2", 1, "challenger"],
+    ]);
+  });
+
+  it("slides: the anchor leaves, the challenger is carried, the next comes in", () => {
+    const sliding = at([{ type: "slide" }]);
+    expect(pitchCards(sliding).map((c) => [c.player.id, c.place, c.role])).toEqual([
+      ["p1", -1, "leaving"],
+      ["p2", 0, "carried"],
+      ["p3", 1, "incoming"],
+    ]);
+  });
+
+  it("keeps each card's key from the slide into the next round, so nothing is rebuilt", () => {
+    const sliding = pitchCards(at([{ type: "slide" }]));
+    const next = pitchCards(at([{ type: "slide" }, { type: "advance" }]));
+    expect(next.map((c) => c.key)).toEqual([sliding[1]!.key, sliding[2]!.key]);
+    expect(next.map((c) => c.role)).toEqual(["anchor", "challenger"]);
+    // Keys never repeat, even for a player dealt again soon after.
+    expect(new Set(sliding.map((c) => c.key)).size).toBe(3);
+  });
+
+  it("nothing before a run is dealt", () => {
+    expect(pitchCards(initialState())).toEqual([]);
+  });
+});
+
+describe("anchorFigure", () => {
+  const r1 = round(1, { stat: "caps", anchorValue: 50 });
+  const start: GameEvent[] = [
+    { type: "start" },
+    { type: "started", runId: "run", round: r1 },
+    { type: "introDone" },
+  ];
+  const at = (events: GameEvent[]): GameState =>
+    [...start, ...events].reduce(reduce, initialState());
+  const toNext = (next: ReturnType<typeof round>): GameEvent[] => [
+    { type: "dealt" },
+    { type: "spun" },
+    { type: "guess", guess: "higher", at: 0 },
+    { type: "answered", response: cont(1, next, 80), at: 1 },
+    { type: "settled" },
+    { type: "advance" },
+  ];
+
+  it("shows nothing for round one's anchor until the wheel lands", () => {
+    expect(anchorFigure(at([]))).toBeNull();
+    expect(anchorFigure(at([{ type: "dealt" }]))).toBeNull();
+    expect(anchorFigure(at([{ type: "dealt" }, { type: "spun" }]))?.display).toBe("50");
+  });
+
+  it("keeps the carried figure straight after a slide when the stat holds", () => {
+    const next = round(2, { stat: "caps", anchorValue: 80 });
+    expect(anchorFigure(at(toNext(next)))).toMatchObject({ display: "80", stat: "caps" });
+  });
+
+  it("keeps the old stat's figure on a stat change until the wheel lands on the new one", () => {
+    const next = round(2, { stat: "apps", statChanged: true, anchorValue: 700 });
+    const dealing = at(toNext(next));
+    expect(anchorFigure(dealing)).toMatchObject({ display: "80", stat: "caps" });
+    const landed = [{ type: "dealt" }, { type: "spun" }].reduce(
+      (s, e) => reduce(s, e as GameEvent),
+      dealing,
+    );
+    expect(anchorFigure(landed)).toMatchObject({ display: "700", stat: "apps" });
+  });
+});
+
+describe("the first deal", () => {
   const events: GameEvent[] = [
     { type: "start" },
     { type: "started", runId: "20260926-a", round: round(1) },
     { type: "introDone" },
     { type: "dealt" },
+    { type: "spun" },
   ];
   const at = (n: number): GameState => events.slice(0, n).reduce(reduce, initialState());
 
-  it("plays the intro, then the names and plaque in round one's beat, then nothing", () => {
-    expect(entrance(at(1))).toBeNull();
-    expect(entrance(at(2))).toBe("intro");
-    expect(entrance(at(3))).toBe("enter");
-    expect(entrance(at(4))).toBeNull();
+  it("slides the cards in during the intro only", () => {
+    expect(isIntro(at(1))).toBe(false);
+    expect(isIntro(at(2))).toBe(true);
+    expect(isIntro(at(3))).toBe(false);
   });
 
-  it("isn't played for a later round's deal", () => {
-    expect(entrance({ ...initialState(), phase: "dealing", round: round(2) })).toBeNull();
+  it("reads Question 1 of 20 on the plaque until the wheel has spun into the stat", () => {
+    expect(plaqueLead(at(1), "friendly")).toBeNull();
+    expect(plaqueLead(at(2), "friendly")).toBe("Question 1 of 20");
+    expect(plaqueLead(at(3), "friendly")).toBe("Question 1 of 20");
+    expect(plaqueLead(at(4), "friendly")).toBe("Question 1 of 20");
+    expect(plaqueLead(at(5), "friendly")).toBeNull();
+  });
+
+  it("reads Question 1 in a mode without a target, and nothing for a later round", () => {
+    expect(plaqueLead(at(2), "endless")).toBe("Question 1");
+    expect(plaqueLead({ ...at(2), round: round(2) }, "friendly")).toBeNull();
   });
 });
 

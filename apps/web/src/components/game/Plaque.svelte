@@ -7,8 +7,8 @@
   settles. All of that is decoration; which stat, and whether to spin at all,
   come from the state machine.
 
-  On the first deal (`entrance`) the plaque is hidden while the cards slide
-  in, then drops into place before the first spin.
+  Before round one's wheel has spun it reads `lead` ("Question 1 of 20"), and
+  the first spin starts from that line and scrolls on into the stat.
 
   On the final question (`final`) the plaque wears a gold ring and a gold
   "Final question" tab sits on its top edge. The tab is hidden from screen
@@ -22,7 +22,6 @@
   import { TIER_COLOUR } from "../../lib/tiers";
   import type { Timings } from "../../game/timing";
   import { reelStrip } from "../../game/view";
-  import type { Entrance } from "../../game/view";
 
   interface Props {
     stat: StatPayload | null;
@@ -33,8 +32,8 @@
     reducedMotion: boolean;
     /** The final question is on screen. */
     final?: boolean;
-    /** The first deal's kick-off, if it's playing. */
-    entrance?: Entrance;
+    /** What it reads before any stat is on it: "Question 1 of 20". */
+    lead?: string | null;
   }
 
   let {
@@ -44,10 +43,12 @@
     timings,
     reducedMotion,
     final = false,
-    entrance = null,
+    lead = null,
   }: Props = $props();
 
   let strip: StatKey[] = $state([]);
+  /** The line the spin starts from, when it starts from `lead`. */
+  let from: string | null = $state(null);
   let offset = $state(0);
   let moving = $state(false);
   let tint: Tier | null = $state(null);
@@ -57,6 +58,7 @@
     if (spinIndex === null) {
       moving = false;
       strip = [];
+      from = null;
       tint = null;
       return;
     }
@@ -64,7 +66,10 @@
     if (target === null) return;
 
     const keys = reelStrip(target.key, STAT_KEYS, Math.random);
-    const last = keys.length - 1;
+    const start = untrack(() => lead);
+    // Starting from "Question 1 of 20", that line is the strip's first row.
+    const last = keys.length - (start === null ? 1 : 0);
+    from = start;
     strip = keys;
     moving = false;
     offset = 0;
@@ -95,7 +100,15 @@
     };
   });
 
-  const rows = $derived(strip.length > 0 ? strip : stat ? [stat.key] : []);
+  const rows: string[] = $derived(
+    strip.length > 0
+      ? [...(from === null ? [] : [from]), ...strip.map(statLabel)]
+      : stat
+        ? [statLabel(stat.key)]
+        : lead !== null
+          ? [lead]
+          : [],
+  );
 </script>
 
 {#if final}
@@ -104,15 +117,13 @@
 <div
   class="plaque"
   class:final
-  class:intro={entrance === "intro"}
-  class:enter={entrance === "enter"}
   class:pop
   style:--tier={tint ? TIER_COLOUR[tint] : undefined}
   onanimationend={() => (pop = false)}
 >
   <div class="reel" class:moving style:--offset={strip.length > 0 ? offset : 0}>
-    {#each rows as key, i (i)}
-      <span>{statLabel(key)}</span>
+    {#each rows as label, i (i)}
+      <span>{label}</span>
     {/each}
   </div>
 </div>
@@ -187,20 +198,7 @@
   .plaque.pop {
     animation: pop var(--dur-pop) var(--ease);
   }
-  /* The first deal: out of sight while the cards slide in, then dropping
-     into place, with a little overshoot. */
-  .plaque.intro {
-    opacity: 0;
-  }
-  .plaque.enter {
-    animation: drop var(--dur-intro-drop) var(--ease-win) var(--intro-drop-delay) both;
-  }
-  @keyframes drop {
-    from {
-      opacity: 0;
-      transform: translate(-50%, calc(-50% - var(--intro-drop)));
-    }
-  }
+
   @keyframes pop {
     0% {
       transform: translate(-50%, -50%) scale(1);

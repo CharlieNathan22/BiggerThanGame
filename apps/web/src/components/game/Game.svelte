@@ -6,6 +6,7 @@
 <script lang="ts">
   import { WIN_ROUNDS } from "@bt/core";
   import type { Guess, SitePage } from "@bt/core";
+  import type { PitchCard } from "../../game/view";
   import { onMount, tick } from "svelte";
   import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
   import { statLabel, t } from "../../i18n";
@@ -53,12 +54,15 @@
   import { createTurnstileLoader } from "../../game/turnstile";
   import type { ScriptDocument, Turnstile, TurnstileHost } from "../../game/turnstile";
   import {
+    anchorFigure,
     announcement,
     challengeNotice,
-    entrance,
     hitchText,
     overCaption,
     isFinalQuestion,
+    isIntro,
+    pitchCards,
+    plaqueLead,
     progressText,
     qualifierText,
     scoreFigure,
@@ -221,9 +225,6 @@
   const phase = $derived(game.phase);
   const round = $derived(game.round);
   const reveal = $derived(game.reveal);
-  const anchorShown = $derived(
-    phase === "awaiting" || phase === "revealing" || phase === "verdict" || phase === "over",
-  );
   const judged = $derived((phase === "verdict" || phase === "over") && reveal !== null);
   const spinIndex = $derived(
     round !== null &&
@@ -234,8 +235,15 @@
       ? round.index
       : null,
   );
-  /** The first deal's kick-off: the lights and the cards, then the names and the plaque. */
-  const kickoff = $derived(entrance(game));
+  /** The cards on the pitch; three during the carousel to the next pair. */
+  const cards = $derived(pitchCards(game));
+  const anchorShows = $derived(anchorFigure(game));
+  /** The carousel's length while it runs, for the cards' own glide; else 0. */
+  const gliding = $derived(phase === "sliding" ? timings.slide : 0);
+  /** The first deal's kick-off: round one's cards sliding in. */
+  const intro = $derived(isIntro(game));
+  /** "Question 1 of 20" on the plaque until round one's wheel spins into the stat. */
+  const lead = $derived(plaqueLead(game, mode));
   const tier = $derived(game.plaque?.tier ?? "basic");
   // A slow-down is a pause, not a wait on the network: the number rests at "?"
   // rather than scrambling until it's over.
@@ -251,6 +259,24 @@
   const finalQuestion = $derived(isFinalQuestion(game, mode));
   const verdictText = $derived(verdictLabel(game));
   const report = $derived(reportedRound(game));
+
+  /** The small print under a card's figure. */
+  function cardQualifier(card: PitchCard): string {
+    if (round === null) return "";
+    switch (card.role) {
+      case "anchor":
+        return anchorShows ? qualifierText(anchorShows.stat, anchorShows.qualifier) : "";
+      case "leaving":
+        return qualifierText(round.stat.key, round.anchor.qualifier);
+      case "challenger":
+      case "carried":
+        return (judged || card.role === "carried") && reveal
+          ? qualifierText(round.stat.key, reveal.qualifier)
+          : "";
+      case "incoming":
+        return "";
+    }
+  }
 
   function start(): void {
     shareNotes.clear();
@@ -375,87 +401,99 @@
     />
   {/if}
 
-  <main class="pitch" class:intro={kickoff === "intro"} aria-label={t("pitch.label")}>
-    <Side
-      side="a"
-      entrance={kickoff}
-      player={round?.anchor ?? null}
-      qualifier={anchorShown && round ? qualifierText(round.stat.key, round.anchor.qualifier) : ""}
-    >
-      {#snippet value()}
-        {#if anchorShown && round}
-          <Figure display={round.anchor.display} />
-        {/if}
-      {/snippet}
-    </Side>
-
-    <Side
-      side="b"
-      entrance={kickoff}
-      player={round?.challenger ?? null}
-      verdict={judged && reveal ? (reveal.correct ? "hit" : "miss") : null}
-      qualifier={judged && round && reveal ? qualifierText(round.stat.key, reveal.qualifier) : ""}
-    >
-      {#snippet value()}
-        {#if phase === "revealing" && round && game.count && !resting}
-          <Counter
-            count={game.count}
-            stat={round.stat.key}
-            target={reveal?.value ?? null}
-            display={reveal?.display ?? null}
-            {timings}
-            {reducedMotion}
-          />
-        {:else if reveal}
-          <Figure display={reveal.display} />
-        {:else if round}
-          <Figure display={null} />
-        {/if}
-      {/snippet}
-      {#if round}
-        <!-- One slot for Higher / Lower, the connection note and the verdict
-             label, kept whether they show or not, so the text above never moves. -->
-        <div class="slot">
-          <div
-            class="picks"
-            role="group"
-            aria-label={t("pick.group", { name: round.challenger.name })}
-            hidden={phase !== "awaiting"}
-          >
-            <button class="pick" bind:this={higherButton} onclick={() => pick("higher")}>
-              <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-                <path d="M6 10.5V1.5M2 5.5l4-4 4 4" />
-              </svg>
-              {t("pick.higher")}
-            </button>
-            <button class="pick" onclick={() => pick("lower")}>
-              {t("pick.lower")}
-              <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-                <path d="M6 1.5v9M2 6.5l4 4 4-4" />
-              </svg>
-            </button>
-          </div>
-          <p class="hitch" role="status" class:empty={phase !== "revealing" || game.hitch === null}>
-            {phase === "revealing" ? hitchText(game.hitch) : ""}
-          </p>
-          <!-- "Correct" / "Incorrect" with the verdict colour, until the next
-               pair is dealt or the game-over panel covers it. The live region
-               already says it, so screen readers skip this. -->
-          {#if verdictText !== null && reveal}
-            <p class="verdict" class:right={reveal.correct} aria-hidden="true">
-              <svg class="mark" viewBox="0 0 12 12" focusable="false">
-                {#if reveal.correct}
-                  <path d="M2.2 6.4l2.6 2.6 5-5.8" />
-                {:else}
-                  <path d="M3 3l6 6M9 3l-6 6" />
-                {/if}
-              </svg>
-              {verdictText}
-            </p>
+  <main class="pitch" class:intro aria-label={t("pitch.label")}>
+    <!-- Keyed by card, not by half: during the carousel the challenger's card
+         moves into the anchor's place as the same element, photo and all. -->
+    {#each cards as card (card.key)}
+      <Side
+        side={card.place === 1 ? "b" : "a"}
+        place={card.place}
+        {gliding}
+        incoming={card.role === "incoming"}
+        {intro}
+        player={card.player}
+        verdict={card.role === "challenger" && judged && reveal
+          ? reveal.correct
+            ? "hit"
+            : "miss"
+          : null}
+        qualifier={cardQualifier(card)}
+      >
+        {#snippet value()}
+          {#if card.role === "anchor"}
+            {#if anchorShows}
+              <Figure display={anchorShows.display} />
+            {/if}
+          {:else if card.role === "leaving" && round}
+            <Figure display={round.anchor.display} />
+          {:else if card.role === "carried" && reveal}
+            <Figure display={reveal.display} />
+          {:else if card.role === "incoming"}
+            <Figure display={null} />
+          {:else if phase === "revealing" && round && game.count && !resting}
+            <Counter
+              count={game.count}
+              stat={round.stat.key}
+              target={reveal?.value ?? null}
+              display={reveal?.display ?? null}
+              {timings}
+              {reducedMotion}
+            />
+          {:else if reveal}
+            <Figure display={reveal.display} />
+          {:else if round}
+            <Figure display={null} />
           {/if}
-        </div>
-      {/if}
-    </Side>
+        {/snippet}
+        {#if card.place === 1 && round}
+          <!-- One slot for Higher / Lower, the connection note and the verdict
+               label, kept whether they show or not, so the text above never moves. -->
+          <div class="slot">
+            <div
+              class="picks"
+              role="group"
+              aria-label={t("pick.group", { name: card.player.name })}
+              hidden={phase !== "awaiting"}
+            >
+              <button class="pick" bind:this={higherButton} onclick={() => pick("higher")}>
+                <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                  <path d="M6 10.5V1.5M2 5.5l4-4 4 4" />
+                </svg>
+                {t("pick.higher")}
+              </button>
+              <button class="pick" onclick={() => pick("lower")}>
+                {t("pick.lower")}
+                <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                  <path d="M6 1.5v9M2 6.5l4 4 4-4" />
+                </svg>
+              </button>
+            </div>
+            <p
+              class="hitch"
+              role="status"
+              class:empty={phase !== "revealing" || game.hitch === null}
+            >
+              {phase === "revealing" ? hitchText(game.hitch) : ""}
+            </p>
+            <!-- "Correct" / "Incorrect" with the verdict colour, until the
+                 slide to the next pair or the game-over panel. The live region
+                 already says it, so screen readers skip this. -->
+            {#if verdictText !== null && reveal && card.role === "challenger"}
+              <p class="verdict" class:right={reveal.correct} aria-hidden="true">
+                <svg class="mark" viewBox="0 0 12 12" focusable="false">
+                  {#if reveal.correct}
+                    <path d="M2.2 6.4l2.6 2.6 5-5.8" />
+                  {:else}
+                    <path d="M3 3l6 6M9 3l-6 6" />
+                  {/if}
+                </svg>
+                {verdictText}
+              </p>
+            {/if}
+          </div>
+        {/if}
+      </Side>
+    {/each}
 
     <Plaque
       stat={game.plaque}
@@ -464,16 +502,8 @@
       {timings}
       {reducedMotion}
       final={finalQuestion}
-      entrance={kickoff}
+      {lead}
     />
-
-    {#if kickoff === "intro"}
-      <!-- The floodlights: the pitch starts dark and comes up with a flicker,
-           with a warm wash from the top corners. Over the cards, under the
-           plaque and the notes. Decoration only. -->
-      <div class="lights" aria-hidden="true"></div>
-      <div class="flood" aria-hidden="true"></div>
-    {/if}
 
     <p class="sr" aria-live="polite">{announcement(game, mode)}</p>
     {#if phase !== "idle" && phase !== "starting"}
@@ -662,93 +692,16 @@
   }
 
   /* The site background, static here (tokens.css): it shows through the
-     halves at rest and on the start and game-over panels. */
+     halves at rest and on the start and game-over panels. The halves are
+     cards placed by transform (Side.svelte): stacked on a phone, side by side
+     from 780px wide and on a landscape phone, where the plaque moves to the
+     top. They slide in and out past the pitch's edges, so it clips. */
   .pitch {
     flex: 1;
-    display: flex;
-    flex-direction: column;
     position: relative;
     min-height: 0;
-    background: var(--bg-grain), var(--bg-lights), var(--bg-vignette);
-  }
-  @media (min-width: 780px) {
-    .pitch {
-      flex-direction: row;
-    }
-  }
-  /* A landscape phone: stacked halves would be two thin strips with the plaque
-     across both, so they go side by side, and the plaque moves to the top. */
-  @media (orientation: landscape) and (max-height: 500px) {
-    .pitch {
-      flex-direction: row;
-    }
-  }
-
-  /* The first deal: the halves slide in from beyond the pitch, so it clips. */
-  .pitch.intro {
     overflow: hidden;
-  }
-  .lights,
-  .flood {
-    position: absolute;
-    inset: 0;
-    z-index: 3;
-    pointer-events: none;
-    opacity: 0;
-  }
-  .lights {
-    background: var(--intro-dark);
-    animation: lights-on var(--dur-intro-lights) var(--ease) both;
-  }
-  .flood {
-    background: var(--intro-warm);
-    animation: flood var(--dur-intro-min) var(--ease) both;
-  }
-  /* Dark, then the lights catch: two dips and recoveries, then full on. */
-  @keyframes lights-on {
-    0%,
-    22% {
-      opacity: 1;
-    }
-    30% {
-      opacity: var(--intro-flicker-low);
-    }
-    36% {
-      opacity: var(--intro-flicker-mid);
-    }
-    46% {
-      opacity: var(--intro-flicker-low);
-    }
-    52% {
-      opacity: var(--intro-flicker-mid);
-    }
-    100% {
-      opacity: 0;
-    }
-  }
-  @keyframes flood {
-    0%,
-    25% {
-      opacity: 0;
-    }
-    55% {
-      opacity: var(--intro-warm-peak);
-    }
-    100% {
-      opacity: 0;
-    }
-  }
-  /* Reduced motion stops every animation (base.css); the lights instead fade
-     straight up from dark, with no flicker and nothing moving. */
-  @media (prefers-reduced-motion: reduce) {
-    .pitch .lights {
-      animation: lights-fade var(--dur-intro-min) linear both !important;
-    }
-  }
-  @keyframes lights-fade {
-    from {
-      opacity: 1;
-    }
+    background: var(--bg-grain), var(--bg-lights), var(--bg-vignette);
   }
 
   .slot {

@@ -6,7 +6,7 @@ import { GameController } from "../controller";
 import { RECONNECT } from "../machine";
 import type { GameState, Phase } from "../machine";
 import { TIMINGS } from "../timing";
-import { cont, round, wrong } from "./fixtures";
+import { cont, round, won, wrong } from "./fixtures";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -142,6 +142,7 @@ describe("GameController", () => {
       "awaiting",
       "revealing",
       "verdict",
+      "sliding",
       "dealing",
       "awaiting",
     ]);
@@ -382,30 +383,55 @@ describe("a 429", () => {
   });
 });
 
-describe("the first deal's intro", () => {
-  /** A controller whose photo preloads settle only when the test says. */
-  function withSlowPhotos() {
-    const pending: Deferred<void>[] = [];
-    controller.destroy();
-    controller = new GameController({
-      api,
-      timings: TIMINGS,
-      now: () => Date.now(),
-      schedule: (fn, ms) => {
-        const id = setTimeout(fn, ms);
-        return () => clearTimeout(id);
-      },
-      reducedMotion: () => reduced,
-      preload: () => {
-        const d = deferred<void>();
-        pending.push(d);
-        return d.promise;
-      },
-    });
-    controller.subscribe((s) => (latest = s));
-    return pending;
+describe("the slide to the next pair", () => {
+  async function toVerdict(response: AnswerResponse): Promise<void> {
+    await startRun();
+    await vi.advanceTimersByTimeAsync(TIMINGS.beat + TIMINGS.spin + TIMINGS.land);
+    controller.guess("higher");
+    api.answers[0]?.reply.resolve(response);
+    await flush();
+    await vi.advanceTimersByTimeAsync(TIMINGS.verdict);
+    expect(latest.phase).toBe("verdict");
   }
 
+  it("slides in the last part of the gap, so the next pair comes no later", async () => {
+    await toVerdict(cont(1, round(2)));
+    await vi.advanceTimersByTimeAsync(TIMINGS.next - TIMINGS.slide - 1);
+    expect(latest.phase).toBe("verdict");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(latest.phase).toBe("sliding");
+    await vi.advanceTimersByTimeAsync(TIMINGS.slide - 1);
+    expect(latest.phase).toBe("sliding");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(latest.phase).toBe("dealing");
+    expect(latest.round?.index).toBe(2);
+  });
+
+  it("swaps the pair without a slide with reduced motion, at the same moment", async () => {
+    reduced = true;
+    await toVerdict(cont(1, round(2)));
+    await vi.advanceTimersByTimeAsync(TIMINGS.next);
+    expect(latest.phase).toBe("dealing");
+    expect(phases).not.toContain("sliding");
+  });
+
+  it("never slides after a wrong answer or a win: the panel takes over", async () => {
+    await toVerdict(wrong(1));
+    await vi.advanceTimersByTimeAsync(TIMINGS.over);
+    expect(latest.phase).toBe("over");
+    expect(phases).not.toContain("sliding");
+  });
+
+  it("never slides after a win", async () => {
+    await toVerdict(won(1));
+    await vi.advanceTimersByTimeAsync(TIMINGS.over);
+    expect(latest.phase).toBe("over");
+    expect(latest.end).toBe("won");
+    expect(phases).not.toContain("sliding");
+  });
+});
+
+describe("the first deal's intro", () => {
   async function begin(): Promise<void> {
     controller.start();
     api.starts[0]?.resolve({ runId: "20260926-a", round: round(1) });
@@ -414,60 +440,29 @@ describe("the first deal's intro", () => {
   }
 
   it("puts round one on the pitch with an empty plaque", async () => {
-    withSlowPhotos();
     await begin();
     expect(latest.round?.index).toBe(1);
     expect(latest.plaque).toBeNull();
   });
 
-  it("lasts the minimum when round one's photos are already in", async () => {
-    const photos = withSlowPhotos();
+  it("lasts the minimum, and doesn't wait for photos", async () => {
     await begin();
-    for (const p of photos) p.resolve();
+    // The preload stub never reports a photo loaded.
     await vi.advanceTimersByTimeAsync(TIMINGS.introMin - 1);
     expect(latest.phase).toBe("intro");
     await vi.advanceTimersByTimeAsync(1);
     expect(latest.phase).toBe("dealing");
   });
 
-  it("waits past the minimum for both of round one's photos", async () => {
-    const photos = withSlowPhotos();
-    await begin();
-    // Round one's anchor, its challenger, then round two's upcoming photo.
-    expect(photos).toHaveLength(3);
-    photos[0]?.resolve();
-    photos[2]?.resolve(); // the upcoming photo isn't waited for
-    await vi.advanceTimersByTimeAsync(TIMINGS.introMin + 300);
-    expect(latest.phase).toBe("intro");
-    photos[1]?.resolve();
-    await flush();
-    expect(latest.phase).toBe("dealing");
-  });
-
-  it("gives up waiting at the maximum, and deals with the photo still loading", async () => {
-    withSlowPhotos();
-    await begin();
-    await vi.advanceTimersByTimeAsync(TIMINGS.introMax - 1);
-    expect(latest.phase).toBe("intro");
-    await vi.advanceTimersByTimeAsync(1);
-    expect(latest.phase).toBe("dealing");
-  });
-
-  it("waits for the photos the same way with reduced motion", async () => {
+  it("lasts the same with reduced motion", async () => {
     reduced = true;
-    const photos = withSlowPhotos();
     await begin();
-    await vi.advanceTimersByTimeAsync(TIMINGS.introMin + 200);
-    expect(latest.phase).toBe("intro");
-    for (const p of photos) p.resolve();
-    await flush();
+    await vi.advanceTimersByTimeAsync(TIMINGS.introMin);
     expect(latest.phase).toBe("dealing");
   });
 
   it("says nothing until the plaque lands, then asks the question", async () => {
-    const photos = withSlowPhotos();
     await begin();
-    for (const p of photos) p.resolve();
     await vi.advanceTimersByTimeAsync(TIMINGS.introMin + TIMINGS.beat);
     expect(latest.phase).toBe("spinning");
     await vi.advanceTimersByTimeAsync(TIMINGS.spin + TIMINGS.land);

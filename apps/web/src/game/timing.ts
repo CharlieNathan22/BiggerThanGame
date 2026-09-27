@@ -10,12 +10,10 @@
 
 export interface Timings {
   /**
-   * The first deal's "floodlights on" intro lasts at least this long, and
-   * longer while round one's photos are still loading.
+   * The first deal's kick-off, the cards sliding in, before round one's
+   * usual beat and spin. It doesn't wait for photos.
    */
   readonly introMin: number;
-  /** ...but no longer than this: a photo still loading then fades in when it arrives. */
-  readonly introMax: number;
   /** Players shown, then a beat before the wheel (DESIGN.md §4). */
   readonly beat: number;
   /** No spin when the stat holds: the pause before the anchor's value shows. */
@@ -44,6 +42,11 @@ export interface Timings {
   readonly verdict: number;
   /** From the verdict colour to the next deal. */
   readonly next: number;
+  /**
+   * The carousel slide to the next pair: the last part of `next`, so rounds
+   * take no longer. None with reduced motion.
+   */
+  readonly slide: number;
   /** From a run's last verdict colour to the game-over panel. */
   readonly over: number;
   /** The feedback modal's fade, in and out. None with reduced motion. */
@@ -58,7 +61,6 @@ export interface Timings {
 
 export const TIMINGS: Timings = {
   introMin: 1000,
-  introMax: 2000,
   beat: 700,
   hold: 340,
   spin: 1800,
@@ -70,6 +72,7 @@ export const TIMINGS: Timings = {
   settle: 380,
   verdict: 2540,
   next: 1400,
+  slide: 600,
   over: 1400,
   modal: 180,
   thanks: 5000,
@@ -80,7 +83,6 @@ export const TIMINGS: Timings = {
 /** The custom property behind each timing. */
 export const TIMING_TOKENS: Readonly<Record<keyof Timings, string>> = {
   introMin: "--dur-intro-min",
-  introMax: "--dur-intro-max",
   beat: "--dur-beat",
   hold: "--dur-hold",
   spin: "--dur-spin",
@@ -92,6 +94,7 @@ export const TIMING_TOKENS: Readonly<Record<keyof Timings, string>> = {
   settle: "--dur-settle",
   verdict: "--dur-verdict",
   next: "--dur-next",
+  slide: "--dur-slide",
   over: "--dur-over",
   modal: "--dur-modal",
   thanks: "--dur-thanks",
