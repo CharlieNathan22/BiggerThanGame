@@ -1,6 +1,16 @@
 <!--
   The stat plaque over the divide, and the reel that spins it (DESIGN.md §7).
 
+  The reel is a drum: the labels sit round a cylinder (--drum-step apart,
+  --drum-radius-ratio plaque-heights out) and the drum turns, so while it
+  spins each label tilts away and shrinks towards the top and bottom edges,
+  fading there, with the one in the middle flat. Once it lands the drum is
+  swapped for a flat line, so the stat is crisp. The plaque is raised (an
+  inner bevel), glazed (a gloss over its top half), rimmed in gold and glows
+  in its tier's colour; a sheen sweeps across it when the wheel lands and as
+  the title card hands over "Question 1 of 20". With reduced motion the
+  label just changes, with no sheen; the gloss, rim and glow stay.
+
   `stat` is what the plaque shows at rest. When `spinIndex` is set, the reel
   runs once for that round and lands on `spinTo`: eleven other labels, then
   the target, with the tier colour changing part-way through and a pop as it
@@ -59,10 +69,15 @@
   let moving = $state(false);
   let tint: Tier | null = $state(null);
   let pop = $state(false);
+  /** The reel is at rest: drawn flat, not as a drum. */
+  let landed = $state(true);
+  /** Counts landings, to replay the sheen for each. */
+  let sheen = $state(0);
 
   $effect(() => {
     if (spinIndex === null) {
       moving = false;
+      landed = true;
       strip = [];
       from = null;
       tint = null;
@@ -84,8 +99,10 @@
     if (untrack(() => reducedMotion)) {
       offset = last;
       tint = target.tier;
+      landed = true;
       return;
     }
+    landed = false;
 
     const { spin, land, spinTintAt } = untrack(() => timings);
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -98,13 +115,22 @@
       });
     });
     timers.push(setTimeout(() => (tint = target.tier), spin * spinTintAt));
-    timers.push(setTimeout(() => (pop = true), spin + land));
+    timers.push(
+      setTimeout(() => {
+        pop = true;
+        landed = true;
+        sheen += 1;
+      }, spin + land),
+    );
 
     return () => {
       cancelAnimationFrame(raf);
       timers.forEach(clearTimeout);
     };
   });
+
+  /** The row facing the front: the one the reel is on. */
+  const front = $derived(strip.length > 0 ? offset : 0);
 
   const rows: string[] = $derived(
     strip.length > 0
@@ -125,18 +151,36 @@
 {/if}
 <div
   class="plaque"
+  data-plaque
   class:final
   class:arriving={stage === "title"}
   class:holding={stage === "hold"}
   class:pop
   style:--tier={tint ? TIER_COLOUR[tint] : undefined}
-  onanimationend={() => (pop = false)}
+  onanimationend={(event) => {
+    if (event.target === event.currentTarget) pop = false;
+  }}
 >
-  <div class="reel" class:moving style:--offset={strip.length > 0 ? offset : 0}>
-    {#each rows as label, i (i)}
-      <span>{label}</span>
-    {/each}
+  <div class="window" class:spinning={!landed}>
+    <div
+      class="reel"
+      class:moving
+      class:flat={landed}
+      style:--offset={strip.length > 0 ? offset : 0}
+    >
+      {#each rows as label, i (i)}
+        <span class:front={i === front} style:--i={i}>{label}</span>
+      {/each}
+    </div>
   </div>
+  {#key sheen}
+    {#if sheen > 0}
+      <span class="sheen" aria-hidden="true"></span>
+    {/if}
+  {/key}
+  {#if stage === "title"}
+    <span class="sheen handoff" aria-hidden="true"></span>
+  {/if}
   {#if stage === "hold"}
     <span class="shimmer" aria-hidden="true"></span>
   {/if}
@@ -155,10 +199,23 @@
     background: var(--tier);
     color: var(--ink);
     overflow: hidden;
+    /* The rim and the dark halo. */
     box-shadow: var(--shadow-plaque);
     transition:
       background-color var(--dur-tint) var(--ease),
       box-shadow var(--dur-tint) var(--ease);
+  }
+  /* And the glow, in the plaque's own tier colour (--plaque-glow-colour, set
+     on the plaque in tokens.css so it follows the tier as the wheel changes
+     it). Only where color-mix is understood: elsewhere the rim and halo stay
+     and there is simply no glow. */
+  @supports (color: color-mix(in srgb, red 50%, transparent)) {
+    .plaque {
+      box-shadow:
+        var(--shadow-plaque),
+        0 0 var(--plaque-glow-blur) var(--plaque-glow-spread)
+          color-mix(in srgb, var(--plaque-glow-colour) var(--plaque-glow-strength), transparent);
+    }
   }
   .plaque.final {
     box-shadow: var(--shadow-plaque-final);
@@ -251,7 +308,9 @@
     inset: 0;
     pointer-events: none;
     border-radius: var(--radius-pill);
+    /* The glass: a gloss over the top half, and the raised bevel inside. */
     background: var(--plaque-gloss);
+    box-shadow: var(--plaque-bevel);
   }
   /* Short landscape screens: at the top of the divide, clear of both cards
      (Side.svelte reserves the strip). The pop's translate still centres it. */
@@ -282,19 +341,35 @@
     }
   }
 
+  /* The drum's window: its perspective, and while it spins a fade at the top
+     and bottom edges. */
+  .window {
+    position: absolute;
+    inset: 0;
+    perspective: var(--drum-perspective);
+  }
+  .window.spinning {
+    -webkit-mask-image: var(--drum-fade);
+    mask-image: var(--drum-fade);
+  }
+  /* Each label on the cylinder, --i steps round; the drum turns --offset
+     steps. The one facing front sits exactly where a flat label would. */
   .reel {
     position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
+    inset: 0;
+    --drum-r: calc(var(--plaque-h) * var(--drum-radius-ratio));
+    transform-style: preserve-3d;
     will-change: transform;
-    transform: translateY(calc(var(--plaque-h) * var(--offset) * -1));
+    transform: translateZ(calc(-1 * var(--drum-r))) rotateX(calc(var(--offset) * var(--drum-step)));
   }
-  .reel.moving {
+  .reel.moving:not(.flat) {
     transition: transform var(--dur-spin) var(--ease-spin);
   }
   .reel span {
-    height: var(--plaque-h);
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    transform: rotateX(calc(var(--i) * -1 * var(--drum-step))) translateZ(var(--drum-r));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -306,5 +381,39 @@
     /* If a label ever needs two lines, split it evenly. */
     text-wrap: balance;
     text-shadow: var(--glow);
+  }
+  /* At rest: a flat line, only the landed label, crisp. */
+  .reel.flat,
+  .reel.flat span {
+    transform: none;
+  }
+  .reel.flat span:not(.front) {
+    visibility: hidden;
+  }
+
+  /* The sheen: one streak of light across the glass, when the wheel lands
+     and as the title card becomes the plaque's line. Nothing with reduced
+     motion (base.css stops it, and at rest it is invisible). */
+  .sheen {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--plaque-sheen);
+    opacity: 0;
+    transform: translateX(-100%);
+    animation: sheen var(--dur-sheen) var(--ease-sheen) both;
+  }
+  .sheen.handoff {
+    animation-delay: calc(var(--title-dur) * 0.85);
+  }
+  @keyframes sheen {
+    from {
+      opacity: 1;
+      transform: translateX(-100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(100%);
+    }
   }
 </style>

@@ -507,13 +507,47 @@
 
   /* ---------- shape ---------- */
   --radius-pill: 100px;
-  --shadow-plaque: 0 0 0 var(--plaque-halo) var(--night), 0 6px 24px rgba(0, 0, 0, 0.35);
+  /* The plaque: a thin gold metallic rim (a light line inside a darker gold
+     one), then the dark halo that parts it from the cards, and a drop shadow.
+     Its glow is in its tier's colour, set on the plaque below. */
+  --plaque-rim-light: #fff1c2;
+  --plaque-rim-dark: #c8891a;
+  --plaque-rim-w: 1px;
+  --plaque-rim-outer-w: 2.5px;
+  --shadow-plaque:
+    0 0 0 var(--plaque-rim-w) var(--plaque-rim-light),
+    0 0 0 var(--plaque-rim-outer-w) var(--plaque-rim-dark), 0 0 0 var(--plaque-halo) var(--night),
+    0 6px 24px rgba(0, 0, 0, 0.35);
+  --plaque-glow-blur: 22px;
+  --plaque-glow-spread: 2px;
+  --plaque-glow-strength: 55%;
+  /* The plaque's glass: a gloss over the top half, fading at the middle like
+     a curved cover, a touch of shade at the foot, and a raised bevel inside. */
   --plaque-gloss: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.34),
-    transparent 42%,
-    rgba(0, 0, 0, 0.14)
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.16) 44%,
+    rgba(255, 255, 255, 0) 52%,
+    rgba(0, 0, 0, 0.12) 100%
   );
+  --plaque-bevel: inset 0 1px 1px rgba(255, 255, 255, 0.6), inset 0 -2px 3px rgba(0, 0, 0, 0.28);
+  /* The landing sheen: a streak of light crossing the glass. */
+  --plaque-sheen: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 65%
+  );
+  --dur-sheen: 650ms;
+  --ease-sheen: cubic-bezier(0.3, 0, 0.2, 1);
+  /* The reel as a drum: labels --drum-step apart round a cylinder of
+     --drum-radius-ratio plaque-heights (1 / (2 tan(step / 2)), so neighbours
+     just touch), seen through --drum-perspective, fading at the top and
+     bottom edges while it spins. */
+  --drum-step: 25deg;
+  --drum-radius-ratio: 2.2555;
+  --drum-perspective: 240px;
+  --drum-fade: linear-gradient(180deg, transparent 0%, #000 26%, #000 74%, transparent 100%);
 
   /* ---------- motion ----------
    * The game's script timers read these at runtime (src/game/timing.ts), and a
@@ -904,4 +938,13 @@ body:not(.game) {
    */
   --side-a-rest: transparent;
   --side-b-rest: rgba(52, 151, 192, 0.12);
+}
+
+/*
+ * The plaque's glow colour. Set on the plaque itself, not :root, so it follows
+ * the plaque's own tier as the wheel changes it. One token: set it to
+ * var(--gold) for an always-gold glow.
+ */
+[data-plaque] {
+  --plaque-glow-colour: var(--tier);
 }
