@@ -926,9 +926,11 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   and `@fontsource/cinzel` (400 and 600 — the weights the prototype renders), Latin and Latin
   Extended subsets. Latin Archivo is preloaded everywhere; Latin Cinzel 600, the title bar's
   "Legends", only on the Legends pages. No third-party font requests.
-- `TitleBar.svelte` renders server-side with no JS on static pages; the game island reuses it.
-  Its `legends` prop adds "— Football Legends", set on `/football-higher-or-lower/legends` and
-  every page under it (`isLegendsPath`); elsewhere the bar is the brand alone, at the same height.
+- `TitleBar.svelte` renders server-side with no JS on static pages; the game island reuses it. Its
+  `legends` prop adds "— Football Legends", set on `/football-higher-or-lower/legends` and every
+  page under it (`isLegendsPath`); elsewhere the bar is the brand alone, at the same height. On
+  short landscape screens (at most 500px tall) it drops "— Football Legends" as well, so the bar is
+  one row and the game fits down to 568 × 320.
 - **Site navigation** is in the title bar on every page (`lib/nav.ts`): the brand links to `/`,
   then Play (`/football-higher-or-lower/legends`), How to play (`/about#how-to-play`) and About.
   The current page's link carries `aria-current="page"`; a link to a section never does. Play
@@ -943,8 +945,19 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   the bar's, so it adds no height to the row it shares, and the open list is an overlay hanging
   from the bar (`--z-topbar`), so the game's fixed-height screen loses nothing. Both lists are
   in the markup; only one is ever displayed.
-- The footer links Credits and GitHub, then the two feedback forms. About and How to play are in
-  the title bar, not repeated here, which keeps the footer to one row down to 320px.
+- The footer links Credits and GitHub, then the two feedback forms. About and How to play are in the
+  title bar, not repeated here, which keeps the footer to one row down to 320px. The title bar and
+  footer are raised surfaces (`--bar-bg`, `--foot-bg`, a `--chrome-rule` hairline and a shadow on
+  the edge facing the page) with bold links (`--fv-nav`, `--fv-foot`). They stay compact on the game
+  page on phones (`--bar-pad-y`, `--foot-pad-y`, 11.5px footer text so it stays one row at 320px)
+  and grow on the static pages and on the game at desktop sizes. A gold glow (`--glow`,
+  `--glow-hover`, and `--glow-filter` for the gradient "Legends" and the clipped names) sits on the
+  brand, the title bar's and footer's links, the Menu button, the names, figures, "?" and plaque,
+  and the game's buttons; clickable things grow it on hover, press and `:focus-visible`, which keeps
+  its gold outline too. On the card text it sits outside the dark halo. The chrome and the whole
+  game UI are `user-select: none` with no tap highlight, except the copy-by-hand share box; content
+  pages and the feedback form select as usual. There is no visible page scrollbar (`scrollbar-width:
+none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and keyboard.
 - Only the game page gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag); every
   other page scrolls.
 - Pages build to files (`about.html`, `football-higher-or-lower/legends/friendly.html`) and are
@@ -968,18 +981,23 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   throwing, the best lasts as long as the page and the game plays normally. The local
   leaderboard, when it comes, lives there the same way.
 - **Sharing** at game over (`game/share.ts`, `share-image.ts`, `share-actions.ts`): the Wordle-style
-  text is built from the round history alone — score, streak title, one square per answered round
-  in tier colour and ❌ for the miss, the stat that ended it, and the challenge link — with no
-  names, values or answers. The **share image** is a 1080×1350 PNG drawn on a canvas from the
-  tokens (sizes are `--share-*`): score, title, grid, ending stat, and the final round's two
-  players with their revealed figures. **No photos**: their licences need attribution a shared
-  image can't carry. It waits for `document.fonts` and uses only fonts and data already on the
-  page, so it works offline once the run has ended. On touch devices both go to the share sheet
-  (the image as a file); elsewhere the text is copied, with a visible "Copied", and the image
-  downloads. Each result note — "Copied", "Image saved" or a failure — is announced once and
-  shows for `--dur-notice` (5 s), then fades over `--dur-notice-fade` and clears (no fade with
-  reduced motion; `game/notice.ts`). Another tap restarts it; a new run clears it at once. Its
-  space on the panel is reserved, so nothing moves when it goes.
+  text is built from the round history alone — score, streak title, one square per answered round in
+  tier colour and ❌ for the miss, the stat that ended it, and the challenge link — with no names,
+  values or answers. The **share image** is a 1080×1350 PNG drawn on a canvas from the tokens (sizes
+  are `--share-*`): score, title, grid, ending stat, and the final round's two players with their
+  revealed figures. **No photos**: their licences need attribution a shared image can't carry. It
+  waits for `document.fonts` and uses only fonts and data already on the page, so it works offline
+  once the run has ended. On touch devices both go to the share sheet (the image as a file);
+  elsewhere the text is copied, with a visible "Copied", and the image downloads. Each result note —
+  "Copied", "Image saved" or a failure — is announced once and shows for `--dur-notice` (5 s), then
+  fades over `--dur-notice-fade` and clears (no fade with reduced motion; `game/notice.ts`). Another
+  tap restarts it; a new run clears it at once. Its space on the panel is reserved, so nothing moves
+  when it goes. "Play again" is the panel's primary button; "Share result" and "Save image" ("Share
+  image" on touch) are secondary buttons beside each other under it — the same height, radius and
+  type, with a gold outline and gold text, a share or download icon (`aria-hidden`), and the gold
+  glow (`--btn2-*`, `--cta-*`). The two feedback links stay text links. On short screens the panel's
+  spacing tightens and, on a short landscape screen, it lays out in two columns (the score beside
+  the actions), so it fits without scrolling down to 320 × 568 and 568 × 320.
 - **Challenge links** are read from the game page's URL on load (`game/challenge.ts`) and sent
   with the first start; the start panel says "Beat n". The parameters are removed from the
   address bar once the run starts, and "Play again" is a fresh run. See §7.

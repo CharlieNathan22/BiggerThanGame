@@ -42,6 +42,8 @@
   .unknown {
     font-size: var(--fs-fig);
     line-height: var(--lh-tight);
+    /* The card's dark halo on top, the gold glow outside it. */
+    text-shadow: var(--halo), var(--glow);
   }
   .fig {
     color: var(--tier);

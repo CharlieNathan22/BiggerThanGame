@@ -219,7 +219,7 @@ right answer**.
 | Stat                       | Tier     | Definition                                           | Eligibility                 |
 | -------------------------- | -------- | ---------------------------------------------------- | --------------------------- |
 | **Club goals**             | Basic    | Senior club goals, all competitions, all clubs       | Everyone except goalkeepers |
-| **Caps**                   | Basic    | Senior international appearances only                | All                         |
+| **International caps**     | Basic    | Senior international appearances only                | All                         |
 | **Club appearances**       | Basic    | Senior club appearances, all competitions, all clubs | All                         |
 | **Instagram followers**    | Basic    | Follower count, snapshot-dated                       | All with an account         |
 | **Highest transfer fee**   | Uncommon | Largest single reported fee, shown **with the year** | All with a reported fee     |
@@ -287,7 +287,8 @@ engine.
 - **Clean sheets** — a published stat for goalkeepers and essentially untracked for outfield
   defenders. No consistent source existed, so every defender figure would have been a guess.
 - **Combined career goals** — replaced by club goals, for the double-counting reason above.
-- **"International caps" as distinct from "Caps"** — the same stat under two names. Resolved to one.
+- **"International caps" as distinct from "Caps"** — the same stat under two names. Resolved to one,
+  shown as "International caps" (its id stays `caps`).
 
 ---
 
@@ -580,7 +581,16 @@ current stat.
 - **The plaque is the stat.** It changes colour with the tier and is the single most important
   thing on screen after the two names.
 - **Persistent title bar** — "Bigger Than Game — Football Legends" stays visible during play.
-  _Legends_ appears only on the Legends pages; elsewhere the bar is the brand alone (§17).
+  _Legends_ appears only on the Legends pages; elsewhere the bar is the brand alone (§17). The title
+  bar and footer are raised surfaces with a gold hairline facing the page, and a soft gold glow sits
+  on the brand, the links, the game's text and its buttons, growing on hover, press and focus. The
+  game and the chrome don't select as text; content pages do.
+- **Background:** the floodlit night itself — warm floodlight pools from the two top corners, a
+  faint teal lift, a vignette and a fine grain, with soft gold shapes drifting slowly over it, up
+  top and low down. The Legends page adds a few small drifting gold glows and a slow floodlight
+  sweep. All of it sits behind the content at low contrast, so text stays easy to read. The game
+  page keeps the floodlights, still, showing through the halves at rest and on the start and
+  game-over panels: nothing moves behind the players. Reduced motion stills everything.
 - **Quality floor:** responsive to mobile, visible keyboard focus, reduced motion respected,
   colour never the sole carrier of meaning.
 
@@ -790,7 +800,9 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   _Legends_".
 - **Title bar.** The word _Legends_ (Cinzel, gold) appears only on
   `/football-higher-or-lower/legends` and the pages under it, as "Bigger Than Game — Football
-  _Legends_". Everywhere else the bar shows the brand alone. One component; the page decides.
+  _Legends_". Everywhere else the bar shows the brand alone. One component; the page decides. On
+  very short landscape screens (500px tall or less) the game page's bar drops "— Football Legends"
+  too, so it stays one row and the game fits.
 - **Navigation** is in the title bar on every page: the brand to `/`, then Play (the Legends
   page), How to play and About, with the current page marked. Play is marked current on the
   football hub and every page under it. Inline on desktop; a "Menu" on phones and short

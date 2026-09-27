@@ -452,60 +452,88 @@
       </div>
     {:else if phase === "over"}
       <div class="veil">
-        <div class="panel">
-          <div class="final num">{game.streak}</div>
-          <div class="finalcap">{overCaption(game.streak)}</div>
-          {#if title}
-            <div class="sublegend title">{title}</div>
-          {/if}
-          <div class="best">
-            {newBest ? t("over.newBest") : t("over.best", { best: game.best })}
+        <!-- Stacked; on a short landscape screen, the score beside the actions. -->
+        <div class="panel over">
+          <div class="scoreboard">
+            <div class="final num">{game.streak}</div>
+            <div class="finalcap">{overCaption(game.streak)}</div>
+            {#if title}
+              <div class="sublegend title">{title}</div>
+            {/if}
+            <div class="best">
+              {newBest ? t("over.newBest") : t("over.best", { best: game.best })}
+            </div>
+            {#if result}
+              <p class="outcome">{outcomeText(result.outcome, result.target)}</p>
+            {/if}
+            {#if cells.length > 0}
+              <div class="grid" role="img" aria-label={gridLabel(game.history)}>
+                {#each cells as cell, i (i)}
+                  <span
+                    class="cell"
+                    class:miss={cell.kind === "miss"}
+                    style:--cell={cell.kind === "hit" ? TIER_COLOUR[cell.tier] : undefined}
+                    aria-hidden="true"
+                  ></span>
+                {/each}
+              </div>
+            {/if}
           </div>
-          {#if result}
-            <p class="outcome">{outcomeText(result.outcome, result.target)}</p>
-          {/if}
-          {#if cells.length > 0}
-            <div class="grid" role="img" aria-label={gridLabel(game.history)}>
-              {#each cells as cell, i (i)}
-                <span
-                  class="cell"
-                  class:miss={cell.kind === "miss"}
-                  style:--cell={cell.kind === "hit" ? TIER_COLOUR[cell.tier] : undefined}
-                  aria-hidden="true"
-                ></span>
-              {/each}
+          <div class="actions">
+            {#if round && reveal}
+              <div class="reason">
+                <span class="lab">{statLabel(round.stat.key)}</span>
+                <b>{round.anchor.name}</b>
+                {round.anchor.display}
+                <span aria-hidden="true">{t("over.separator")}</span>
+                <b>{round.challenger.name}</b>
+                {reveal.display}
+                {#if game.end === "deck-exhausted"}
+                  <p class="note">{t("over.exhausted")}</p>
+                {/if}
+              </div>
+            {:else if game.end === "network"}
+              <div class="reason">
+                <p class="note">{t("over.network", { streak: game.streak })}</p>
+              </div>
+            {/if}
+            <button class="cta" bind:this={againButton} onclick={start}>{t("over.again")}</button>
+            <!-- Secondary to Play again: gold outline and text. The icons are
+               decoration; each button is named by its words. -->
+            <div class="shares">
+              <button class="secondary" onclick={onShareText}>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path
+                    d="M12 15V3M7.5 7.5 12 3l4.5 4.5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"
+                  />
+                </svg>
+                {t("over.share")}
+              </button>
+              <button
+                class="secondary"
+                onclick={onShareImage}
+                disabled={drawing}
+                aria-busy={drawing}
+              >
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  {#if platform?.touch}
+                    <path
+                      d="M12 15V3M7.5 7.5 12 3l4.5 4.5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"
+                    />
+                  {:else}
+                    <path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M5 20h14" />
+                  {/if}
+                </svg>
+                {platform?.touch ? t("over.shareImage") : t("over.saveImage")}
+              </button>
             </div>
-          {/if}
-          {#if round && reveal}
-            <div class="reason">
-              <span class="lab">{statLabel(round.stat.key)}</span>
-              <b>{round.anchor.name}</b>
-              {round.anchor.display}
-              <span aria-hidden="true">{t("over.separator")}</span>
-              <b>{round.challenger.name}</b>
-              {reveal.display}
-              {#if game.end === "deck-exhausted"}
-                <p class="note">{t("over.exhausted")}</p>
-              {/if}
-            </div>
-          {:else if game.end === "network"}
-            <div class="reason">
-              <p class="note">{t("over.network", { streak: game.streak })}</p>
-            </div>
-          {/if}
-          <button class="cta" bind:this={againButton} onclick={start}>{t("over.again")}</button>
-          <div class="shares">
-            <button class="ghost" onclick={onShareText}>{t("over.share")}</button>
-            <button class="ghost" onclick={onShareImage} disabled={drawing} aria-busy={drawing}>
-              {platform?.touch ? t("over.shareImage") : t("over.saveImage")}
-            </button>
+            <p class="status" class:fading={shareNote.fading} role="status">{shareNote.text}</p>
+            {#if copyByHand !== null}
+              <textarea class="copy" readonly rows="6" aria-label={t("over.shareText")}
+                >{copyByHand}</textarea
+              >
+            {/if}
           </div>
-          <p class="status" class:fading={shareNote.fading} role="status">{shareNote.text}</p>
-          {#if copyByHand !== null}
-            <textarea class="copy" readonly rows="6" aria-label={t("over.shareText")}
-              >{copyByHand}</textarea
-            >
-          {/if}
           <div class="feedback">
             {#if report}
               <button class="ghost" onclick={() => openFeedback("correction")}>
@@ -542,14 +570,23 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    /* A game, not a document: nothing selects on a long press or a
+       double-click, and a tap doesn't flash. The copy-by-hand share box
+       below is the one exception. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
+  /* The site background, static here (tokens.css): it shows through the
+     halves at rest and on the start and game-over panels. */
   .pitch {
     flex: 1;
     display: flex;
     flex-direction: column;
     position: relative;
     min-height: 0;
+    background: var(--bg-grain), var(--bg-lights), var(--bg-vignette);
   }
   @media (min-width: 780px) {
     .pitch {
@@ -631,10 +668,13 @@
     /* Room for the ring, drawn only on hover and keyboard focus. */
     outline: var(--pick-ring-w) solid transparent;
     outline-offset: var(--pick-ring-offset);
+    box-shadow: var(--glow);
+    text-shadow: var(--glow);
     transition:
       background-color var(--dur-hover),
       color var(--dur-hover),
       outline-color var(--dur-hover),
+      box-shadow var(--dur-hover),
       transform var(--dur-press);
   }
   .arrow {
@@ -654,18 +694,21 @@
       background: var(--chalk);
       color: var(--night);
       outline-color: var(--pick-ring);
+      box-shadow: var(--glow-hover);
     }
   }
   .pick:focus-visible {
     background: var(--chalk);
     color: var(--night);
     outline-color: var(--pick-ring);
+    box-shadow: var(--glow-hover);
   }
-  /* Pressed, on touch above all: white and pushed in. */
+  /* Pressed, on touch above all: white, pushed in and glowing. */
   .pick:active {
     background: var(--chalk);
     color: var(--night);
     transform: scale(var(--press-scale));
+    box-shadow: var(--glow-hover);
   }
 
   .veil {
@@ -673,8 +716,8 @@
     inset: 0;
     z-index: 9;
     display: flex;
-    background: var(--veil);
-    padding: 26px;
+    background: var(--bg-grain), var(--bg-lights), var(--bg-vignette), var(--veil);
+    padding: var(--veil-pad);
     /* A tall game-over panel on a short screen scrolls rather than clipping. */
     overflow-y: auto;
   }
@@ -714,13 +757,26 @@
     color: var(--dim);
   }
   .cta {
-    margin-top: 20px;
-    padding: 14px 34px;
+    margin-top: var(--cta-top);
+    min-height: var(--cta-h);
+    padding: 0 var(--cta-pad-x);
     border-radius: var(--radius-pill);
     background: var(--gold);
     color: var(--ink);
     font-size: var(--fs-cta);
     font-variation-settings: var(--fv-cta);
+    box-shadow: var(--glow);
+    transition:
+      box-shadow var(--dur-hover),
+      transform var(--dur-press);
+  }
+  .cta:hover,
+  .cta:active,
+  .cta:focus-visible {
+    box-shadow: var(--glow-hover);
+  }
+  .cta:active {
+    transform: scale(var(--press-scale));
   }
   .cta:focus-visible {
     outline: var(--focus-ring) solid var(--chalk);
@@ -737,22 +793,77 @@
     text-underline-offset: 3px;
     display: block;
     width: 100%;
+    text-shadow: var(--glow);
+    transition: text-shadow var(--dur-hover);
   }
-  .shares .ghost,
+  .ghost:hover,
+  .ghost:active,
+  .ghost:focus-visible {
+    text-shadow: var(--glow-hover);
+  }
   .feedback .ghost {
     min-height: var(--target-min);
     display: flex;
     align-items: center;
     justify-content: center;
   }
+  /* Share and Save image: secondary to Play again, the same height, radius
+     and type, with a gold outline and gold text. Side by side, or one to a
+     row when they don't fit. */
   .shares {
-    margin-top: 4px;
+    margin-top: var(--shares-top);
     display: flex;
-    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--btn2-gap);
   }
-  .shares .ghost {
-    margin-top: 0;
-    flex: 1;
+  .secondary {
+    flex: 1 1 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--btn2-icon-gap);
+    min-height: var(--cta-h);
+    padding: 0 var(--btn2-pad-x);
+    border: var(--btn2-border) solid var(--btn2-edge);
+    border-radius: var(--radius-pill);
+    background: var(--btn2-bg);
+    color: var(--btn2-text);
+    font-size: var(--fs-btn2);
+    font-variation-settings: var(--fv-cta);
+    white-space: nowrap;
+    box-shadow: var(--glow);
+    text-shadow: var(--glow);
+    transition:
+      background-color var(--dur-hover),
+      box-shadow var(--dur-hover),
+      transform var(--dur-press);
+  }
+  .secondary:hover,
+  .secondary:active,
+  .secondary:focus-visible {
+    background: var(--btn2-bg-hover);
+    box-shadow: var(--glow-hover);
+  }
+  .secondary:active {
+    transform: scale(var(--press-scale));
+  }
+  .secondary:focus-visible {
+    outline: var(--focus-ring) solid var(--chalk);
+    outline-offset: var(--focus-offset);
+  }
+  .secondary:disabled {
+    cursor: progress;
+  }
+  .icon {
+    flex: none;
+    width: var(--btn2-icon);
+    height: var(--btn2-icon);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: var(--btn2-icon-stroke);
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
   .feedback {
     display: flex;
@@ -790,6 +901,9 @@
     font: inherit;
     font-size: var(--fs-lab);
     resize: none;
+    /* The one thing in the game meant to be selected: it's there to copy. */
+    -webkit-user-select: text;
+    user-select: text;
   }
   .copy:focus-visible {
     outline: var(--focus-ring-thin) solid var(--gold);
@@ -807,7 +921,7 @@
     font-variation-settings: var(--fv-heading);
   }
   .sublegend.title {
-    margin-top: 10px;
+    margin-top: var(--over-title-top);
   }
   .panel .outcome {
     margin-top: 10px;
@@ -816,7 +930,7 @@
     font-variation-settings: var(--fv-caption);
   }
   .grid {
-    margin: 14px auto 0;
+    margin: var(--over-grid-top) auto 0;
     /* Ten to a row, as in the share text. */
     max-width: calc(var(--grid-cell) * 10 + var(--grid-gap) * 9);
     display: flex;
@@ -844,14 +958,14 @@
   }
   .finalcap,
   .best {
-    margin-top: 5px;
+    margin-top: var(--over-cap-top);
     font-size: var(--fs-caption);
     color: var(--dim);
     font-variation-settings: var(--fv-caption);
   }
   .reason {
-    margin-top: 18px;
-    padding-top: 16px;
+    margin-top: var(--reason-top);
+    padding-top: var(--reason-pad);
     border-top: var(--border) solid var(--rule);
     font-size: var(--fs-reason);
     line-height: var(--lh-reason);
@@ -868,5 +982,35 @@
   }
   .panel .reason .note {
     margin-top: 8px;
+  }
+
+  /* Wide enough for Share and Save image side by side. */
+  .panel.over {
+    max-width: var(--over-w);
+  }
+
+  /* A short landscape screen: the score on the left, the reason and the
+     buttons on the right, the feedback links across the bottom, so the panel
+     fits without scrolling. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .panel.over {
+      max-width: var(--over-w-wide);
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: var(--over-col-gap);
+      align-items: center;
+    }
+    .over .feedback {
+      grid-column: 1 / -1;
+    }
+    .over .reason {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+    .over .reason .lab {
+      display: inline;
+      margin: 0 6px 0 0;
+    }
   }
 </style>

@@ -110,6 +110,38 @@
   --pick-ring: var(--gold);
   --pick-ring-w: 3px;
   --pick-ring-offset: 2px;
+
+  /*
+   * The game-over panel. Play again is the primary button; Share and Save
+   * image are secondary: the same height, radius and type, with a gold
+   * outline and gold text on a dark fill. The spacing tightens on short
+   * screens (below).
+   */
+  --cta-h: 48px;
+  --cta-pad-x: 34px;
+  --cta-top: 20px;
+  --shares-top: 10px;
+  --btn2-gap: 10px;
+  --btn2-pad-x: 18px;
+  --fs-btn2: var(--fs-cta);
+  --btn2-border: 2px;
+  --btn2-edge: var(--gold);
+  --btn2-text: var(--gold);
+  --btn2-bg: rgba(var(--ink-rgb), 0.35);
+  --btn2-bg-hover: rgba(var(--glow-rgb), 0.12);
+  --btn2-icon: 1.05em;
+  --btn2-icon-gap: 8px;
+  --btn2-icon-stroke: 2;
+  --veil-pad: 26px;
+  --over-cap-top: 5px;
+  --over-title-top: 10px;
+  --over-grid-top: 14px;
+  --reason-top: 18px;
+  --reason-pad: 16px;
+  --over-w: 360px;
+  /* Side by side on a short landscape screen: the score, then the actions. */
+  --over-w-wide: 600px;
+  --over-col-gap: 28px;
   /* The connection note under the challenger during a reconnect or slow-down. */
   --hitch-bg: rgba(6, 18, 26, 0.72);
   /* Notes over the pitch: a refused challenge link. */
@@ -214,7 +246,7 @@
   --fs-reason: 14px;
   --fs-lab: 11.5px;
   --fs-heading: 20px;
-  --fs-foot: 10.5px;
+  --fs-foot: 11.5px;
 
   --lh-tight: 1;
   --lh-display: 0.94;
@@ -269,13 +301,51 @@
   --foot-group-gap: 18px;
   --foot-row-gap: 32px;
 
+  /*
+   * The title bar and footer: a raised surface, a touch lighter than the page,
+   * with a gold hairline and a soft shadow on the edge that faces the page.
+   * Compact on the game page on phones (--bar-pad-y, --foot-pad-y); roomier on
+   * the static pages and on desktop (below).
+   */
+  --chrome-top: #0e2430;
+  --chrome-bottom: var(--ink);
+  --bar-bg: linear-gradient(180deg, var(--chrome-top), var(--chrome-bottom));
+  --foot-bg: linear-gradient(0deg, var(--chrome-top), var(--chrome-bottom));
+  --chrome-rule: var(--gold-rule);
+  --bar-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  --foot-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35);
+  --bar-pad-y: 9px;
+  --bar-pad-x: 16px;
+  --foot-pad-y: 6px;
+  --fv-nav: "wdth" 95, "wght" 700;
+  /* Bold, and narrow enough that the footer stays one row at 320px. */
+  --fv-foot: "wdth" 90, "wght" 700;
+
+  /*
+   * The gold glow: a small resting glow on the brand, the links and buttons in
+   * the title bar and footer, and the game's text and buttons; clickable
+   * things grow it on hover, press and keyboard focus. On the card text it
+   * sits outside the dark halo, never in place of it.
+   */
+  --glow-rgb: 255, 176, 32;
+  --glow-blur: 10px;
+  --glow-opacity: 0.6;
+  --glow-hover-blur: 18px;
+  --glow-hover-opacity: 0.9;
+  --glow: 0 0 var(--glow-blur) rgba(var(--glow-rgb), var(--glow-opacity));
+  --glow-hover: 0 0 var(--glow-hover-blur) rgba(var(--glow-rgb), var(--glow-hover-opacity));
+  --glow-filter: drop-shadow(0 0 var(--glow-blur) rgba(var(--glow-rgb), var(--glow-opacity)));
+  --glow-hover-filter: drop-shadow(
+    0 0 var(--glow-hover-blur) rgba(var(--glow-rgb), var(--glow-hover-opacity))
+  );
+
   /* Site navigation in the title bar: inline links on desktop, a "Menu" on
      phones whose list overlays the page. Text is --dim or chalk on --ink (AA). */
   --z-topbar: 15;
   --nav-gap: 18px;
   --nav-underline-offset: 4px;
-  --fs-nav: 13.5px;
-  --fs-menu: 12px;
+  --fs-nav: 15px;
+  --fs-menu: 13px;
   --fs-menu-link: 16px;
   --menu-pad-y: 4px;
   --menu-pad-x: 11px;
@@ -429,6 +499,29 @@
   }
 }
 
+/* The static pages, and the game on a desktop screen: the title bar and
+   footer can take more room. Landscape phones keep them compact. */
+body:not(.game) {
+  --bar-pad-y: 14px;
+  --bar-pad-x: 24px;
+  --foot-pad-y: 12px;
+}
+@media (min-width: 560px) {
+  body:not(.game) {
+    --fs-foot: 13px;
+    --fv-foot: "wdth" 95, "wght" 700;
+  }
+}
+@media (min-width: 780px) and (min-height: 501px) {
+  body {
+    --bar-pad-y: 14px;
+    --bar-pad-x: 24px;
+    --foot-pad-y: 12px;
+    --fs-foot: 13px;
+    --fv-foot: "wdth" 95, "wght" 700;
+  }
+}
+
 /* Wide screens: the text starts just under the middle, level with the lower
    part of the plaque. From here no name in the deck reaches it sideways (the
    closest, at 1024 × 700, is 11px clear); narrower, they would. */
@@ -438,10 +531,36 @@
   }
 }
 
-/* Landscape phones: short halves, so a name gets two lines. */
+/* Landscape phones: short halves, so a name gets two lines. The halves sit
+   side by side, so Higher / Lower size to the half, not the screen: two of
+   them and the gap fit inside its padding. */
 @media (orientation: landscape) and (max-height: 500px) {
   :root {
     --name-lines: 2;
+    --pick-w: clamp(100px, calc(25vw - 28px), 156px);
+    --veil-pad: 12px;
+    --cta-h: var(--target-min);
+    --cta-top: 6px;
+    --shares-top: 6px;
+    --fs-final: 52px;
+    --fs-sublegend: 18px;
+    --grid-cell: 11px;
+    --grid-gap: 3px;
+  }
+}
+
+/* Very short landscape screens (568 × 320): the card's gaps tighten and the
+   figure shrinks a little, so a two-line name, the figure and Higher / Lower
+   all fit under the plaque. Nothing is hidden. */
+@media (orientation: landscape) and (max-height: 350px) {
+  :root {
+    --fs-fig: 32px;
+    --value-min-h: var(--fs-fig);
+    --name-rule-gap: 4px;
+    --meta-gap: 3px;
+    --value-gap: 4px;
+    --qual-gap: 2px;
+    --picks-gap: 8px;
   }
 }
 
@@ -463,5 +582,144 @@
     --qual-gap: 2px;
     --picks-gap: 8px;
     --text-bottom: 8px;
+    /* The game-over panel, which must fit without scrolling. */
+    --veil-pad: 10px;
+    --fs-final: clamp(48px, 13vw, 90px);
+    --over-cap-top: 3px;
+    --over-title-top: 4px;
+    --over-grid-top: 8px;
+    --reason-top: 8px;
+    --reason-pad: 8px;
+    --cta-top: 10px;
+    --shares-top: 8px;
+    --grid-cell: 11px;
+    --grid-gap: 3px;
+    /* Narrow enough for Share and Save image to share a row at 320px. */
+    --btn2-pad-x: 10px;
+    --btn2-icon-gap: 6px;
+    --fs-btn2: 15px;
   }
+}
+
+/*
+ * The site background (DESIGN.md §12): floodlit night. Warm floodlight pools
+ * from the two top corners, a faint teal lift, a vignette and fine grain,
+ * with soft gold shapes drifting over it on the static pages.
+ *
+ * background.css draws it: a fixed layer behind the static pages, and on the
+ * game page the pitch and the start and game-over panels, static there (no
+ * drift). Reduced motion leaves every moving shape where it starts.
+ */
+:root {
+  /* Floodlights: warm white pools from the two top corners. */
+  --flood-rgb: 255, 224, 168;
+  --flood-strength: 0.13;
+  --flood-size: 80% 75%;
+  /* A faint teal lift across the middle, for depth. */
+  --lift-rgb: 34, 88, 104;
+  --lift-strength: 0.28;
+  /* The darkening towards the edges: none inside --vignette-start. */
+  --vignette-strength: 0.72;
+  --vignette-start: 42%;
+
+  /*
+   * The drift, over the floodlights: a gold and a teal shape up top, and two
+   * gold ones low down. Each is a soft round glow --drift-*-r in radius that
+   * fades to nothing well inside its own box, and sways smoothly round its
+   * resting place: up to --drift-reach each way sideways (a little less up
+   * and down) over a --dur-drift cycle, the up-and-down on a different beat
+   * so the path keeps changing. The teal one takes 1.3 times as long. The low
+   * ones slide mostly sideways, up to --drift-low-reach each way over
+   * --dur-drift-low (the second 0.75 times as long). Each fades to
+   * --drift-fade of its strength and back as it goes. They move, never grow
+   * or shrink.
+   */
+  --drift-gold-rgb: var(--glow-rgb);
+  --drift-teal-rgb: 44, 150, 164;
+  --drift-gold-strength: 0.12;
+  --drift-teal-strength: 0.14;
+  --drift-1-x: 18%;
+  --drift-1-y: 16%;
+  --drift-1-r: 18vmax;
+  --drift-2-x: 86%;
+  --drift-2-y: 52%;
+  --drift-2-r: 28vmax;
+  --drift-reach: 10vmax;
+  --drift-fade: 0.55;
+  --dur-drift: 40s;
+  /* The low shapes: under the content, behind the footer. */
+  --drift-low-strength: 0.1;
+  --drift-3-x: 72%;
+  --drift-3-y: 94%;
+  --drift-3-r: 15vmax;
+  --drift-4-x: 18%;
+  --drift-4-y: 100%;
+  --drift-4-r: 13vmax;
+  --drift-low-reach: 12vmax;
+  --dur-drift-low: 45s;
+  /* A sine ease: every sway speeds up and slows down smoothly. */
+  --ease-drift: cubic-bezier(0.37, 0, 0.63, 1);
+
+  /*
+   * The Legends page only: small gold glows spread over the screen, each on
+   * its own timing, swaying up to --glows-reach each way and pulsing down to
+   * --glows-fade over a cycle of about --dur-glows. --glows-count of them
+   * show, up to 5 (the slots in Base.astro); their places are in
+   * background.css.
+   */
+  --glows-count: 3;
+  --glows-r: 5.5vmax;
+  --glows-strength: 0.07;
+  --glows-reach: 5vmax;
+  --glows-fade: 0.35;
+  --dur-glows: 36s;
+
+  /* The Legends page's floodlight: a soft gold beam from the top, swinging
+     --sweep-angle each way over --dur-sweep and brightening mid-swing. The
+     beam's brightest at --sweep-strength; --sweep-dim at the ends. */
+  --sweep-strength: 0.075;
+  --sweep-dim: 0.55;
+  --sweep-w: 110vmin;
+  --sweep-angle: 18deg;
+  --dur-sweep: 36s;
+  --ease-sweep: ease-in-out;
+
+  /*
+   * Fine grain, just enough that the dark gradients don't band: SVG noise in
+   * white, a faint speck on about half the pixels. Its strength is the one
+   * number in it, the rect's opacity='0.07'.
+   */
+  --bg-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2 -0.93'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23g)' opacity='0.07'/%3E%3C/svg%3E");
+  --bg-lights:
+    radial-gradient(
+      ellipse var(--flood-size) at 0% 0%,
+      rgba(var(--flood-rgb), var(--flood-strength)),
+      rgba(var(--flood-rgb), calc(var(--flood-strength) * 0.35)) 40%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse var(--flood-size) at 100% 0%,
+      rgba(var(--flood-rgb), var(--flood-strength)),
+      rgba(var(--flood-rgb), calc(var(--flood-strength) * 0.35)) 40%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse 80% 60% at 50% 45%,
+      rgba(var(--lift-rgb), var(--lift-strength)),
+      transparent 100%
+    );
+  --bg-vignette: radial-gradient(
+    ellipse 125% 115% at 50% 35%,
+    transparent var(--vignette-start),
+    rgba(var(--ink-rgb), var(--vignette-strength)) 100%
+  );
+
+  /*
+   * The game's halves at rest, over the pitch's background: the anchor's is
+   * clear, and the challenger's lifts --night to exactly --night-2. Set them
+   * to var(--night) and var(--night-2) for solid halves again. The verdict
+   * colours stay solid.
+   */
+  --side-a-rest: transparent;
+  --side-b-rest: rgba(52, 151, 192, 0.12);
 }

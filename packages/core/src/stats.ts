@@ -67,7 +67,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
   },
   caps: {
     key: "caps",
-    label: "Caps",
+    label: "International caps",
     tier: "basic",
     get: (p) => p.stats.caps,
     format: int,

@@ -120,7 +120,12 @@ describe("the share card", () => {
   it("shows the final round's players with the figures the player saw", () => {
     const round = {
       index: 3,
-      stat: { key: "caps" as const, label: "Caps", tier: "basic" as const, statChanged: false },
+      stat: {
+        key: "caps" as const,
+        label: "International caps",
+        tier: "basic" as const,
+        statChanged: false,
+      },
       anchor: { ...anchor("a", 91), name: "Anchor Name" },
       challenger: card("b", "Challenger Name"),
     };
@@ -135,7 +140,7 @@ describe("the share card", () => {
       { name: "Anchor Name", display: "91" },
       { name: "Challenger Name", display: "88" },
     ]);
-    expect(shared.ended).toEqual({ label: "Ended on", stat: "Caps", tier: "basic" });
+    expect(shared.ended).toEqual({ label: "Ended on", stat: "International caps", tier: "basic" });
     expect(shared.challenge).toBe("");
   });
 

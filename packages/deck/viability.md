@@ -11,7 +11,7 @@ and will force relaxation every time the wheel picks it.
 | Stat | Eligible | Distinct | Tied pairs | opening | early | middle | late | hard | knife edge |
 |---|---|---|---|---|---|---|---|---|---|
 | Club goals | 103 | 90 | 16 | 1645 | 2510 | 2513 | 2020 | 1769 | 957 |
-| Caps | 108 | 75 | 37 | 1788 | 2742 | 2736 | 2241 | 1990 | 1059 |
+| International caps | 108 | 75 | 37 | 1788 | 2742 | 2736 | 2241 | 1990 | 1059 |
 | Club appearances | 108 | 98 | 10 | 1781 | 2750 | 2723 | 2240 | 1961 | 1037 |
 | Instagram followers | 94 | 80 | 19 | 1367 | 2089 | 2031 | 1399 | 848 | 131 |
 | Highest transfer fee | 90 | 79 | 13 | 1232 | 1910 | 1908 | 1590 | 1372 | 754 |
@@ -32,7 +32,7 @@ None. Every stat can be dealt at every band.
 | Stat | Iconic eligible | Anchors with an iconic challenger |
 |---|---|---|
 | Club goals | 46 | 103 of 103 (100%) |
-| Caps | 49 | 108 of 108 (100%) |
+| International caps | 49 | 108 of 108 (100%) |
 | Club appearances | 49 | 108 of 108 (100%) |
 | Instagram followers | 46 | 94 of 94 (100%) |
 | Highest transfer fee | 40 | 90 of 90 (100%) |
@@ -57,13 +57,13 @@ the correlated-pair exclusion in `wheel.ts` exists to prevent.
 | Instagram followers / Age | -0.61 |  |
 | Highest transfer fee / Age | -0.51 |  |
 | Instagram followers / Highest transfer fee | 0.51 |  |
-| Caps / Club appearances | 0.40 |  |
+| International caps / Club appearances | 0.40 |  |
 | Club appearances / Club trophies | 0.38 |  |
 | Club trophies / Age | -0.38 |  |
-| Caps / Instagram followers | 0.35 |  |
-| Caps / Club trophies | 0.34 |  |
+| International caps / Instagram followers | 0.35 |  |
+| International caps / Club trophies | 0.34 |  |
 | Instagram followers / Club trophies | 0.34 |  |
-| Caps / International trophies | 0.30 |  |
-| Caps / Age | -0.30 |  |
+| International caps / International trophies | 0.30 |  |
+| International caps / Age | -0.30 |  |
 
 Pairs at or above ρ = 0.8 should be in `CORRELATED_PAIRS` in `stats.ts`.

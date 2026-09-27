@@ -111,11 +111,13 @@
       height: var(--picks-slot);
     }
   }
+  /* At rest the pitch's background shows through (tokens.css); the verdict
+     colours are solid. */
   .side.a {
-    background: var(--night);
+    background: var(--side-a-rest);
   }
   .side.b {
-    background: var(--night-2);
+    background: var(--side-b-rest);
   }
   .side.hit {
     background: var(--hit);
@@ -163,7 +165,8 @@
     font-variation-settings: var(--fv-name);
     letter-spacing: var(--tracking-name);
     text-shadow: none;
-    filter: var(--halo-filter);
+    /* The dark halo, then the gold glow outside it. */
+    filter: var(--halo-filter) var(--glow-filter);
   }
   .meta {
     margin-top: var(--name-rule-gap);

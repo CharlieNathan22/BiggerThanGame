@@ -1,0 +1,245 @@
+/*
+ * The site background behind the static pages (DESIGN.md §12). Values are
+ * tokens (tokens.css, "The site background"); this file only places them.
+ *
+ * One fixed layer the size of the screen, behind everything, so it never
+ * scrolls or adds a scrollbar. The game page has no layer: its pitch and
+ * panels paint the same floodlights themselves, with no drift (Game.svelte).
+ *
+ * Only transform and opacity animate, and base.css stops every animation
+ * under reduced motion, which leaves each shape where it starts.
+ */
+
+.backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100vh;
+  /* The largest viewport, so nothing shows below it as a phone's toolbar
+     slides away. */
+  height: 100lvh;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--bg-lights), var(--bg-vignette);
+}
+/* The grain, over the moving shapes too. */
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bg-grain);
+}
+
+/*
+ * A soft round glow centred on (--x, --y), --r in radius, in --rgb at --a.
+ * The drift and the Legends page's glows are all made of these.
+ *
+ * The box sways sideways and its ::before, which holds the glow, sways up and
+ * down and fades, each back and forth on a sine ease (--ease-drift) and on
+ * its own beat, so the glow moves on a smooth, ever-changing path and never
+ * stops dead. Translate only: it never changes size. The fall-off is a bell
+ * curve that reaches nothing at 70% of the radius, so the box's edge never
+ * shows. With reduced motion (base.css) it rests at (--x, --y).
+ */
+.bg-drift span,
+.bg-glows span {
+  --reach-x: var(--drift-reach);
+  --reach-y: calc(var(--drift-reach) * 0.7);
+  --period-x: var(--dur-drift);
+  --period-y: calc(var(--dur-drift) * 0.74);
+  --lag-x: 0;
+  --lag-y: 0;
+  --fade: var(--drift-fade);
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: calc(var(--r) * 2);
+  height: calc(var(--r) * 2);
+  margin: calc(var(--r) * -1) 0 0 calc(var(--r) * -1);
+  will-change: transform;
+  animation: bg-sway-x calc(var(--period-x) / 2) var(--ease-drift)
+    calc(var(--period-x) * var(--lag-x)) infinite alternate;
+}
+.bg-drift span::before,
+.bg-glows span::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    closest-side,
+    rgba(var(--rgb), var(--a)),
+    rgba(var(--rgb), calc(var(--a) * 0.96)) 10%,
+    rgba(var(--rgb), calc(var(--a) * 0.84)) 20%,
+    rgba(var(--rgb), calc(var(--a) * 0.67)) 30%,
+    rgba(var(--rgb), calc(var(--a) * 0.45)) 40%,
+    rgba(var(--rgb), calc(var(--a) * 0.24)) 50%,
+    rgba(var(--rgb), calc(var(--a) * 0.15)) 55%,
+    rgba(var(--rgb), calc(var(--a) * 0.07)) 60%,
+    rgba(var(--rgb), calc(var(--a) * 0.02)) 65%,
+    transparent 70%
+  );
+  will-change: transform, opacity;
+  animation: bg-sway-y calc(var(--period-y) / 2) var(--ease-drift)
+    calc(var(--period-y) * var(--lag-y)) infinite alternate;
+}
+@keyframes bg-sway-x {
+  from {
+    transform: translateX(calc(var(--reach-x) * -1));
+  }
+  to {
+    transform: translateX(var(--reach-x));
+  }
+}
+@keyframes bg-sway-y {
+  from {
+    transform: translateY(calc(var(--reach-y) * -1));
+    opacity: 1;
+  }
+  to {
+    transform: translateY(var(--reach-y));
+    opacity: var(--fade);
+  }
+}
+
+/* The drift: a gold and a teal shape up top, and two gold ones low down,
+   sliding mostly sideways. Each starts at a different point of its sway, so
+   no two keep time. */
+.bg-drift span {
+  --x: var(--drift-1-x);
+  --y: var(--drift-1-y);
+  --r: var(--drift-1-r);
+  --rgb: var(--drift-gold-rgb);
+  --a: var(--drift-gold-strength);
+  --lag-x: -0.15;
+  --lag-y: -0.6;
+}
+.bg-drift span:nth-child(2) {
+  --x: var(--drift-2-x);
+  --y: var(--drift-2-y);
+  --r: var(--drift-2-r);
+  --rgb: var(--drift-teal-rgb);
+  --a: var(--drift-teal-strength);
+  --period-x: calc(var(--dur-drift) * 1.3);
+  --period-y: calc(var(--dur-drift) * 0.9);
+  --lag-x: -0.7;
+  --lag-y: -0.2;
+}
+.bg-drift span:nth-child(3) {
+  --x: var(--drift-3-x);
+  --y: var(--drift-3-y);
+  --r: var(--drift-3-r);
+  --a: var(--drift-low-strength);
+  --reach-x: var(--drift-low-reach);
+  --reach-y: calc(var(--drift-low-reach) * 0.25);
+  --period-x: var(--dur-drift-low);
+  --period-y: calc(var(--dur-drift-low) * 0.62);
+  --lag-x: -0.4;
+  --lag-y: -0.1;
+}
+.bg-drift span:nth-child(4) {
+  --x: var(--drift-4-x);
+  --y: var(--drift-4-y);
+  --r: var(--drift-4-r);
+  --a: var(--drift-low-strength);
+  --reach-x: var(--drift-low-reach);
+  --reach-y: calc(var(--drift-low-reach) * 0.25);
+  --period-x: calc(var(--dur-drift-low) * 0.75);
+  --period-y: calc(var(--dur-drift-low) * 0.55);
+  --lag-x: -0.9;
+  --lag-y: -0.45;
+}
+
+/*
+ * The Legends page's glows: small gold shapes over the sides and the middle,
+ * each with its own place, pace (--pace times --dur-glows) and start. Slots
+ * past --glows-count are drawn clear (their strength times 0), so the count
+ * is a token.
+ */
+.bg-glows span {
+  --r: var(--glows-r);
+  --rgb: var(--drift-gold-rgb);
+  --a: calc(var(--glows-strength) * clamp(0, var(--glows-count) - var(--i) + 1, 1));
+  --reach-x: var(--glows-reach);
+  --reach-y: calc(var(--glows-reach) * 0.8);
+  --period-x: calc(var(--dur-glows) * var(--pace));
+  --period-y: calc(var(--dur-glows) * var(--pace) * 0.71);
+  --lag-y: calc(var(--lag-x) - 0.35);
+  --fade: var(--glows-fade);
+}
+.bg-glows span:nth-child(1) {
+  --i: 1;
+  --x: 8%;
+  --y: 40%;
+  --pace: 1;
+  --lag-x: -0.2;
+}
+.bg-glows span:nth-child(2) {
+  --i: 2;
+  --x: 92%;
+  --y: 30%;
+  --pace: 1.35;
+  --lag-x: -0.7;
+}
+.bg-glows span:nth-child(3) {
+  --i: 3;
+  --x: 50%;
+  --y: 55%;
+  --pace: 0.85;
+  --lag-x: -0.45;
+}
+.bg-glows span:nth-child(4) {
+  --i: 4;
+  --x: 14%;
+  --y: 76%;
+  --pace: 1.2;
+  --lag-x: -0.9;
+}
+.bg-glows span:nth-child(5) {
+  --i: 5;
+  --x: 86%;
+  --y: 72%;
+  --pace: 0.95;
+  --lag-x: -0.1;
+}
+/* The Legends page's floodlight: a gold beam from the top that swings slowly
+   from side to side, brightest mid-swing. With reduced motion it points
+   straight down. */
+.bg-sweep {
+  position: absolute;
+  top: -6%;
+  left: 50%;
+  width: var(--sweep-w);
+  height: 125%;
+  margin-left: calc(var(--sweep-w) / -2);
+  transform-origin: 50% 0;
+  background: radial-gradient(
+    ellipse 50% 100% at 50% 0%,
+    rgba(var(--glow-rgb), var(--sweep-strength)),
+    rgba(var(--glow-rgb), calc(var(--sweep-strength) * 0.4)) 45%,
+    transparent 80%
+  );
+  will-change: transform, opacity;
+  animation:
+    bg-sweep var(--dur-sweep) var(--ease-sweep) infinite,
+    bg-sweep-glow calc(var(--dur-sweep) / 2) var(--ease-sweep) infinite;
+}
+@keyframes bg-sweep {
+  0%,
+  100% {
+    transform: rotate(calc(var(--sweep-angle) * -1));
+  }
+  50% {
+    transform: rotate(var(--sweep-angle));
+  }
+}
+@keyframes bg-sweep-glow {
+  0%,
+  100% {
+    opacity: var(--sweep-dim);
+  }
+  50% {
+    opacity: 1;
+  }
+}

@@ -64,7 +64,7 @@ describe("announcement", () => {
 
   it("asks the question once the stat has landed", () => {
     expect(announcement(at(start.slice(0, 3)))).toBe("");
-    expect(announcement(at(start))).toBe("Caps. p1: 50. Is p2 higher or lower?");
+    expect(announcement(at(start))).toBe("International caps. p1: 50. Is p2 higher or lower?");
   });
 
   it("gives the challenger's value and the verdict", () => {

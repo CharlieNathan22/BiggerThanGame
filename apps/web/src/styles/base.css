@@ -11,6 +11,16 @@
   padding: 0;
 }
 
+/* No visible page scrollbar in any browser. A page longer than the screen
+   still scrolls by wheel, touch and keyboard; one that fits doesn't scroll. */
+html {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   background: var(--night);
   color: var(--chalk);

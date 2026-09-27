@@ -10,13 +10,20 @@ interface Props {
   title: string;
   description: string;
   canonical?: string | false;
+  /** The Legends page's extra light over the background (Base.astro). */
+  legendsLights?: boolean;
 }
 
-const { title, description, canonical } = Astro.props;
+const { title, description, canonical, legendsLights = false } = Astro.props;
 const path = servedPath(Astro.url.pathname);
 ---
 
-<Base title={title} description={description} {...(canonical !== undefined ? { canonical } : {})}>
+<Base
+  title={title}
+  description={description}
+  {legendsLights}
+  {...(canonical !== undefined ? { canonical } : {})}
+>
   <TitleBar legends={isLegendsPath(path)} current={path} />
   <main class="prose">
     <slot />

@@ -207,7 +207,7 @@ export const en = {
 
   // Stat labels, by StatKey
   "stat.club_goals": "Club goals",
-  "stat.caps": "Caps",
+  "stat.caps": "International caps",
   "stat.apps": "Club appearances",
   "stat.ig": "Instagram followers",
   "stat.fee": "Highest transfer fee",

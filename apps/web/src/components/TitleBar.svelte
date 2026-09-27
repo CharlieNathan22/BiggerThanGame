@@ -2,7 +2,8 @@
   The persistent title bar (DESIGN.md §12). Static pages render it server-side
   with no JS; the game island reuses it with live scores. "— Football Legends"
   shows only on the Legends pages (`legends`); elsewhere it is the brand alone
-  (DESIGN.md §17).
+  (DESIGN.md §17), and so is a short landscape screen, where the bar must stay
+  one row.
 
   Site navigation: the brand links home, then Play (the Legends page, marked
   current across the football pages), How to play and About.
@@ -105,14 +106,21 @@
     position: relative;
     z-index: var(--z-topbar);
     flex: none;
-    background: var(--ink);
-    border-bottom: var(--border) solid var(--gold-rule);
+    /* A raised surface: lighter than the page, a gold hairline and a shadow
+       on the edge that faces it. */
+    background: var(--bar-bg);
+    border-bottom: var(--border) solid var(--chrome-rule);
+    box-shadow: var(--bar-shadow);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 14px;
-    padding: 9px 16px;
+    padding: var(--bar-pad-y) var(--bar-pad-x);
     flex-wrap: wrap;
+    /* Chrome, not content: nothing here selects, and a tap doesn't flash. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
   .title {
     position: relative;
@@ -144,6 +152,19 @@
     font-variation-settings: var(--fv-brand);
     letter-spacing: var(--tracking-brand);
   }
+  /* The gold glow, grown on hover, press and keyboard focus. "Legends" is
+     gradient-clipped text, which a text-shadow would paint over, so it glows
+     through a filter. */
+  .bt,
+  .fl {
+    text-shadow: var(--glow);
+    transition: text-shadow var(--dur-hover);
+  }
+  .title:hover :is(.bt, .fl),
+  .title:active :is(.bt, .fl),
+  .title:focus-visible :is(.bt, .fl) {
+    text-shadow: var(--glow-hover);
+  }
   .bt em {
     font-style: normal;
     color: var(--gold);
@@ -170,7 +191,14 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    filter: var(--legends-shadow);
+    text-shadow: none;
+    filter: var(--legends-shadow) var(--glow-filter);
+    transition: filter var(--dur-hover);
+  }
+  .title:hover .legends,
+  .title:active .legends,
+  .title:focus-visible .legends {
+    filter: var(--legends-shadow) var(--glow-hover-filter);
   }
   /* Scores and navigation, at the end of the bar; on a narrow screen they wrap
      to a second row together, where the scores already sat. */
@@ -207,10 +235,17 @@
     color: var(--dim);
     text-decoration: none;
     text-underline-offset: var(--nav-underline-offset);
+    text-shadow: var(--glow);
+    transition: text-shadow var(--dur-hover);
   }
   nav a:hover {
     color: var(--chalk);
     text-decoration: underline;
+  }
+  nav a:hover,
+  nav a:active,
+  nav a:focus-visible {
+    text-shadow: var(--glow-hover);
   }
   nav a[aria-current] {
     color: var(--chalk);
@@ -228,7 +263,7 @@
   }
   .links a {
     font-size: var(--fs-nav);
-    font-variation-settings: var(--fv-sub);
+    font-variation-settings: var(--fv-nav);
   }
   .links a::after {
     content: "";
@@ -251,11 +286,21 @@
     border-radius: var(--radius-pill);
     font-size: var(--fs-menu);
     line-height: var(--lh-tight);
-    font-variation-settings: var(--fv-caption);
+    font-variation-settings: var(--fv-nav);
     color: var(--chalk);
     cursor: pointer;
     list-style: none;
-    user-select: none;
+    text-shadow: var(--glow);
+    box-shadow: var(--glow);
+    transition:
+      text-shadow var(--dur-hover),
+      box-shadow var(--dur-hover);
+  }
+  summary:hover,
+  summary:active,
+  summary:focus-visible {
+    text-shadow: var(--glow-hover);
+    box-shadow: var(--glow-hover);
   }
   summary::-webkit-details-marker {
     display: none;
@@ -289,7 +334,7 @@
     min-height: var(--target-min);
     padding: var(--menu-link-pad);
     font-size: var(--fs-menu-link);
-    font-variation-settings: var(--fv-sub);
+    font-variation-settings: var(--fv-nav);
   }
 
   @media (min-width: 780px) {
@@ -300,13 +345,18 @@
       display: none;
     }
   }
-  /* A landscape phone keeps the menu, however wide. */
+  /* A landscape phone keeps the menu, however wide, and the bar stays one
+     row: the brand alone, without "— Football Legends", so the game fits. */
   @media (orientation: landscape) and (max-height: 500px) {
     .links {
       display: none;
     }
     .menu {
       display: block;
+    }
+    .dash,
+    .fl {
+      display: none;
     }
   }
 </style>
