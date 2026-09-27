@@ -1017,6 +1017,11 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   `<nav aria-label="Breadcrumb">` around an ordered list, the last item a link with
   `aria-current="page"` and the separators `aria-hidden`. Not on the game page, which has no
   height to spare on a phone (`DESIGN.md` §17).
+- **Landscape phones** (`orientation: landscape` and at most 500px tall) get a tighter static page
+  so its first card fits on the screen: less room at the top (`--prose-pad-top`), smaller headings,
+  shorter and wider cards, and no breadcrumb. The game's start panel there puts the names and the
+  text side by side, centred on one line, with a bigger, wider Start centred beneath both
+  (`--start-cta-*`, `--start-row-gap`). Portrait phones and desktops are unaffected.
 - `/credits` reads `packages/deck/dist/credits.json` with `fs` at build time. It is never imported,
   so it can't enter the module graph.
 - **Local best** is one number per deck and mode in `localStorage`, `bt:best:<deck>:<mode>`

@@ -582,14 +582,16 @@
             <div class="modename"><span>{t(`mode.${mode}.name`)}</span></div>
           </div>
           <div class="lead">
-            {#if offered}
-              <p class="beat">{challengeHeading(offered.score, mode)}</p>
-              <p>{challengeIntro(offered.score, mode)}</p>
-            {:else if target !== null}
-              <p>{t("start.introTarget", { target })}</p>
-            {:else}
-              <p>{t("start.intro")}</p>
-            {/if}
+            <div class="blurb">
+              {#if offered}
+                <p class="beat">{challengeHeading(offered.score, mode)}</p>
+                <p>{challengeIntro(offered.score, mode)}</p>
+              {:else if target !== null}
+                <p>{t("start.introTarget", { target })}</p>
+              {:else}
+                <p>{t("start.intro")}</p>
+              {/if}
+            </div>
             <button
               class="cta"
               bind:this={startButton}
@@ -1186,15 +1188,31 @@
     font-size: var(--fs-start-cta);
   }
   @media (orientation: landscape) and (max-height: 500px) {
+    /* A landscape phone: the names and the text side by side on one line,
+       and a bigger, wider Start centred beneath both, the whole panel in the
+       middle of the screen. */
     .panel.start {
       max-width: var(--start-w-wide);
       display: grid;
       grid-template-columns: auto 1fr;
       column-gap: var(--over-col-gap);
+      row-gap: var(--start-row-gap);
       align-items: center;
+      margin: auto;
     }
-    .start .lead > p:first-child {
+    .start .lead {
+      display: contents;
+    }
+    .start .blurb > p:first-child {
       margin-top: 0;
+    }
+    .start .cta,
+    .start .problem {
+      grid-column: 1 / -1;
+      justify-self: center;
+    }
+    .start .cta {
+      min-width: var(--start-cta-min-w);
     }
   }
   .sublegend {

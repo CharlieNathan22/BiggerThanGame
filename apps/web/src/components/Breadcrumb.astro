@@ -34,6 +34,13 @@ const { items } = Astro.props;
 
 <style>
   /* Two classes deep, so the prose column's list styles don't reach in. */
+  /* A landscape phone has no height to spare: the breadcrumb goes, so the
+     page's card fits on the screen. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .crumbs {
+      display: none;
+    }
+  }
   .crumbs {
     margin-bottom: var(--crumbs-bottom);
   }

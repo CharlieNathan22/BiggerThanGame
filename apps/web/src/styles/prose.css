@@ -11,7 +11,7 @@
   width: 100%;
   max-width: var(--prose-w);
   margin: 0 auto;
-  padding: 40px 20px 56px;
+  padding: var(--prose-pad-top) 20px 56px;
 }
 
 .prose h1 {

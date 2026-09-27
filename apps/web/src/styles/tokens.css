@@ -586,6 +586,8 @@
      to 320px, scaled to fit. */
   --heading-glow: var(--glow);
   --fs-home-brand: clamp(22px, 7.6vw, 46px);
+  /* Room above a static page's content. Less on a landscape phone. */
+  --prose-pad-top: 40px;
   /* The Legends page's heading, "Football Legends" over "Higher or Lower". */
   --fs-twoline-heading: clamp(22px, 7.6vw, 46px);
   /* The game's start panel: the brand, the deck in Cinzel, the mode. */
@@ -896,10 +898,28 @@ body:not(.game) {
     --fs-modename: 12px;
     --deckname-top: 6px;
     --modename-top: 4px;
-    --start-cta-top: 10px;
-    --start-cta-h: var(--target-min);
-    --start-cta-pad-x: 32px;
-    --fs-start-cta: 17px;
+    --start-cta-top: 0px;
+    --start-cta-h: 52px;
+    --start-cta-pad-x: 40px;
+    --start-cta-min-w: min(100%, 340px);
+    --fs-start-cta: 19px;
+    --start-row-gap: 14px;
+    /* The static pages: tighter at the top, smaller headings, and shorter,
+       wider cards, so the homepage's first card and the Legends page's
+       Friendly card fit on the screen. */
+    --prose-pad-top: 12px;
+    --fs-home-brand: clamp(22px, 6vw, 36px);
+    --fs-twoline-heading: clamp(20px, 4.6vw, 32px);
+    --cards-top: 14px;
+    --cards-top-roomy: 18px;
+    --card-gap-roomy: 20px;
+    --card-min-h: 0px;
+    --card-pad: 14px 46px 16px;
+    --card-pad-large: 16px 48px 18px;
+    --card-inner-gap: 6px;
+    --fs-card-name: 22px;
+    --fs-card-name-large: 26px;
+    --card-body-w: 60ch;
     --won-trophy: 28px;
     --fs-highscore: 12.5px;
   }
@@ -910,6 +930,9 @@ body:not(.game) {
    all fit under the plaque. Nothing is hidden. */
 @media (orientation: landscape) and (max-height: 350px) {
   :root {
+    /* The start panel on the shortest screens: a tighter gap and Start. */
+    --start-row-gap: 10px;
+    --start-cta-h: var(--target-min);
     --fs-fig: 32px;
     --value-min-h: var(--fs-fig);
     --name-rule-gap: 4px;
