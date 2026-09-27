@@ -10,9 +10,17 @@
 
 export interface Timings {
   /**
-   * The first deal's kick-off, the cards sliding in, before round one's
-   * usual beat and spin. It doesn't wait for photos.
+   * The title card at a run's start: "Question 1 of 20" large in the centre,
+   * then gliding into the plaque. The first run of a page visit.
    */
+  readonly title: number;
+  /** The same on Play again: quicker. */
+  readonly titleQuick: number;
+  /** Then the plaque holds at least this long while round one's photos load... */
+  readonly holdMin: number;
+  /** ...and up to this much longer if they still aren't in. */
+  readonly holdExtra: number;
+  /** The cards sliding in, before round one's usual beat and spin. */
   readonly introMin: number;
   /** Players shown, then a beat before the wheel (DESIGN.md §4). */
   readonly beat: number;
@@ -60,6 +68,10 @@ export interface Timings {
 }
 
 export const TIMINGS: Timings = {
+  title: 1800,
+  titleQuick: 900,
+  holdMin: 1000,
+  holdExtra: 3000,
   introMin: 1000,
   beat: 700,
   hold: 340,
@@ -82,6 +94,10 @@ export const TIMINGS: Timings = {
 
 /** The custom property behind each timing. */
 export const TIMING_TOKENS: Readonly<Record<keyof Timings, string>> = {
+  title: "--dur-title",
+  titleQuick: "--dur-title-quick",
+  holdMin: "--dur-hold-min",
+  holdExtra: "--dur-hold-extra",
   introMin: "--dur-intro-min",
   beat: "--dur-beat",
   hold: "--dur-hold",

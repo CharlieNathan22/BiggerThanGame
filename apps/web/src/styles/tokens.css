@@ -303,6 +303,20 @@
   /* A round of the challenge the run didn't reach: an empty square with an edge. */
   --grid-empty-edge: rgba(238, 243, 241, 0.28);
 
+  /* The title card's words: gold, drawn --title-grow times the plaque's size
+     before shrinking into it. Smaller on a phone, where the line must fit. */
+  --title-colour: var(--gold);
+  --title-grow: 1.55;
+  /* The plaque's hold at a run's start: a band of light and a gold glow. */
+  --plaque-shimmer: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 70%
+  );
+  --plaque-aura: 0 0 22px 4px rgba(var(--glow-rgb), 0.75);
+  --plaque-aura-low: 0.25;
+
   /* The progress track under the title bar, in a mode with a win target
      (Friendly's twenty): one segment per round, thin enough to cost the game
      almost no height on a phone. */
@@ -502,6 +516,22 @@
   --dur-side: 300ms;
   --dur-tint: 400ms;
   --dur-pop: 420ms;
+  /* A run's title card: "Question 1 of 20" (or "Beat 7/20") large in the
+     centre, gliding into the plaque. --dur-title the first run of a visit,
+     --dur-title-quick on Play again; both read by the game's script. Then the
+     plaque holds at least --dur-hold-min while round one's photos load, and
+     up to --dur-hold-extra more, shimmering (--plaque-shimmer across it every
+     --dur-shimmer) with a gold glow breathing (--plaque-aura, from
+     --plaque-aura-low, every --dur-aura). A tap or a key skips both. */
+  --dur-title: 1800ms;
+  --dur-title-quick: 900ms;
+  --ease-title: cubic-bezier(0.45, 0, 0.2, 1);
+  --title-enter-scale: 0.85;
+  --dur-hold-min: 1000ms;
+  --dur-hold-extra: 3000ms;
+  --dur-shimmer: 1400ms;
+  --ease-shimmer: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-aura: 900ms;
   /* The first deal's kick-off: the two cards slide in from opposite edges
      to meet, names on them, while the plaque reads
      "Question 1 of 20". It lasts at least --dur-intro-min, read by the game's
@@ -617,6 +647,7 @@
 
 @media (min-width: 560px) {
   :root {
+    --title-grow: 2.1;
     --fs-brand: 16px;
     --fs-sub: 14.5px;
     --fs-legends: 22px;
@@ -625,6 +656,7 @@
 
 @media (min-width: 780px) {
   :root {
+    --title-grow: 2.6;
     --fs-plaque: 23px;
     --track-h: 8px;
     --track-gap: 3px;

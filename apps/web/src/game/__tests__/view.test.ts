@@ -7,6 +7,7 @@ import {
   anchorFading,
   anchorFigure,
   announcement,
+  canSkipTitle,
   hitchText,
   initial,
   isFinalQuestion,
@@ -14,10 +15,12 @@ import {
   overCaption,
   pitchCards,
   plaqueLead,
+  plaqueStage,
   progressText,
   qualifierText,
   reelStrip,
   scoreFigure,
+  titleCard,
   trackSteps,
   verdictLabel,
 } from "../view";
@@ -74,6 +77,8 @@ describe("announcement", () => {
   const start: GameEvent[] = [
     { type: "start" },
     { type: "started", runId: "20260926-a", round: r1 },
+    { type: "titled" },
+    { type: "held" },
     { type: "introDone" },
     { type: "dealt" },
     { type: "spun" },
@@ -137,6 +142,8 @@ describe("the cards on the pitch", () => {
   const base: GameEvent[] = [
     { type: "start" },
     { type: "started", runId: "run", round: r1 },
+    { type: "titled" },
+    { type: "held" },
     { type: "introDone" },
     { type: "dealt" },
     { type: "spun" },
@@ -182,6 +189,8 @@ describe("anchorFigure", () => {
   const start: GameEvent[] = [
     { type: "start" },
     { type: "started", runId: "run", round: r1 },
+    { type: "titled" },
+    { type: "held" },
     { type: "introDone" },
   ];
   const at = (events: GameEvent[]): GameState =>
@@ -230,29 +239,61 @@ describe("the first deal", () => {
   const events: GameEvent[] = [
     { type: "start" },
     { type: "started", runId: "20260926-a", round: round(1) },
+    { type: "titled" },
+    { type: "held" },
     { type: "introDone" },
     { type: "dealt" },
     { type: "spun" },
   ];
+  // at(n): the state after the first n events.
   const at = (n: number): GameState => events.slice(0, n).reduce(reduce, initialState());
 
-  it("slides the cards in during the intro only", () => {
-    expect(isIntro(at(1))).toBe(false);
-    expect(isIntro(at(2))).toBe(true);
-    expect(isIntro(at(3))).toBe(false);
+  it("shows the title card, then an empty pitch while the plaque holds, then the cards", () => {
+    expect(titleCard(at(2), "friendly")).toBe("Question 1 of 20");
+    expect(pitchCards(at(2))).toEqual([]);
+    expect(plaqueStage(at(2))).toBe("title");
+    expect(titleCard(at(3), "friendly")).toBeNull();
+    expect(pitchCards(at(3))).toEqual([]);
+    expect(plaqueStage(at(3))).toBe("hold");
+    expect(isIntro(at(4))).toBe(true);
+    expect(pitchCards(at(4))).toHaveLength(2);
+    expect(plaqueStage(at(4))).toBeNull();
+    expect(isIntro(at(5))).toBe(false);
+  });
+
+  it("can be skipped during the title card and the hold only", () => {
+    expect(canSkipTitle(at(1))).toBe(false);
+    expect(canSkipTitle(at(2))).toBe(true);
+    expect(canSkipTitle(at(3))).toBe(true);
+    expect(canSkipTitle(at(4))).toBe(false);
   });
 
   it("reads Question 1 of 20 on the plaque until the wheel has spun into the stat", () => {
     expect(plaqueLead(at(1), "friendly")).toBeNull();
-    expect(plaqueLead(at(2), "friendly")).toBe("Question 1 of 20");
-    expect(plaqueLead(at(3), "friendly")).toBe("Question 1 of 20");
-    expect(plaqueLead(at(4), "friendly")).toBe("Question 1 of 20");
-    expect(plaqueLead(at(5), "friendly")).toBeNull();
+    for (const n of [2, 3, 4, 5, 6]) expect(plaqueLead(at(n), "friendly")).toBe("Question 1 of 20");
+    expect(plaqueLead(at(7), "friendly")).toBeNull();
   });
 
   it("reads Question 1 in a mode without a target, and nothing for a later round", () => {
+    expect(titleCard(at(2), "endless")).toBe("Question 1");
     expect(plaqueLead(at(2), "endless")).toBe("Question 1");
-    expect(plaqueLead({ ...at(2), round: round(2) }, "friendly")).toBeNull();
+    expect(plaqueLead({ ...at(4), round: round(2) }, "friendly")).toBeNull();
+  });
+
+  it("titles a replayed challenge Beat n/20, with Question 1 of 20 on the plaque", () => {
+    const replay: GameState = { ...at(2), challenge: { status: "accepted", score: 7 } };
+    expect(titleCard(replay, "friendly")).toBe("Beat 7/20");
+    expect(plaqueLead(replay, "friendly")).toBe("Question 1 of 20");
+    const perfect: GameState = { ...at(2), challenge: { status: "accepted", score: 20 } };
+    expect(titleCard(perfect, "friendly")).toBe("Match 20/20");
+  });
+
+  it("announces Question 1 of 20 once as the title card comes up, and nothing during the hold", () => {
+    expect(announcement(at(2), "friendly")).toBe("Question 1 of 20.");
+    const replay: GameState = { ...at(2), challenge: { status: "accepted", score: 7 } };
+    expect(announcement(replay, "friendly")).toBe("Beat 7/20. Question 1 of 20.");
+    expect(announcement(at(3), "friendly")).toBe("");
+    expect(announcement(at(4), "friendly")).toBe("");
   });
 });
 
@@ -261,6 +302,8 @@ describe("verdictLabel", () => {
   const toGuess: GameEvent[] = [
     { type: "start" },
     { type: "started", runId: "20260926-a", round: r1 },
+    { type: "titled" },
+    { type: "held" },
     { type: "introDone" },
     { type: "dealt" },
     { type: "spun" },

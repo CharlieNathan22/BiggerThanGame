@@ -1,18 +1,20 @@
 /**
  * The game island's state machine, as a pure reducer.
  *
- *   idle → starting → intro → dealing → [spinning] → awaiting → revealing → verdict
- *                               ↑                                             │
- *                               └────── [sliding] ← correct, next round ──────┤
- *                                                                             ↓
- *                                                                            over
+ *   idle → starting → title → holding → intro → dealing → [spinning] → awaiting
+ *                                                   ↑                            │
+ *            over ← verdict ← revealing ←─────────────────────────────┘
+ *                       │                   │
+ *                       └── [sliding] ──────┘  correct, next round
  *
- * `intro` is the first deal's kick-off: round one's cards slide in while the
- * plaque reads "Question 1 of 20", for `introMin`, before round one's usual
- * beat and spin. `sliding` is the carousel to the next pair after a right
- * answer: the challenger's card moves into the anchor's place, the anchor's
- * leaves, and the next challenger comes in. It is the last `slide` ms of the
- * usual `next` gap, and skipped with reduced motion.
+ * The first deal opens with a title card: `title`, "Question 1 of 20" large
+ * in the centre gliding into the plaque (quicker on Play again, `repeat`);
+ * `holding`, the plaque shimmering while round one's photos load; then
+ * `intro`, the cards sliding in. A tap or a key during the title or the hold
+ * skips straight to the cards (`skip`). `sliding` is the carousel to the next
+ * pair after a right answer: the challenger's card moves into the anchor's
+ * place, the anchor's leaves, and the next challenger comes in. It is the last
+ * `slide` ms of the usual `next` gap, and skipped with reduced motion.
  *
  * The server decides everything that matters — the pair, the stat, whether a
  * guess was right. This module only sequences what the player sees, so it holds
@@ -51,6 +53,8 @@ import type { Timings } from "./timing";
 export type Phase =
   | "idle"
   | "starting"
+  | "title"
+  | "holding"
   | "intro"
   | "dealing"
   | "spinning"
@@ -164,6 +168,11 @@ export interface GameState {
   /** The challenge link this run came from, if any. */
   readonly challenge: Challenge | null;
   /**
+   * This run was started by Play again, not the first of the page visit: its
+   * title card is the quicker one.
+   */
+  readonly repeat: boolean;
+  /**
    * The signed link to challenge a friend with, from the server's end of the
    * run. Null until then, and for a run banked after a dropped connection.
    */
@@ -179,7 +188,13 @@ export type GameEvent =
       readonly challenge?: ChallengeStatus;
     }
   | { readonly type: "startFailed"; readonly failure: Failure; readonly at: number }
-  /** The first deal's intro is over: deal round one as usual. */
+  /** The title card has glided into the plaque: hold there for the photos. */
+  | { readonly type: "titled" }
+  /** The hold is over: the cards slide in. */
+  | { readonly type: "held" }
+  /** A tap or a key during the title or the hold: straight to the cards. */
+  | { readonly type: "skip" }
+  /** The cards are in: deal round one as usual. */
   | { readonly type: "introDone" }
   | { readonly type: "dealt" }
   | { readonly type: "spun" }
@@ -213,6 +228,7 @@ export function initialState(best = 0, challenge: Challenge | null = null): Game
     hitch: null,
     challenge,
     link: null,
+    repeat: false,
   };
 }
 
@@ -233,19 +249,32 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       return {
         ...initialState(state.best, state.phase === "idle" ? state.challenge : null),
         phase: "starting",
+        repeat: state.phase === "over" || state.repeat,
       };
 
     case "started":
       if (state.phase !== "starting") return state;
-      // Round one goes on the pitch for the intro; the plaque stays empty
-      // until the first spin lands.
+      // Round one is dealt behind the title card; its cards come on after
+      // the hold, and the plaque has no stat until the first spin lands.
       return {
         ...state,
-        phase: "intro",
+        phase: "title",
         runId: event.runId,
         challenge: settleChallenge(state.challenge, event),
         round: event.round,
       };
+
+    case "titled":
+      if (state.phase !== "title") return state;
+      return { ...state, phase: "holding" };
+
+    case "held":
+      if (state.phase !== "holding") return state;
+      return { ...state, phase: "intro" };
+
+    case "skip":
+      if (state.phase !== "title" && state.phase !== "holding") return state;
+      return { ...state, phase: "intro" };
 
     case "introDone":
       if (state.phase !== "intro" || state.round === null) return state;

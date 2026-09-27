@@ -57,6 +57,7 @@
     anchorFading,
     anchorFigure,
     announcement,
+    canSkipTitle,
     challengeNotice,
     hitchText,
     overCaption,
@@ -64,9 +65,11 @@
     isIntro,
     pitchCards,
     plaqueLead,
+    plaqueStage,
     progressText,
     qualifierText,
     scoreFigure,
+    titleCard,
     trackSteps,
     verdictLabel,
   } from "../../game/view";
@@ -227,15 +230,18 @@
   const round = $derived(game.round);
   const reveal = $derived(game.reveal);
   const judged = $derived((phase === "verdict" || phase === "over") && reveal !== null);
-  const spinIndex = $derived(
-    round !== null &&
-      shouldSpin(round) &&
-      phase !== "dealing" &&
-      phase !== "starting" &&
-      phase !== "intro"
-      ? round.index
-      : null,
+  /** Phases in which the round's wheel has started (and, after, stays landed). */
+  const wheeling = $derived(
+    phase === "spinning" ||
+      phase === "awaiting" ||
+      phase === "revealing" ||
+      phase === "verdict" ||
+      phase === "sliding" ||
+      phase === "over",
   );
+  const spinIndex = $derived(round !== null && shouldSpin(round) && wheeling ? round.index : null);
+  /** The title card at a run's start: "Question 1 of 20", or "Beat 7/20". */
+  const titleCardText = $derived(titleCard(game, mode));
   /** The cards on the pitch; three during the carousel to the next pair. */
   const cards = $derived(pitchCards(game));
   const anchorShows = $derived(anchorFigure(game));
@@ -361,7 +367,14 @@
   }
 
   function onKeydown(event: KeyboardEvent): void {
-    if (phase !== "awaiting" || event.altKey || event.ctrlKey || event.metaKey) return;
+    // Any key skips the title card and the hold, and is used for nothing else:
+    // it can't answer, as there's no question yet.
+    if (canSkipTitle(game)) {
+      controller?.skip();
+      return;
+    }
+    if (phase !== "awaiting" || event.repeat) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "ArrowUp") {
       event.preventDefault();
       pick("higher");
@@ -386,7 +399,13 @@
   });
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<!-- A tap or click anywhere skips the title card and the hold. -->
+<svelte:window
+  onkeydown={onKeydown}
+  onclick={() => {
+    if (canSkipTitle(game)) controller?.skip();
+  }}
+/>
 
 <div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null}>
   <TitleBar
@@ -403,7 +422,7 @@
     />
   {/if}
 
-  <main class="pitch" class:intro aria-label={t("pitch.label")}>
+  <main class="pitch" class:intro class:quick={game.repeat} aria-label={t("pitch.label")}>
     <!-- Keyed by card, not by half: during the carousel the challenger's card
          moves into the anchor's place as the same element, photo and all. -->
     {#each cards as card (card.key)}
@@ -506,7 +525,17 @@
       {reducedMotion}
       final={finalQuestion}
       {lead}
+      stage={plaqueStage(game)}
     />
+
+    {#if titleCardText !== null}
+      <!-- The title card: large in the centre, then shrinking and gliding
+           into the plaque, which takes over its words. The live region says
+           it, so screen readers skip this. -->
+      <div class="titlecard" aria-hidden="true">
+        <p class="titletext">{titleCardText}</p>
+      </div>
+    {/if}
 
     <p class="sr" aria-live="polite">{announcement(game, mode)}</p>
     {#if phase !== "idle" && phase !== "starting"}
@@ -705,6 +734,95 @@
     min-height: 0;
     overflow: hidden;
     background: var(--bg-grain), var(--bg-lights), var(--bg-vignette);
+    /* The title card's length, shared with the plaque's arrival. */
+    --title-dur: var(--dur-title);
+  }
+  /* Play again: the quicker title card. */
+  .pitch.quick {
+    --title-dur: var(--dur-title-quick);
+  }
+
+  /* The title card at a run's start. The words sit where the plaque's are and
+     are drawn larger (--title-grow); the card rises in (to 30% of the time),
+     holds, then shrinks back to the plaque's size (55% to 85%) while the whole
+     layer glides from the centre to the plaque (on a landscape phone the
+     plaque is at the top), and fades as the plaque fades in under it. */
+  .titlecard {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    pointer-events: none;
+    --title-from-y: 0px;
+    animation: title-glide var(--title-dur) var(--ease-title) both;
+  }
+  .titletext {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    white-space: nowrap;
+    font-size: var(--fs-plaque);
+    font-variation-settings: var(--fv-plaque);
+    line-height: var(--lh-plaque);
+    color: var(--title-colour);
+    text-shadow: var(--glow-hover);
+    transform: translate(-50%, -50%) scale(var(--title-grow));
+    animation: title-text var(--title-dur) var(--ease-title) both;
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .titlecard {
+      --title-from-y: calc(50% - var(--plaque-h) / 2 - var(--plaque-top-gap));
+    }
+    .titletext {
+      top: calc(var(--plaque-h) / 2 + var(--plaque-top-gap));
+    }
+  }
+  @keyframes title-glide {
+    0%,
+    55% {
+      transform: translateY(var(--title-from-y));
+    }
+    85%,
+    100% {
+      transform: none;
+    }
+  }
+  @keyframes title-text {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(calc(var(--title-grow) * var(--title-enter-scale)));
+    }
+    30%,
+    55% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(var(--title-grow));
+    }
+    85% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+  /* Reduced motion: no glide and no scaling; the words fade in and out where
+     they are (base.css stops the rest). */
+  @media (prefers-reduced-motion: reduce) {
+    .titletext {
+      animation: title-fade var(--title-dur) linear both !important;
+    }
+  }
+  @keyframes title-fade {
+    0% {
+      opacity: 0;
+    }
+    30%,
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
   }
 
   .slot {

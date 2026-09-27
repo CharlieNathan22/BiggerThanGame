@@ -100,6 +100,29 @@ describe("createPreloader", () => {
     expect(images).toHaveLength(1);
   });
 
+  it("settles when the photo loads, and gives the same promise to a second ask", async () => {
+    const { images, make } = recorder();
+    const preload = createPreloader(IMAGE_BASE, make);
+    let settled = false;
+    const first = preload(portrait);
+    void first.then(() => (settled = true));
+    expect(preload(portrait)).toBe(first);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    images[0]?.onload?.(new Event("load"));
+    await first;
+    expect(settled).toBe(true);
+  });
+
+  it("settles, never rejects, when the photo fails, and at once with no photo", async () => {
+    const { images, make } = recorder();
+    const preload = createPreloader(IMAGE_BASE, make);
+    const failing = preload(portrait);
+    images[0]?.onerror?.("error");
+    await expect(failing).resolves.toBeUndefined();
+    await expect(preload(undefined)).resolves.toBeUndefined();
+  });
+
   it("tries a photo again if it failed", () => {
     const { images, make } = recorder();
     const preload = createPreloader(IMAGE_BASE, make);

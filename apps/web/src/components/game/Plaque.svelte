@@ -8,7 +8,10 @@
   come from the state machine.
 
   Before round one's wheel has spun it reads `lead` ("Question 1 of 20"), and
-  the first spin starts from that line and scrolls on into the stat.
+  the first spin starts from that line and scrolls on into the stat. At a
+  run's start (`stage`) it fades in as the title card glides into it
+  (`title`), then holds with a gold shimmer and a pulsing glow while round
+  one's photos load (`hold`). With reduced motion it fades in and holds still.
 
   On the final question (`final`) the plaque wears a gold ring and a gold
   "Final question" tab sits on its top edge. The tab is hidden from screen
@@ -34,6 +37,8 @@
     final?: boolean;
     /** What it reads before any stat is on it: "Question 1 of 20". */
     lead?: string | null;
+    /** The title card gliding into it, or the hold for round one's photos. */
+    stage?: "title" | "hold" | null;
   }
 
   let {
@@ -44,6 +49,7 @@
     reducedMotion,
     final = false,
     lead = null,
+    stage = null,
   }: Props = $props();
 
   let strip: StatKey[] = $state([]);
@@ -114,9 +120,14 @@
 {#if final}
   <span class="finaltag" aria-hidden="true">{t("final.tag")}</span>
 {/if}
+{#if stage === "hold"}
+  <span class="aura" aria-hidden="true"></span>
+{/if}
 <div
   class="plaque"
   class:final
+  class:arriving={stage === "title"}
+  class:holding={stage === "hold"}
   class:pop
   style:--tier={tint ? TIER_COLOUR[tint] : undefined}
   onanimationend={() => (pop = false)}
@@ -126,6 +137,9 @@
       <span>{label}</span>
     {/each}
   </div>
+  {#if stage === "hold"}
+    <span class="shimmer" aria-hidden="true"></span>
+  {/if}
 </div>
 
 <style>
@@ -148,6 +162,60 @@
   }
   .plaque.final {
     box-shadow: var(--shadow-plaque-final);
+  }
+  /* A run's start. The title card (Game.svelte) glides into the plaque over
+     the pitch's --title-dur; the plaque fades in over the last fifth of it,
+     so the one becomes the other. */
+  .plaque.arriving {
+    animation: plaque-arrive calc(var(--title-dur) * 0.2) var(--ease) calc(var(--title-dur) * 0.8)
+      both;
+  }
+  @keyframes plaque-arrive {
+    from {
+      opacity: 0;
+    }
+  }
+  /* The hold: a band of light sweeping across, and a gold glow round the
+     plaque breathing in and out, so it never looks stuck. */
+  .shimmer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--plaque-shimmer);
+    transform: translateX(-100%);
+    animation: shimmer var(--dur-shimmer) var(--ease-shimmer) infinite;
+  }
+  @keyframes shimmer {
+    to {
+      transform: translateX(100%);
+    }
+  }
+  .aura {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    width: var(--plaque-w);
+    height: var(--plaque-h);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--plaque-aura);
+    opacity: var(--plaque-aura-low);
+    pointer-events: none;
+    animation: aura var(--dur-aura) var(--ease-drift) infinite alternate;
+  }
+  @keyframes aura {
+    to {
+      opacity: 1;
+    }
+  }
+  /* Reduced motion stops every animation (base.css); the plaque still fades
+     in as the title fades out, and the hold is still. */
+  @media (prefers-reduced-motion: reduce) {
+    .plaque.arriving {
+      animation: plaque-arrive calc(var(--title-dur) * 0.2) var(--ease) calc(var(--title-dur) * 0.8)
+        both !important;
+    }
   }
   /* Centred on the plaque's top edge, over its halo, above the reel. */
   .finaltag {
@@ -193,6 +261,9 @@
     }
     .finaltag {
       top: var(--plaque-top-gap);
+    }
+    .aura {
+      top: calc(var(--plaque-h) / 2 + var(--plaque-top-gap));
     }
   }
   .plaque.pop {

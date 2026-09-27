@@ -32,13 +32,15 @@ const r3 = round(3, { stat: "ig", statChanged: true });
 const toAwaiting: GameEvent[] = [
   { type: "start" },
   { type: "started", runId: "20260926-x", round: r1 },
+  { type: "titled" },
+  { type: "held" },
   { type: "introDone" },
   { type: "dealt" },
   { type: "spun" },
 ];
 
 describe("reduce — the happy path", () => {
-  it("walks idle → starting → intro → dealing → spinning → awaiting on round one", () => {
+  it("walks idle → starting → title → holding → intro → dealing → spinning → awaiting", () => {
     const phases: string[] = [];
     let s = initialState();
     phases.push(s.phase);
@@ -46,20 +48,50 @@ describe("reduce — the happy path", () => {
       s = reduce(s, e);
       phases.push(s.phase);
     }
-    expect(phases).toEqual(["idle", "starting", "intro", "dealing", "spinning", "awaiting"]);
+    expect(phases).toEqual([
+      "idle",
+      "starting",
+      "title",
+      "holding",
+      "intro",
+      "dealing",
+      "spinning",
+      "awaiting",
+    ]);
     expect(s.runId).toBe("20260926-x");
   });
 
-  it("puts round one on the pitch for the intro, and deals it only when the intro is done", () => {
-    const intro = run(toAwaiting.slice(0, 2));
+  it("opens on the title card, holds, slides the cards in, then deals round one", () => {
+    const title = run(toAwaiting.slice(0, 2));
+    expect(title.phase).toBe("title");
+    expect(title.round?.index).toBe(1);
+    // Nothing runs ahead of the title card.
+    expect(reduce(title, { type: "held" })).toBe(title);
+    expect(reduce(title, { type: "introDone" })).toBe(title);
+    expect(reduce(title, { type: "dealt" })).toBe(title);
+    const holding = reduce(title, { type: "titled" });
+    expect(holding.phase).toBe("holding");
+    const intro = reduce(holding, { type: "held" });
     expect(intro.phase).toBe("intro");
-    expect(intro.round?.index).toBe(1);
-    // The wheel's timer can't run ahead of the intro.
-    expect(reduce(intro, { type: "dealt" })).toBe(intro);
     expect(reduce(intro, { type: "introDone" }).phase).toBe("dealing");
-    // A stray intro timer later on does nothing.
+    // A stray timer later on does nothing.
     const awaiting = run(toAwaiting);
-    expect(reduce(awaiting, { type: "introDone" })).toBe(awaiting);
+    for (const type of ["titled", "held", "introDone", "skip"] as const) {
+      expect(reduce(awaiting, { type })).toBe(awaiting);
+    }
+  });
+
+  it("skips from the title card or the hold straight to the cards", () => {
+    const title = run(toAwaiting.slice(0, 2));
+    expect(reduce(title, { type: "skip" }).phase).toBe("intro");
+    expect(reduce(reduce(title, { type: "titled" }), { type: "skip" }).phase).toBe("intro");
+  });
+
+  it("marks a Play again as a repeat, for the quicker title card", () => {
+    const first = run(toAwaiting.slice(0, 2));
+    expect(first.repeat).toBe(false);
+    const again = reduce({ ...run(toAwaiting), phase: "over" }, { type: "start" });
+    expect(again.repeat).toBe(true);
   });
 
   it("keeps the plaque blank until round one's wheel lands", () => {

@@ -9,9 +9,10 @@
  *
  * Photos are fetched the moment a round payload lands, never at reveal time
  * (ARCHITECTURE.md §9): each response brings one new card, and its photo loads
- * while the current reveal plays out. The first deal's intro lasts `introMin`
- * and doesn't wait for them: each photo develops in on its card when it
- * arrives (Photo.svelte).
+ * while the current reveal plays out. A run's first deal waits on round one's
+ * two: after the title card the plaque holds at least `holdMin`, until both
+ * have loaded or failed, and no more than `holdExtra` longer. A photo still
+ * loading then develops in on its card when it arrives (Photo.svelte).
  *
  * Only one timer is ever pending. Starting a new run bumps a generation
  * number, so a response or timer from an abandoned run is ignored.
@@ -50,8 +51,11 @@ export interface ControllerDeps {
   readonly saveBest?: (best: number) => void;
   /** A challenge link the first run starts from. */
   readonly challenge?: Challenge | null;
-  /** Starts fetching a card's photo into the browser cache. */
-  readonly preload?: (image: CardImage | undefined) => void;
+  /**
+   * Starts fetching a card's photo into the browser cache. The promise, if
+   * any, settles when it has loaded or failed.
+   */
+  readonly preload?: (image: CardImage | undefined) => Promise<void> | void;
 }
 
 type Listener = (state: GameState) => void;
@@ -62,6 +66,8 @@ export class GameController {
   #cancelTimer: (() => void) | null = null;
   #generation = 0;
   #deps: ControllerDeps;
+  /** Round one's photos, settling when both have loaded or failed. */
+  #roundOnePhotos: Promise<void> = Promise.resolve();
 
   constructor(deps: ControllerDeps) {
     this.#deps = deps;
@@ -91,6 +97,11 @@ export class GameController {
     this.#dispatch({ type: "guess", guess, at: this.#deps.now() });
   }
 
+  /** A tap or a key during the title card or the hold: straight to the cards. */
+  skip(): void {
+    this.#dispatch({ type: "skip" });
+  }
+
   /** Stops every pending timer and ignores any response still in flight. */
   destroy(): void {
     this.#generation++;
@@ -115,13 +126,15 @@ export class GameController {
     if (after.phase !== before.phase) this.#clearTimer();
     if (after.best > before.best) this.#deps.saveBest?.(after.best);
 
-    if (event.type === "answered" && "next" in event.response) this.#preload(event.response.next);
+    if (event.type === "answered" && "next" in event.response) {
+      void this.#preload(event.response.next);
+    }
     // Once a round is on screen (round one from its intro), the photo of the
     // challenger after it: a whole round's head start on a cold resize
     // (ARCHITECTURE.md §9).
     // Round one's comes from the intro case below, after its own two photos.
     if (after.phase === "dealing" && before.phase !== "dealing" && before.phase !== "intro") {
-      this.#deps.preload?.(after.round?.upcoming);
+      void this.#deps.preload?.(after.round?.upcoming);
     }
 
     // A request that has to go again: wait, then retry.
@@ -153,12 +166,31 @@ export class GameController {
         );
         return;
 
+      case "title":
+        if (before.phase === "title" || after.round === null) return;
+        // Round one's photos, then the next round's challenger's, fetched
+        // while the title card plays; the hold after it waits on the first two.
+        this.#roundOnePhotos = this.#preload(after.round);
+        void this.#deps.preload?.(after.round.upcoming);
+        this.#after(after.repeat ? timings.titleQuick : timings.title, { type: "titled" });
+        return;
+
+      case "holding": {
+        if (before.phase === "holding") return;
+        // At least `holdMin`; longer while round one's photos load, but no
+        // more than `holdExtra` longer.
+        const began = this.#deps.now();
+        this.#after(timings.holdMin + timings.holdExtra, { type: "held" });
+        void this.#roundOnePhotos.then(() => {
+          if (!current() || this.#state.phase !== "holding") return;
+          const wait = Math.max(0, timings.holdMin - (this.#deps.now() - began));
+          this.#after(wait, { type: "held" });
+        });
+        return;
+      }
+
       case "intro":
-        if (before.phase === "intro" || after.round === null) return;
-        // Round one's photos, then the next round's challenger's. The intro
-        // doesn't wait for them.
-        this.#preload(after.round);
-        this.#deps.preload?.(after.round.upcoming);
+        if (before.phase === "intro") return;
         this.#after(timings.introMin, { type: "introDone" });
         return;
 
@@ -215,10 +247,11 @@ export class GameController {
     }
   }
 
-  #preload(round: RoundPayload): void {
+  /** Fetches the round's new cards' photos; settles when all have loaded or failed. */
+  #preload(round: RoundPayload): Promise<void> {
     const { preload } = this.#deps;
-    if (preload === undefined) return;
-    for (const card of newCards(round)) preload(card.image);
+    if (preload === undefined) return Promise.resolve();
+    return Promise.all(newCards(round).map((card) => preload(card.image))).then(() => {});
   }
 
   /** Dispatches `event` after `ms`; a function is called then, to read the clock. */

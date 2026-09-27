@@ -1086,17 +1086,27 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   only fades. The controller preloads round one's two photos when the run starts, each new
   challenger's photo when an answer lands, and the round's `upcoming` photo as soon as the round
   is on screen, through an off-screen `Image` with the card's own `sizes` and `srcset`
-  (`game/photos.ts`). A photo already fetched is not fetched again.
-- **The first deal** of every run (Start, Play again, a challenge link) is a short kick-off, the
-  machine's `intro` phase (`isIntro` in `game/view.ts`). Round one's two halves slide in from
-  opposite edges to meet (above and below when stacked, left and right side by side), names and
-  countries on them, their photos developing in as they load, while the plaque reads "Question 1
-  of 20" ("Question 1" in a mode without a win target; `plaqueLead`). It lasts `--dur-intro-min`
-  (1s) and doesn't wait for photos. Round one's usual beat follows, then the first spin starts
-  from that line and scrolls on into the stat. The question is announced when the plaque lands, as
-  for every round; focus is untouched. Transform and opacity only, every value a token
-  (`--dur-intro-*`, `--intro-*`, `--ease-intro`). With reduced motion nothing slides or scales:
-  the cards' text fades in (`--dur-intro-fade`) and the photos fade. Later rounds deal without it.
+  (`game/photos.ts`). A photo already fetched is not fetched again; the preload's promise settles
+  when it has loaded or failed, which is what a run's hold waits on.
+- **The first deal** of every run (Start, Play again, a challenge link) opens with a **title
+  card**. The pitch is empty; "Question 1 of 20" ("Question 1" without a win target; "Beat 7/20"
+  or "Match 20/20" for a replayed challenge, `titleCard` in `game/view.ts`) rises in large in the
+  centre, then shrinks and glides into the plaque, which fades in under it reading "Question 1 of
+  20" (`plaqueLead`): the machine's `title` phase, `--dur-title` (1.8s) on the first run of a
+  visit and `--dur-title-quick` (0.9s) on Play again (`repeat`). The plaque then **holds**
+  (`holding`) with a band of light sweeping across it and a gold glow breathing round it
+  (`--plaque-shimmer`, `--plaque-aura`), while round one's two photos load: at least
+  `--dur-hold-min` (1s), longer until both have loaded or failed, and no more than
+  `--dur-hold-extra` (3s) longer. Then round one's halves slide in from opposite edges to meet
+  (`intro`, `--dur-intro-min`), names on them; their photos are normally in by then, and one
+  that isn't develops in as usual. Round one's beat and spin follow, and the first spin starts from
+  the plaque's line and scrolls on into the stat. A tap, a click or any key during the title card
+  or the hold skips straight to the cards (`canSkipTitle`), and is used for nothing else. The live
+  region says "Question 1 of 20" once as the title card comes up and asks the question when the
+  plaque lands; focus is untouched. Transform and opacity only, every value a token. With reduced
+  motion the title fades in and out where it stands and the plaque fades in, with no glide or
+  scaling; the hold still waits for the photos, without the shimmer, and the cards' text fades in
+  rather than sliding. Later rounds deal without any of it.
 - **The slide to the next pair** after a right answer is a carousel, the machine's `sliding`
   phase: the challenger's whole card (photo, name, country, revealed figure and qualifier) moves
   into the anchor's place, the anchor's card slides off, and the next challenger comes in with
@@ -1132,9 +1142,9 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   (§7) — then presses the right button. It lives in `game/dev.ts`, loaded by a dynamic import behind
   `import.meta.env.DEV`, so production builds don't contain it.
 - The island's flow is a plain-TS state machine in `apps/web/src/game/` (`machine.ts`, a pure
-  reducer: idle → starting → intro → dealing → spinning → awaiting → revealing → verdict →
-  [sliding →] dealing … → over, with `intro` on the first deal only and `sliding` after a right
-  answer), run by
+  reducer: idle → starting → title → holding → intro → dealing → spinning → awaiting → revealing →
+  verdict → [sliding →] dealing … → over, with the title card, hold and intro on the first deal
+  only and `sliding` after a right answer), run by
   `controller.ts` with the API, clock and timers injected so it is tested in Node. It keeps a
   **round history** of `{ index, stat, tier, correct }` per answered round — no values — for the
   share grid and image. Script timers read the `--dur-*` tokens at runtime; a test keeps their

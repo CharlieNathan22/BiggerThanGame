@@ -116,6 +116,13 @@ export function announcement(state: GameState, mode: Mode): string {
   const { round, reveal } = state;
   if (round === null) return "";
   const target = WIN_ROUNDS[mode];
+  // Once, as the title card comes up: "Question 1 of 20" (after "Beat 7/20"
+  // for a replayed challenge).
+  if (state.phase === "title") {
+    const lead = plaqueLead(state, mode) ?? "";
+    const card = titleCard(state, mode) ?? "";
+    return card === lead ? `${lead}.` : `${card}. ${lead}.`;
+  }
   if (state.phase === "awaiting") {
     // Say so when the stat has just changed: the plaque is the question.
     const key = round.stat.statChanged ? "live.statChanged" : "live.question";
@@ -189,10 +196,13 @@ export interface PitchCard {
   readonly role: CardRole;
 }
 
-/** The cards on the pitch, in drawing order. None before a run is dealt. */
+/**
+ * The cards on the pitch, in drawing order. None before a run is dealt, nor
+ * during its title card and hold: the pitch is empty until the cards slide in.
+ */
 export function pitchCards(state: GameState): PitchCard[] {
   const { round } = state;
-  if (round === null) return [];
+  if (round === null || state.phase === "title" || state.phase === "holding") return [];
   const run = state.runId ?? "";
   // A card is named by the round it was dealt as challenger; round one's
   // anchor, dealt on its own, is "a1".
@@ -259,6 +269,40 @@ export function anchorFigure(state: GameState): ShownFigure | null {
 export function anchorFading(state: GameState): boolean {
   const { round } = state;
   return state.phase === "spinning" && round !== null && round.index > 1 && round.stat.statChanged;
+}
+
+/**
+ * The title card's words while it plays: "Question 1 of 20" ("Question 1"
+ * in a mode without a target), or for a replayed challenge "Beat 7/20" (or
+ * "Match 20/20"). Null otherwise. It glides into the plaque, which then reads
+ * "Question 1 of 20" (`plaqueLead`).
+ */
+export function titleCard(state: GameState, mode: Mode): string | null {
+  if (state.phase !== "title") return null;
+  const { challenge } = state;
+  if (challenge?.status === "accepted") {
+    const score = scoreFigure(challenge.score, mode);
+    return WIN_ROUNDS[mode] === challenge.score
+      ? t("challenge.headingPerfect", { score })
+      : t("challenge.heading", { score });
+  }
+  return plaqueLead(state, mode);
+}
+
+/**
+ * What the plaque is doing at a run's start: arriving as the title card glides
+ * into it (`title`), or holding with a shimmer while round one's photos load
+ * (`hold`). Null the rest of the time.
+ */
+export function plaqueStage(state: GameState): "title" | "hold" | null {
+  if (state.phase === "title") return "title";
+  if (state.phase === "holding") return "hold";
+  return null;
+}
+
+/** A tap or a key now skips the title card or the hold, straight to the cards. */
+export function canSkipTitle(state: GameState): boolean {
+  return state.phase === "title" || state.phase === "holding";
 }
 
 /** The first deal's kick-off is playing: round one's cards sliding in. */
