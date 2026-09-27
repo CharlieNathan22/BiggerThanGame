@@ -1,6 +1,7 @@
 /**
- * Challenge links on the client: reading one from the page's URL, and writing
- * one for the player to share. `/?challenge=<runId>&score=<n>&sig=<sig>`.
+ * Challenge links on the client: reading one from the game page's URL, and
+ * writing one for the player to share:
+ * `/football-higher-or-lower/legends/friendly?challenge=<runId>&score=<n>&sig=<sig>`.
  *
  * The client can't tell a genuine link from a forged one — only the server
  * holds the secret — so this checks shape only. A link that is plainly broken
@@ -10,6 +11,7 @@
 
 import { MAX_ROUNDS } from "@bt/core";
 import type { ChallengeLink } from "@bt/core";
+import { FRIENDLY_PATH } from "../lib/paths";
 
 export const CHALLENGE_PARAMS = ["challenge", "score", "sig"] as const;
 
@@ -39,14 +41,14 @@ export function readChallenge(search: string): ChallengeParam {
   return { kind: "link", link: { runId, score, sig } };
 }
 
-/** The shareable URL for `link` on `site` (an origin, no trailing slash). */
+/** The shareable URL for `link`: the game page on `site` (an origin, no trailing slash). */
 export function challengeUrl(site: string, link: ChallengeLink): string {
   const params = new URLSearchParams({
     challenge: link.runId,
     score: String(link.score),
     sig: link.sig,
   });
-  return `${site}/?${params.toString()}`;
+  return `${site}${FRIENDLY_PATH}?${params.toString()}`;
 }
 
 /** `search` without the challenge parameters, for `history.replaceState` once a link is used. */

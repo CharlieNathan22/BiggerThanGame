@@ -77,7 +77,7 @@ describe("the share text", () => {
     expect(lines[3]).toBe("🟨🟨❌");
     expect(lines[4]).toBe("Ended on: Club trophies");
     expect(lines[5]).toBe(
-      `Can you beat 12? https://biggerthangame.com/?challenge=${encodeURIComponent(RUN_ID)}&score=12&sig=${SIG}`,
+      `Can you beat 12? https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=${encodeURIComponent(RUN_ID)}&score=12&sig=${SIG}`,
     );
     expect(lines).toHaveLength(6);
   });

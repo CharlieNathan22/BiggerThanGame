@@ -1,6 +1,8 @@
 /**
- * Challenge links: `/?challenge=<runId>&score=<n>&sig=<sig>`. A friend replays
- * exactly that run, framed as "Beat <n>" (DESIGN.md §13).
+ * Challenge links:
+ * `/football-higher-or-lower/legends/friendly?challenge=<runId>&score=<n>&sig=<sig>`.
+ * A friend replays exactly that run, framed as "Beat <n>" (DESIGN.md §13). The
+ * server issues only the three signed parts; the client builds the URL.
  *
  * `sig` signs the run and the score together — the first 16 bytes of
  * `HMAC-SHA256(RUN_SECRET, "challenge:" + origin + ":" + score)`, unpadded

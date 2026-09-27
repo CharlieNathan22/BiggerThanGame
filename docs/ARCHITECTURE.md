@@ -393,10 +393,12 @@ from its own UTC date, so a caller can't choose an arbitrary reference date. The
 or chooses a seed.
 
 **Challenge links** (DESIGN.md §13) replay a finished Friendly run for a friend:
-`/?challenge=<runId>&score=<n>&sig=<sig>`. `sig` signs the run and the score together — the first
-16 bytes of `HMAC-SHA256(RUN_SECRET, "challenge:" + runBody + ":" + score)`, unpadded base64url — so
-neither the run nor the "Beat n" number can be edited. The server issues one with every run's end
-(§8), for the score that run reached.
+`/football-higher-or-lower/legends/friendly?challenge=<runId>&score=<n>&sig=<sig>` — the server
+issues the three signed parts and the client builds the URL on the game page. `sig` signs the run
+and the score together — the first 16 bytes of
+`HMAC-SHA256(RUN_SECRET, "challenge:" + runBody + ":" + score)`, unpadded base64url — so neither
+the run nor the "Beat n" number can be edited. The server issues one with every run's end (§8), for
+the score that run reached.
 
 - A start carrying a genuine link is accepted for **10 days** from the run's date
   (`CHALLENGE_DAYS`). A forged, edited or broken link, or one past its 10 days, starts a fresh run
@@ -892,8 +894,16 @@ anti-cheat work, under the same no-personal-data rule.
 
 ## 14. Frontend
 
-**Astro** prerenders the shell, the about page, the board pages and the
-`/football-higher-or-lower` SEO page. **Svelte** hydrates one island: the game.
+**Astro** prerenders the shell, the homepage, the football hub, the about page and the board
+pages. **Svelte** hydrates one island: the game, on its own page. The URL tree is in `DESIGN.md`
+§17; the paths live in `apps/web/src/lib/paths.ts`.
+
+| Path                                         | Page                                         | JS         |
+| -------------------------------------------- | -------------------------------------------- | ---------- |
+| `/`                                          | homepage: brand, one line, a card per game   | none       |
+| `/football-higher-or-lower`                  | the football hub: intro and three mode cards | none       |
+| `/football-higher-or-lower/legends`          | the hub's content, canonical to the hub      | none       |
+| `/football-higher-or-lower/legends/friendly` | the game (Friendly, Legends deck)            | the island |
 
 - The game island is `client:load`, not `client:visible` — it is above the fold and the first
   interaction must not wait on an intersection observer.
@@ -905,17 +915,30 @@ anti-cheat work, under the same no-personal-data rule.
   sizes, dimensions, radii, shadows, easings, durations — so a restyle edits one file. Global
   styles live in `styles/` (`base.css`, `fonts.css`, `prose.css`); component styles are scoped.
 - **Fonts are self-hosted** from `@fontsource-variable/archivo` (width axis, `"Archivo Variable"`)
-  and `@fontsource/cinzel` (400 and 600 — the weights the prototype renders), Latin and Latin Extended subsets, with the two Latin faces
-  preloaded. No third-party font requests.
+  and `@fontsource/cinzel` (400 and 600 — the weights the prototype renders), Latin and Latin
+  Extended subsets. Latin Archivo is preloaded everywhere; Latin Cinzel 600, the title bar's
+  "Legends", only on the Legends pages. No third-party font requests.
 - `TitleBar.svelte` renders server-side with no JS on static pages; the game island reuses it.
-  Only `/` gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag).
-- Pages build to `about.html` and are served at `/about` — no trailing slash, which is also the
-  canonical URL.
+  Its `legends` prop adds "— Football Legends", set on `/football-higher-or-lower/legends` and
+  every page under it (`isLegendsPath`); elsewhere the bar is the brand alone, at the same height.
+  The brand links to `/` everywhere but `/` itself.
+- Only the game page gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag); every
+  other page scrolls.
+- Pages build to files (`about.html`, `football-higher-or-lower/legends/friendly.html`) and are
+  served without the extension and with no trailing slash — `/about` — which is also the
+  canonical URL. `Base.astro` takes a `canonical` path to point a duplicate elsewhere:
+  `/football-higher-or-lower/legends` is canonical to `/football-higher-or-lower`.
+- **Cards** (`Card.astro`, `Cards.astro`) list the games on `/` and the modes on the hub. An open
+  one is a single link, named by its heading. A mode that isn't open yet is not a link and not
+  focusable, says "Coming soon" in text, and is dimmed without dropping below AA — a test checks
+  the card tokens' contrast.
 - `/credits` reads `packages/deck/dist/credits.json` with `fs` at build time. It is never imported,
   so it can't enter the module graph.
-- **Local best** is one number in `localStorage` (`bt:best`, `game/best.ts`). Every read and write
-  is wrapped: with storage blocked, full or throwing, the best lasts as long as the page and the
-  game plays normally. The local leaderboard, when it comes, lives there the same way.
+- **Local best** is one number per deck and mode in `localStorage`, `bt:best:<deck>:<mode>`
+  (`bt:best:legends:friendly`; `game/best.ts`), shown only on the game pages. The game page passes
+  its deck and mode to the island. Every read and write is wrapped: with storage blocked, full or
+  throwing, the best lasts as long as the page and the game plays normally. The local
+  leaderboard, when it comes, lives there the same way.
 - **Sharing** at game over (`game/share.ts`, `share-image.ts`, `share-actions.ts`): the Wordle-style
   text is built from the round history alone — score, streak title, one square per answered round
   in tier colour and ❌ for the miss, the stat that ended it, and the challenge link — with no
@@ -926,9 +949,9 @@ anti-cheat work, under the same no-personal-data rule.
   page, so it works offline once the run has ended. On touch devices both go to the share sheet
   (the image as a file); elsewhere the text is copied, with a visible "Copied", and the image
   downloads.
-- **Challenge links** are read from the URL on load (`game/challenge.ts`) and sent with the first
-  start; the start panel says "Beat n". The parameters are removed from the address bar once the
-  run starts, and "Play again" is a fresh run. See §7.
+- **Challenge links** are read from the game page's URL on load (`game/challenge.ts`) and sent
+  with the first start; the start panel says "Beat n". The parameters are removed from the
+  address bar once the run starts, and "Play again" is a fresh run. See §7.
 - The reveal count-up (~1200ms) is what masks the round trip — see section 9 for the full budget,
   the hold-don't-snap rule, and the image prefetch requirement. The challenger's number scrambles
   from the tap until the response lands, then counts up from zero until the nominal 1200ms or, for a
@@ -966,9 +989,10 @@ anti-cheat work, under the same no-personal-data rule.
 - **Feedback forms** (`FeedbackModal.svelte`, logic in `game/feedback.ts`): "Report an error" on
   the game-over panel, about the round that ended the run; "Suggest a legend" there too; and
   "Suggest a legend" and "Report a problem" in the footer of every page. The forms live in the one
-  island on `/`, so on `/` the footer links (`data-feedback`) open the modal directly, and on static
-  pages they go to `/#suggest` and `/#problem`, which open the form on load. A problem report
-  names the page it came from — the referrer's path when it is one of the site's pages — and
+  island, on the game page, so there the footer links (`data-feedback`) open the modal directly,
+  and on every other page they go to `/football-higher-or-lower/legends/friendly#suggest` and
+  `#problem`, which open the form on load. A problem report names the page it came from — the
+  referrer's path when it is one of the site's pages (`SITE_PAGES`), else the game page — and
   nothing else. One modal dialog in the island: labelled, `aria-modal`, focus held inside and
   returned to the opener, Esc and a close button, 44px targets. After a send goes through,
   "Thanks" is announced and shows for `--dur-thanks` (5 s), then the modal fades and closes itself

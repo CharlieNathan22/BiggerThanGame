@@ -99,7 +99,7 @@ export function challengeResult(
  *   🟨🟨🟦🟨🟪🟨🟨🟨🟦🟨
  *   🟨🟨❌
  *   Ended on: Club trophies
- *   Can you beat 12? https://biggerthangame.com/?challenge=…
+ *   Can you beat 12? https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=…
  *
  * No player names, no values, no answers. Without a signed link — a run
  * banked after the connection dropped — it ends with the site's address.

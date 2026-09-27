@@ -204,6 +204,38 @@
   --foot-group-gap: 18px;
   --foot-row-gap: 32px;
 
+  /*
+   * Cards: the homepage's games and the football hub's modes. A mode that isn't
+   * open yet is dimmed — no fill, a dashed faint edge, --dim text — but never
+   * below AA: a test holds every card's text to 4.5:1 on its background.
+   */
+  --card-bg: var(--night-2);
+  --card-edge: var(--gold-rule);
+  --card-edge-hover: var(--gold);
+  --card-name: var(--chalk);
+  --card-body: var(--dim);
+  --card-soon-bg: transparent;
+  --card-soon-edge: var(--rule);
+  --card-soon-text: var(--dim);
+  --card-soon-badge-edge: var(--faint);
+  --card-radius: 18px;
+  --card-pad: 18px 22px 20px;
+  --card-pad-large: 26px 26px 28px;
+  /* Room on the right for the chevron. */
+  --card-pad-end: 52px;
+  --card-inner-gap: 8px;
+  --card-chevron: 10px;
+  --card-chevron-stroke: 2px;
+  --card-chevron-inset: 24px;
+  --cards-top: 28px;
+  --card-gap: 12px;
+  --card-min-w: 260px;
+  --badge-pad: 2px 10px;
+  --fs-card-name: 22px;
+  --fs-card-name-large: clamp(26px, 6vw, 34px);
+  --fs-badge: 11.5px;
+  --fs-tagline: 17px;
+
   /* ---------- shape ---------- */
   --radius-pill: 100px;
   --shadow-plaque: 0 0 0 var(--plaque-halo) var(--night), 0 6px 24px rgba(0, 0, 0, 0.35);

@@ -25,7 +25,15 @@ export function textLength(text: string): number {
  * it came from, and the Worker accepts only these. A test in apps/web keeps
  * the list equal to the pages it builds.
  */
-export const SITE_PAGES = ["/", "/about", "/credits", "/football-higher-or-lower", "/404"] as const;
+export const SITE_PAGES = [
+  "/",
+  "/about",
+  "/credits",
+  "/football-higher-or-lower",
+  "/football-higher-or-lower/legends",
+  "/football-higher-or-lower/legends/friendly",
+  "/404",
+] as const;
 
 export type SitePage = (typeof SITE_PAGES)[number];
 

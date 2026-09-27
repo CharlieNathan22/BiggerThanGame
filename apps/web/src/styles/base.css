@@ -40,7 +40,8 @@ a {
   flex-direction: column;
 }
 
-/* The game (`/` only) is a fixed-height screen that never scrolls. */
+/* A game page (/football-higher-or-lower/legends/friendly) is a fixed-height
+   screen that never scrolls. */
 body.game {
   overflow: hidden;
 }

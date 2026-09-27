@@ -1,25 +1,33 @@
 <!--
   The persistent title bar (DESIGN.md §12). Static pages render it server-side
-  with no JS; the game island reuses it with live scores.
+  with no JS; the game island reuses it with live scores. "— Football Legends"
+  shows only on the Legends pages (`legends`); elsewhere it is the brand alone
+  (DESIGN.md §17).
 -->
 <script lang="ts">
   import { t } from "../i18n";
+  import { HOME_PATH } from "../lib/paths";
 
   interface Props {
     /** Streak and best. Shown on the game only; other pages have no run. */
     scores?: { streak: number; best: number };
-    /** Make the title a link to the game. Off on the game itself. */
+    /** Make the title a link to the homepage. Off on the homepage itself. */
     home?: boolean;
+    /** Add "— Football Legends": /football-higher-or-lower/legends and the pages under it. */
+    legends?: boolean;
   }
 
-  let { scores, home = false }: Props = $props();
+  let { scores, home = false, legends = false }: Props = $props();
 </script>
 
 <header class="topbar">
-  <svelte:element this={home ? "a" : "div"} class="title" href={home ? "/" : undefined}>
+  <svelte:element this={home ? "a" : "div"} class="title" href={home ? HOME_PATH : undefined}>
     <span class="bt">{t("brand.bigger")}<em>{t("brand.than")}</em> {t("brand.game")}</span>
-    <span class="dash">—</span>
-    <span class="fl">{t("brand.football")} <span class="legends">{t("brand.legends")}</span></span>
+    {#if legends}
+      <span class="dash">—</span>
+      <span class="fl">{t("brand.football")} <span class="legends">{t("brand.legends")}</span></span
+      >
+    {/if}
   </svelte:element>
   {#if scores}
     <div class="scores">
@@ -51,6 +59,10 @@
     align-items: baseline;
     gap: 9px;
     flex-wrap: wrap;
+    /* As tall as the "Legends" line, so the bar keeps its height on pages
+       without it. */
+    min-height: var(--fs-legends);
+    align-content: center;
     line-height: var(--lh-tight);
     color: inherit;
     text-decoration: none;

@@ -31,6 +31,43 @@ export const en = {
   "footer.suggest": "Suggest a legend",
   "footer.problem": "Report a problem",
 
+  // Homepage (/). Drafts.
+  "home.title": "Bigger Than Game — Higher or Lower With a Twist",
+  "home.description":
+    "Higher or lower where the stat keeps changing under you. Start with football: two legends, one stat, one hidden number. Free, no sign-up.",
+  "home.tagline": "Higher or lower, where the question keeps changing.",
+  "home.games": "Games",
+  "home.football.name": "Football higher or lower",
+  "home.football.body":
+    "Two football legends, one stat. Is the hidden number higher or lower? Watch out — the stat keeps changing.",
+
+  // The football hub (/football-higher-or-lower), and the Legends page that
+  // repeats it for now (/football-higher-or-lower/legends). Drafts.
+  "hub.title": "Football Higher or Lower — Bigger Than Game",
+  "hub.description":
+    "A free football higher or lower game with retired legends, where the stat keeps changing. Play Friendly now, with no clock; Endless and Daily Ranked are on the way.",
+  "legends.title": "Football Legends Higher or Lower — Bigger Than Game",
+  "legends.description":
+    "Higher or lower with football legends: caps, goals, trophies, transfer fees and Instagram followers. Pick a mode and see how long your run lasts.",
+  "hub.heading": "Football",
+  "hub.headingEm": "higher or lower",
+  "hub.intro":
+    "Two retired legends, one stat. Guess whether the hidden number is higher or lower, and keep the run going. Read the plaque before you pick: every few rounds the stat changes.",
+  "hub.modes": "Modes",
+  "mode.friendly.name": "Friendly",
+  "mode.friendly.body": "No clock — play at your own pace, with every player and every stat.",
+  "mode.endless.name": "Endless",
+  "mode.endless.body":
+    "Unlimited runs against a 10-second clock, with a daily board for your best of the day.",
+  "mode.ranked.name": "Daily Ranked",
+  "mode.ranked.body": "One run a day, the same for everyone, on a global leaderboard.",
+  "mode.soon": "Coming soon",
+
+  // The Friendly game page (/football-higher-or-lower/legends/friendly). Drafts.
+  "friendly.title": "Friendly Mode — Football Legends Higher or Lower | Bigger Than Game",
+  "friendly.description":
+    "Two football legends, one stat, no clock. Guess whether the hidden number is higher or lower — and watch the plaque, because the stat keeps changing. Free, no sign-up.",
+
   // Start panel
   "start.intro":
     "Two legends, one stat. Guess whether the hidden number is higher or lower. The stat changes as you go — watch the plaque before you pick.",

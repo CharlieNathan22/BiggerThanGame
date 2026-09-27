@@ -4,18 +4,20 @@ import "../styles/prose.css";
 import Base from "./Base.astro";
 import TitleBar from "../components/TitleBar.svelte";
 import Footer from "../components/Footer.astro";
+import { HOME_PATH, isLegendsPath, servedPath } from "../lib/paths";
 
 interface Props {
   title: string;
   description: string;
-  canonical?: boolean;
+  canonical?: string | false;
 }
 
-const { title, description, canonical = true } = Astro.props;
+const { title, description, canonical } = Astro.props;
+const path = servedPath(Astro.url.pathname);
 ---
 
-<Base title={title} description={description} canonical={canonical}>
-  <TitleBar home />
+<Base title={title} description={description} {...(canonical !== undefined ? { canonical } : {})}>
+  <TitleBar home={path !== HOME_PATH} legends={isLegendsPath(path)} />
   <main class="prose">
     <slot />
   </main>

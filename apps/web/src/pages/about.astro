@@ -3,6 +3,7 @@ import { STATS, STAT_KEYS } from "@bt/core";
 import type { StatKey } from "@bt/core";
 import Page from "../layouts/Page.astro";
 import { CORRECTIONS_EMAIL } from "../config";
+import { FRIENDLY_PATH } from "../lib/paths";
 import { TIER_COLOUR, TIER_LABEL } from "../lib/tiers";
 
 // One line per stat. Typed against StatKey, so adding a stat to @bt/core
@@ -134,9 +135,9 @@ const reportHref = `mailto:${CORRECTIONS_EMAIL}?subject=${encodeURIComponent("Co
 
   <h2 id="suggest">Missing a legend?</h2>
   <p>
-    <a href="/#suggest">Suggest a legend</a> for the deck. Retired players only. Anything else, like
-    a bug or a typo? <a href="/#problem">Report a problem</a>. None of the forms asks for your email
-    or any other details.
+    <a href={`${FRIENDLY_PATH}#suggest`}>Suggest a legend</a> for the deck. Retired players only.
+    Anything else, like a bug or a typo? <a href={`${FRIENDLY_PATH}#problem`}>Report a problem</a>.
+    None of the forms asks for your email or any other details.
   </p>
 </Page>
 

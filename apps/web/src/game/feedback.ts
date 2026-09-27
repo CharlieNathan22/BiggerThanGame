@@ -15,6 +15,7 @@
 import { FEEDBACK_LIMITS, isSitePage, textLength } from "@bt/core";
 import type { FeedbackRequest, SitePage, StatKey } from "@bt/core";
 import { t } from "../i18n";
+import { FRIENDLY_PATH } from "../lib/paths";
 import type { Fetch } from "./api";
 import type { GameState } from "./machine";
 import type { Timings } from "./timing";
@@ -50,18 +51,18 @@ export function sitePage(path: string): SitePage {
 }
 
 /**
- * Where a deep link (`/#problem`) was followed from: the referring page if it
- * is on this site, else the game page it opened on. Only a path, never the
- * query or anything else in the referrer.
+ * Where a deep link (`…/friendly#problem`) was followed from: the referring
+ * page if it is on this site, else the game page it opened on. Only a path,
+ * never the query or anything else in the referrer.
  */
 export function arrivedFrom(referrer: string, origin: string): SitePage {
   let url: URL;
   try {
     url = new URL(referrer);
   } catch {
-    return "/";
+    return FRIENDLY_PATH;
   }
-  return url.origin === origin ? sitePage(url.pathname) : "/";
+  return url.origin === origin ? sitePage(url.pathname) : FRIENDLY_PATH;
 }
 
 /** A figure as the card showed it. */

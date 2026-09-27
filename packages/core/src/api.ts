@@ -37,9 +37,9 @@ export interface AnswerRequest {
 
 /**
  * Starts a replay of someone else's run, from a challenge link
- * (`/?challenge=<runId>&score=<n>&sig=<sig>`). The fields are the link's own.
- * If the server can't verify the link it starts a fresh run instead, and says
- * why in `StartResponse.challenge`.
+ * (`/football-higher-or-lower/legends/friendly?challenge=<runId>&score=<n>&sig=<sig>`).
+ * The fields are the link's own. If the server can't verify the link it starts
+ * a fresh run instead, and says why in `StartResponse.challenge`.
  */
 export interface ChallengeStartRequest {
   readonly mode: "friendly";
@@ -117,7 +117,8 @@ export interface StartResponse {
 
 /**
  * A signed challenge for the run just played, at the score it reached: the
- * three query parameters of `/?challenge=<runId>&score=<score>&sig=<sig>`.
+ * three query parameters of the game page's
+ * `?challenge=<runId>&score=<score>&sig=<sig>`. The client builds the URL.
  */
 export interface ChallengeLink {
   /** The run to replay, `YYYYMMDD-<uuid>.<sig>` — the original, even after a replay. */

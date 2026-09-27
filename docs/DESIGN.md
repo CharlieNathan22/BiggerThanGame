@@ -32,6 +32,7 @@ A higher-or-lower streak game for football fans, where the stat keeps changing u
 14. [Decisions and reasoning](#14-decisions-and-reasoning)
 15. [Open questions](#15-open-questions)
 16. [Deliberately not building](#16-deliberately-not-building)
+17. [Site structure](#17-site-structure)
 
 ---
 
@@ -576,6 +577,7 @@ current stat.
 - **The plaque is the stat.** It changes colour with the tier and is the single most important
   thing on screen after the two names.
 - **Persistent title bar** — "Bigger Than Game — Football Legends" stays visible during play.
+  _Legends_ appears only on the Legends pages; elsewhere the bar is the brand alone (§17).
 - **Quality floor:** responsive to mobile, visible keyboard focus, reduced motion respected,
   colour never the sole carrier of meaning.
 
@@ -607,7 +609,8 @@ a number.
   short. The number is signed with the run, so it can't be edited; a link that fails the check,
   or is more than 10 days old, opens a normal run with a short note. Friendly only for now.
   ARCHITECTURE.md §7 has the mechanics and the limits.
-- **Local best** is kept on the device and works with storage blocked (it then lasts the visit).
+- **Local best** is kept on the device, one per deck and mode (§17), and works with storage blocked
+  (it then lasts the visit).
 
 ### Daily Ranked board
 
@@ -752,6 +755,39 @@ error-report routing (email).
 - **Club badges, crests and kit marks** — trademarks, and not covered by any photo licence.
 - **Agency photography** (Getty, PA, Reuters) — aggressively enforced and not worth the exposure.
 - **Weekly and all-time boards** — after Daily Ranked proves out.
+
+---
+
+## 17. Site structure
+
+Bigger Than is the brand; football higher or lower is its first game. No trailing slashes anywhere.
+
+```
+/                                  homepage: the brand, one line on the idea, a card per game
+│                                  (one today). Static, no JS.
+└── /football-higher-or-lower      football hub: a short intro and the three modes. Static,
+    │                              no JS. The page search traffic lands on.
+    └── /legends                   the Legends deck. For now the hub's content, canonical to
+        │                          the hub, and linked from nowhere.
+        └── /friendly              the game: Friendly Mode. Fixed-height, no scroll.
+```
+
+- **Modes on the hub.** Friendly links to its game page. Endless and Daily Ranked are shown as
+  "Coming soon" cards until they ship: not links, not focusable, visibly dimmed, with "Coming
+  soon" written out rather than carried by tint alone, and every piece of text still at WCAG AA.
+  They are cards on the hub, not pages of their own.
+- **Canonical rule.** `/football-higher-or-lower/legends` repeats the hub for now, so its canonical
+  link points to `/football-higher-or-lower`. Every other page is canonical to itself; the 404 has
+  none.
+- **Title bar.** The word _Legends_ (Cinzel, gold) appears only on
+  `/football-higher-or-lower/legends` and the pages under it, as "Bigger Than Game — Football
+  _Legends_". Everywhere else the bar shows the brand alone. One component; the page decides.
+- **Local best** is kept per deck and mode — `bt:best:<deck>:<mode>`, `bt:best:legends:friendly`
+  today — and shown only on the game pages under `/legends`.
+- **Challenge links** point at the game page:
+  `/football-higher-or-lower/legends/friendly?challenge=…`. The footer's "Suggest a legend" and
+  "Report a problem" open the form in place on the game page, and go to its `#suggest` and
+  `#problem` from everywhere else.
 
 ---
 

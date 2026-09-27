@@ -1,0 +1,29 @@
+---
+// A list of <Card>s. On the homepage it's a grid with room for more games
+// alongside the first; `stack` keeps one card per row, as the hub's modes are.
+interface Props {
+  /** Names the list for screen readers, e.g. "Modes". */
+  label: string;
+  stack?: boolean;
+}
+
+const { label, stack = false } = Astro.props;
+---
+
+<ul class:list={["cards", { stack }]} role="list" aria-label={label}>
+  <slot />
+</ul>
+
+<style>
+  .cards {
+    list-style: none;
+    margin: var(--cards-top) 0 0;
+    padding: 0;
+    display: grid;
+    gap: var(--card-gap);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-w)), 1fr));
+  }
+  .cards.stack {
+    grid-template-columns: 1fr;
+  }
+</style>

@@ -8,10 +8,12 @@
   import { onMount, tick } from "svelte";
   import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
   import { statLabel, t } from "../../i18n";
+  import { FRIENDLY_PATH } from "../../lib/paths";
   import { TIER_COLOUR } from "../../lib/tiers";
   import { createApi } from "../../game/api";
   import type { Fetch } from "../../game/api";
-  import { browserStorage, readBest, saveBest } from "../../game/best";
+  import { bestKey, browserStorage, readBest, saveBest } from "../../game/best";
+  import type { BestDeck } from "../../game/best";
   import { readChallenge, withoutChallenge } from "../../game/challenge";
   import { GameController } from "../../game/controller";
   import {
@@ -59,6 +61,16 @@
   import Plaque from "./Plaque.svelte";
   import Side from "./Side.svelte";
 
+  interface Props {
+    /** The deck and mode being played, which name the local best (`bt:best:legends:friendly`). */
+    deck: BestDeck;
+    mode: "friendly";
+    /** Show "Legends" in the title bar: the page is under /football-higher-or-lower/legends. */
+    legends?: boolean;
+  }
+
+  let { deck, mode, legends = false }: Props = $props();
+
   let game: GameState = $state(initialState());
   let controller: GameController | null = $state(null);
   let timings: Timings = $state(TIMINGS);
@@ -71,7 +83,7 @@
   /** The open feedback form, if any; the round a report is about; the page a problem names. */
   let feedback = $state<FeedbackKind | null>(null);
   let feedbackReport = $state<ReportedRound | null>(null);
-  let feedbackPage = $state<SitePage>("/");
+  let feedbackPage = $state<SitePage>(FRIENDLY_PATH);
   /** Where focus goes back to when the form closes. */
   let feedbackOpener: HTMLElement | null = null;
   let loadTurnstile = $state<(() => Promise<Turnstile>) | null>(null);
@@ -100,8 +112,9 @@
     );
 
     // The footer's feedback links. Static pages have no island, so there they
-    // go to /#suggest and /#problem, which open the form here on load; the
-    // page they came from is the referrer. On this page they open it directly.
+    // go to this page's #suggest and #problem, which open the form here on
+    // load; the page they came from is the referrer. On this page they open it
+    // directly.
     const linked = linkedFeedback(location.hash);
     if (linked !== null) {
       history.replaceState(history.state, "", `${location.pathname}${location.search}`);
@@ -148,6 +161,7 @@
       void dev.then((d) => (removeDevPanel = d.mountDevPanel()));
     }
 
+    const key = bestKey(deck, mode);
     const c = new GameController({
       api: createApi(fetchFn),
       preload: createPreloader(IMAGE_BASE, () => new Image()),
@@ -158,8 +172,8 @@
         return () => clearTimeout(id);
       },
       reducedMotion: () => reducedMotion,
-      best: readBest(browserStorage),
-      saveBest: (best) => void saveBest(browserStorage, best),
+      best: readBest(browserStorage, key),
+      saveBest: (best) => void saveBest(browserStorage, key, best),
       challenge,
     });
     const unsubscribe = c.subscribe((s) => (game = s));
@@ -306,7 +320,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null}>
-  <TitleBar scores={{ streak: game.streak, best: game.best }} />
+  <TitleBar scores={{ streak: game.streak, best: game.best }} {legends} home />
 
   <main class="pitch" aria-label={t("pitch.label")}>
     <Side

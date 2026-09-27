@@ -1,0 +1,124 @@
+---
+// One card in a <Cards> list: a game on the homepage, or a mode on the
+// football hub. With `href` the whole card is one link, named by its heading.
+// Without, it is a mode that isn't open yet: dimmed, not a link and not
+// focusable, with "Coming soon" written out rather than shown by tint alone.
+// Dimmed text still meets AA (tokens.css, and a test).
+import { t } from "../i18n";
+
+interface Props {
+  name: string;
+  body: string;
+  href?: string;
+  /** The homepage's size: one big card per game. */
+  large?: boolean;
+}
+
+const { name, body, href, large = false } = Astro.props;
+const soon = href === undefined;
+---
+
+<li class:list={["card", { large, soon }]}>
+  <h2>{soon ? name : <a href={href}>{name}</a>}</h2>
+  <p class="body">{body}</p>
+  {soon ? <p class="badge">{t("mode.soon")}</p> : <span class="go" aria-hidden="true" />}
+</li>
+
+<style>
+  .card {
+    position: relative;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--card-inner-gap);
+    padding: var(--card-pad);
+    padding-right: var(--card-pad-end);
+    border: var(--border) solid var(--card-edge);
+    border-radius: var(--card-radius);
+    background: var(--card-bg);
+    transition: border-color var(--dur-hover);
+  }
+  .card.large {
+    padding: var(--card-pad-large);
+    padding-right: var(--card-pad-end);
+  }
+  .card:not(.soon):hover {
+    border-color: var(--card-edge-hover);
+  }
+
+  .card h2 {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: var(--fs-card-name);
+    line-height: var(--lh-name);
+    font-variation-settings: var(--fv-heading);
+    color: var(--card-name);
+  }
+  .card.large h2 {
+    font-size: var(--fs-card-name-large);
+    font-variation-settings: var(--fv-display);
+    letter-spacing: var(--tracking-display);
+  }
+  .card a {
+    color: inherit;
+    text-decoration: none;
+  }
+  /* The whole card is the link's hit area. */
+  .card a::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+  }
+  /* The focus ring goes round the card, not the heading inside it. */
+  .card:has(a:focus-visible) {
+    outline: var(--focus-ring) solid var(--gold);
+    outline-offset: var(--focus-offset);
+  }
+  @supports selector(:has(a)) {
+    .card a:focus-visible {
+      outline: none;
+    }
+  }
+
+  .card .body {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--card-body);
+  }
+
+  /* A chevron: this card goes somewhere. */
+  .go {
+    position: absolute;
+    top: 50%;
+    right: var(--card-chevron-inset);
+    width: var(--card-chevron);
+    height: var(--card-chevron);
+    border-top: var(--card-chevron-stroke) solid var(--gold);
+    border-right: var(--card-chevron-stroke) solid var(--gold);
+    transform: translateY(-50%) rotate(45deg);
+  }
+
+  .soon {
+    border-style: dashed;
+    border-color: var(--card-soon-edge);
+    background: var(--card-soon-bg);
+  }
+  .soon h2,
+  .soon .body {
+    color: var(--card-soon-text);
+  }
+  .card .badge {
+    align-self: flex-start;
+    margin: 2px 0 0;
+    padding: var(--badge-pad);
+    border: var(--border) solid var(--card-soon-badge-edge);
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-badge);
+    line-height: var(--lh-body);
+    font-variation-settings: var(--fv-caps);
+    color: var(--card-soon-text);
+  }
+</style>

@@ -1,0 +1,30 @@
+---
+// The game: Friendly Mode on the Legends deck. A fixed-height screen with no
+// scrolling (Base's `game`).
+import Base from "../../../layouts/Base.astro";
+import Footer from "../../../components/Footer.astro";
+import Game from "../../../components/game/Game.svelte";
+import { t } from "../../../i18n";
+---
+
+<Base title={t("friendly.title")} description={t("friendly.description")} game>
+  <!-- client:load, not client:visible: the first tap must not wait (ARCHITECTURE.md §14). -->
+  <Game client:load deck="legends" mode="friendly" legends />
+  <noscript>
+    <p class="noscript">{t("start.noscript")}</p>
+  </noscript>
+  <Footer />
+</Base>
+
+<style>
+  /* The island's wrapper element must not break the page's flex column. */
+  :global(astro-island) {
+    display: contents;
+  }
+  .noscript {
+    padding: 8px 18px;
+    text-align: center;
+    font-size: var(--fs-body);
+    color: var(--dim);
+  }
+</style>

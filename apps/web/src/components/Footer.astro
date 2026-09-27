@@ -2,6 +2,7 @@
 // The prototype's footer line, carrying site links instead of the prototype
 // notice, and the two general feedback forms.
 import { t } from "../i18n";
+import { FRIENDLY_PATH } from "../lib/paths";
 
 const links = [
   { href: "/about", label: t("footer.about") },
@@ -9,9 +10,9 @@ const links = [
   { href: "/about#how-to-play", label: t("footer.howToPlay") },
 ];
 
-// The forms live in the game island on `/`. There, the island opens them
-// directly from these links (`data-feedback`); from any other page the link
-// goes to `/`, whose hash opens the form on load.
+// The forms live in the game island on the game page. There, the island opens
+// them directly from these links (`data-feedback`); from any other page the
+// link goes to the game page, whose hash opens the form on load.
 const feedback = [
   { kind: "suggest", label: t("footer.suggest") },
   { kind: "problem", label: t("footer.problem") },
@@ -31,7 +32,7 @@ const feedback = [
     {feedback.map((link, i) => (
       <>
         {i > 0 && <span aria-hidden="true"> · </span>}
-        <a href={`/#${link.kind}`} data-feedback={link.kind}>
+        <a href={`${FRIENDLY_PATH}#${link.kind}`} data-feedback={link.kind}>
           {link.label}
         </a>
       </>

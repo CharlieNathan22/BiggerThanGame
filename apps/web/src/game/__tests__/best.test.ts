@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BEST_KEY, readBest, saveBest } from "../best";
+import { bestKey, readBest, saveBest } from "../best";
 import type { StorageAccess } from "../best";
 import { challengeUrl, readChallenge, withoutChallenge } from "../challenge";
 import { RUN_ID, SIG } from "./fixtures";
@@ -17,30 +17,46 @@ const throwing: StorageAccess = () => {
   throw new DOMException("denied", "SecurityError");
 };
 
+const KEY = bestKey("legends", "friendly");
+
 describe("local best", () => {
+  it("is kept per deck and mode", () => {
+    expect(KEY).toBe("bt:best:legends:friendly");
+    expect(bestKey("legends", "endless")).toBe("bt:best:legends:endless");
+  });
+
   it("reads and writes the number, and only the number", () => {
     const { data, access } = memory();
-    expect(readBest(access)).toBe(0);
-    expect(saveBest(access, 14)).toBe(true);
-    expect(readBest(access)).toBe(14);
-    expect([...data.entries()]).toEqual([[BEST_KEY, "14"]]);
+    expect(readBest(access, KEY)).toBe(0);
+    expect(saveBest(access, KEY, 14)).toBe(true);
+    expect(readBest(access, KEY)).toBe(14);
+    expect([...data.entries()]).toEqual([[KEY, "14"]]);
+  });
+
+  it("keeps one mode's best apart from another's, and ignores the old bt:best", () => {
+    const { access } = memory({ "bt:best": "30" });
+    expect(readBest(access, KEY)).toBe(0);
+    saveBest(access, bestKey("legends", "endless"), 9);
+    saveBest(access, KEY, 4);
+    expect(readBest(access, KEY)).toBe(4);
+    expect(readBest(access, bestKey("legends", "endless"))).toBe(9);
   });
 
   it("reads 0 from storage that is missing, blocked or throws", () => {
-    expect(readBest(() => null)).toBe(0);
-    expect(readBest(throwing)).toBe(0);
+    expect(readBest(() => null, KEY)).toBe(0);
+    expect(readBest(throwing, KEY)).toBe(0);
     const getThrows: StorageAccess = () => ({
       getItem: () => {
         throw new Error("no");
       },
       setItem: () => {},
     });
-    expect(readBest(getThrows)).toBe(0);
+    expect(readBest(getThrows, KEY)).toBe(0);
   });
 
   it("ignores anything stored that isn't a plain count", () => {
     for (const junk of ["", "abc", "-3", "1.5", "1e3", "99999", " 7"]) {
-      expect(readBest(memory({ [BEST_KEY]: junk }).access), junk).toBe(0);
+      expect(readBest(memory({ [KEY]: junk }).access, KEY), junk).toBe(0);
     }
   });
 
@@ -51,10 +67,10 @@ describe("local best", () => {
         throw new DOMException("full", "QuotaExceededError");
       },
     });
-    expect(saveBest(full, 3)).toBe(false);
-    expect(saveBest(throwing, 3)).toBe(false);
-    expect(saveBest(() => null, 3)).toBe(false);
-    expect(saveBest(memory().access, -1)).toBe(false);
+    expect(saveBest(full, KEY, 3)).toBe(false);
+    expect(saveBest(throwing, KEY, 3)).toBe(false);
+    expect(saveBest(() => null, KEY, 3)).toBe(false);
+    expect(saveBest(memory().access, KEY, -1)).toBe(false);
   });
 });
 
@@ -84,9 +100,13 @@ describe("challenge links", () => {
     expect(readChallenge(s)).toEqual({ kind: "broken" });
   });
 
-  it("round-trips through the URL it builds", () => {
+  it("round-trips through the URL it builds, on the game page", () => {
     const url = challengeUrl("https://biggerthangame.com", { runId: RUN_ID, score: 7, sig: SIG });
-    expect(url.startsWith("https://biggerthangame.com/?challenge=")).toBe(true);
+    expect(
+      url.startsWith(
+        "https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=",
+      ),
+    ).toBe(true);
     expect(readChallenge(new URL(url).search)).toEqual({
       kind: "link",
       link: { runId: RUN_ID, score: 7, sig: SIG },

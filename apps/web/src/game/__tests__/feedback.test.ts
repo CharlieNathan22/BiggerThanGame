@@ -297,11 +297,18 @@ describe("sitePage", () => {
     expect(sitePage("/about")).toBe("/about");
     expect(sitePage("/about.html")).toBe("/about");
     expect(sitePage("/index.html")).toBe("/");
+    expect(sitePage("/football-higher-or-lower/legends/friendly")).toBe(
+      "/football-higher-or-lower/legends/friendly",
+    );
+    expect(sitePage("/football-higher-or-lower/legends.html")).toBe(
+      "/football-higher-or-lower/legends",
+    );
   });
 
   it("calls any other path the 404 page, which is what the site serves there", () => {
     expect(sitePage("/no-such-page")).toBe("/404");
     expect(sitePage("/about/")).toBe("/404");
+    expect(sitePage("/football-higher-or-lower/legends/friendly/")).toBe("/404");
   });
 });
 
@@ -311,21 +318,23 @@ describe("arrivedFrom", () => {
   it("is the page a #problem link was followed from, as a path only", () => {
     expect(arrivedFrom(`${ORIGIN}/credits?utm=x#top`, ORIGIN)).toBe("/credits");
     expect(arrivedFrom(`${ORIGIN}/missing`, ORIGIN)).toBe("/404");
+    expect(arrivedFrom(`${ORIGIN}/`, ORIGIN)).toBe("/");
   });
 
   it("is the game page for a link from elsewhere, or none at all", () => {
-    expect(arrivedFrom("https://example.com/about", ORIGIN)).toBe("/");
-    expect(arrivedFrom("", ORIGIN)).toBe("/");
-    expect(arrivedFrom("not a url", ORIGIN)).toBe("/");
+    const game = "/football-higher-or-lower/legends/friendly";
+    expect(arrivedFrom("https://example.com/about", ORIGIN)).toBe(game);
+    expect(arrivedFrom("", ORIGIN)).toBe(game);
+    expect(arrivedFrom("not a url", ORIGIN)).toBe(game);
   });
 });
 
 describe("SITE_PAGES", () => {
-  it("lists exactly the pages the site builds", () => {
+  it("lists exactly the pages the site builds, nested ones included", () => {
     const dir = fileURLToPath(new URL("../../pages", import.meta.url));
-    const built = readdirSync(dir)
+    const built = readdirSync(dir, { recursive: true, encoding: "utf8" })
       .filter((f) => f.endsWith(".astro"))
-      .map((f) => f.replace(/\.astro$/, ""))
+      .map((f) => f.replace(/\\/g, "/").replace(/\.astro$/, ""))
       .map((name) => (name === "index" ? "/" : `/${name}`));
     expect([...SITE_PAGES].sort()).toEqual(built.sort());
   });

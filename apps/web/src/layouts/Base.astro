@@ -4,21 +4,26 @@ import "../styles/tokens.css";
 import "../styles/base.css";
 import archivoLatin from "@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url";
 import cinzelLatin from "@fontsource/cinzel/files/cinzel-latin-600-normal.woff2?url";
+import { isLegendsPath, servedPath } from "../lib/paths";
 
 interface Props {
   title: string;
   description: string;
-  /** The game page: a fixed-height screen with no scrolling. `/` only. */
+  /** A game page: a fixed-height screen with no scrolling. */
   game?: boolean;
-  /** Off for pages that shouldn't be indexed under their own URL, like the 404. */
-  canonical?: boolean;
+  /**
+   * The canonical path. By default the page's own; another page's path for a
+   * duplicate (/football-higher-or-lower/legends); false for a page that
+   * shouldn't be indexed under its own URL, like the 404.
+   */
+  canonical?: string | false;
 }
 
-const { title, description, game = false, canonical = true } = Astro.props;
+const { title, description, game = false, canonical } = Astro.props;
 
 // Pages build to `about.html` and are served at `/about` (astro.config.mjs).
-const path = Astro.url.pathname.replace(/(\/index)?\.html$/, "") || "/";
-const canonicalUrl = new URL(path, Astro.site);
+const path = servedPath(Astro.url.pathname);
+const canonicalUrl = canonical === false ? null : new URL(canonical ?? path, Astro.site);
 ---
 
 <!doctype html>
@@ -28,14 +33,17 @@ const canonicalUrl = new URL(path, Astro.site);
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    {canonical && <link rel="canonical" href={canonicalUrl} />}
+    {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
     <!-- The title bar's --ink. A meta tag can't read a custom property. -->
     <meta name="theme-color" content="#06121a" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
-    <!-- The title bar is on every page, so its two Latin faces are always needed. -->
+    <!-- The title bar is on every page, so its Latin Archivo is always needed; its
+         Cinzel "Legends" only on the Legends pages. -->
     <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href={cinzelLatin} as="font" type="font/woff2" crossorigin />
+    {isLegendsPath(path) && (
+      <link rel="preload" href={cinzelLatin} as="font" type="font/woff2" crossorigin />
+    )}
   </head>
   <body class:list={{ game }}>
     <div class="frame">

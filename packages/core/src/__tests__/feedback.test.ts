@@ -19,7 +19,17 @@ describe("FEEDBACK_LIMITS", () => {
 describe("isSitePage", () => {
   it("accepts the site's own pages and nothing else", () => {
     for (const page of SITE_PAGES) expect(isSitePage(page)).toBe(true);
-    for (const path of ["", "/about/", "/about.html", "/admin", "about", "https://x.com/"]) {
+    for (const path of [
+      "",
+      "/about/",
+      "/about.html",
+      "/admin",
+      "about",
+      "https://x.com/",
+      "/football-higher-or-lower/legends/",
+      "/football-higher-or-lower/legends/friendly/",
+      "/football-higher-or-lower/legends/ranked",
+    ]) {
       expect(isSitePage(path)).toBe(false);
     }
   });

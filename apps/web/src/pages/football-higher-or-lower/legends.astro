@@ -1,0 +1,12 @@
+---
+// The Legends deck. For now the hub's content, canonical to the hub, and
+// linked from nowhere (DESIGN.md §17).
+import Page from "../../layouts/Page.astro";
+import FootballHub from "../../components/FootballHub.astro";
+import { t } from "../../i18n";
+import { FOOTBALL_PATH } from "../../lib/paths";
+---
+
+<Page title={t("legends.title")} description={t("legends.description")} canonical={FOOTBALL_PATH}>
+  <FootballHub />
+</Page>
