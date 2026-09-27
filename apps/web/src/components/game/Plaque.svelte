@@ -158,5 +158,7 @@
     font-size: var(--fs-plaque);
     font-variation-settings: var(--fv-plaque);
     line-height: var(--lh-plaque);
+    /* If a label ever needs two lines, split it evenly. */
+    text-wrap: balance;
   }
 </style>

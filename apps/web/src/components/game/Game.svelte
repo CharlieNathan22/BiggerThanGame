@@ -365,7 +365,6 @@
           <Counter
             count={game.count}
             stat={round.stat.key}
-            anchorValue={round.anchor.value}
             target={reveal?.value ?? null}
             display={reveal?.display ?? null}
             {timings}
@@ -388,9 +387,17 @@
             hidden={phase !== "awaiting"}
           >
             <button class="pick" bind:this={higherButton} onclick={() => pick("higher")}>
+              <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                <path d="M6 10.5V1.5M2 5.5l4-4 4 4" />
+              </svg>
               {t("pick.higher")}
             </button>
-            <button class="pick" onclick={() => pick("lower")}>{t("pick.lower")}</button>
+            <button class="pick" onclick={() => pick("lower")}>
+              {t("pick.lower")}
+              <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                <path d="M6 1.5v9M2 6.5l4 4 4-4" />
+              </svg>
+            </button>
           </div>
           <p class="hitch" role="status" class:empty={phase !== "revealing" || game.hitch === null}>
             {phase === "revealing" ? hitchText(game.hitch) : ""}
@@ -559,6 +566,8 @@
 
   .slot {
     position: relative;
+    /* Never squeezed, so Higher / Lower are never pushed out of the half. */
+    flex: none;
     margin-top: var(--picks-gap);
     min-height: var(--target-min);
     display: grid;
@@ -569,7 +578,7 @@
   }
   .picks {
     display: flex;
-    gap: 10px;
+    gap: var(--pick-gap);
   }
   /* Hidden, but still holding its room. */
   .picks[hidden] {
@@ -607,29 +616,56 @@
     font-variation-settings: var(--fv-caption);
   }
   .pick {
-    min-width: var(--pick-min-w);
-    min-height: var(--target-min);
-    padding: 11px 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--pick-arrow-gap);
+    min-width: var(--pick-w);
+    min-height: max(var(--pick-h), var(--target-min));
+    padding: 0 var(--pick-pad-x);
     border: var(--border-pick) solid var(--chalk);
     border-radius: var(--radius-pill);
     background: var(--pick-bg);
     font-size: var(--fs-pick);
     font-variation-settings: var(--fv-button);
+    /* Room for the ring, drawn only on hover and keyboard focus. */
+    outline: var(--pick-ring-w) solid transparent;
+    outline-offset: var(--pick-ring-offset);
     transition:
       background-color var(--dur-hover),
       color var(--dur-hover),
+      outline-color var(--dur-hover),
       transform var(--dur-press);
   }
-  .pick:hover {
-    background: var(--chalk);
-    color: var(--night);
+  .arrow {
+    flex: none;
+    width: var(--pick-arrow);
+    height: var(--pick-arrow);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: var(--pick-arrow-stroke);
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
-  .pick:active {
-    transform: scale(var(--press-scale));
+  /* A mouse or trackpad: the button turns white inside a gold ring. Touch
+     screens skip this, so a tapped button doesn't stay lit. */
+  @media (hover: hover) {
+    .pick:hover {
+      background: var(--chalk);
+      color: var(--night);
+      outline-color: var(--pick-ring);
+    }
   }
   .pick:focus-visible {
-    outline: var(--focus-ring) solid var(--tier);
-    outline-offset: var(--focus-offset);
+    background: var(--chalk);
+    color: var(--night);
+    outline-color: var(--pick-ring);
+  }
+  /* Pressed, on touch above all: white and pushed in. */
+  .pick:active {
+    background: var(--chalk);
+    color: var(--night);
+    transform: scale(var(--press-scale));
   }
 
   .veil {

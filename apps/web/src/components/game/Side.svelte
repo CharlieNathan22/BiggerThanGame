@@ -31,8 +31,9 @@
     {/key}
     <!--
       The text sits just under the half's middle, below the face at the
-      default photo focus. A scrim darkens only the band behind it and a halo rings the
-      glyphs, so the photo stays open above (DESIGN.md §12).
+      default photo focus. A dark halo rings every glyph, and the name and
+      country carry a deeper shadow that follows their letters, so the photo
+      stays open around them (DESIGN.md §12).
     -->
     <div class="text">
       <div class="who">
@@ -73,9 +74,12 @@
     min-height: 0;
   }
   /* Stacked halves (phones): the plaque straddles the divide, so the top
-     half's text stops short of it. */
+     half's text stops short of it, and the bottom half's starts below it. */
   .side.a {
     padding-bottom: var(--plaque-clear);
+  }
+  .side.b {
+    padding-top: var(--plaque-clear-below);
   }
   /* Side by side: the anchor keeps an empty slot the size of the challenger's
      Higher / Lower, so on a short screen both texts give way alike and the
@@ -83,6 +87,9 @@
   @media (min-width: 780px) {
     .side.a {
       padding-bottom: var(--text-bottom);
+    }
+    .side.b {
+      padding-top: 16px;
     }
     .side.a::after {
       content: "";
@@ -93,7 +100,8 @@
   /* Short landscape screens: keep the strip under the plaque clear (Plaque.svelte). */
   @media (orientation: landscape) and (max-height: 500px) {
     .side,
-    .side.a {
+    .side.a,
+    .side.b {
       padding-top: calc(var(--plaque-h) + var(--plaque-top-gap) * 2);
       padding-bottom: var(--text-bottom-short);
     }
@@ -117,58 +125,63 @@
   }
   .text {
     position: relative;
-    /* Its own layer, so the scrim below goes over the photo and under the text. */
-    z-index: 0;
+    /* Never squeezed: on a short half the space above it gives way instead. */
+    flex: none;
     align-self: stretch;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-shadow: var(--halo);
   }
-  /* The scrim: full strength from the top of the text down to the half's
-     bottom edge (the half clips it), fading to nothing over --scrim-fade above.
-     Only over a photo; the monogram's plain half doesn't need it. */
-  .side:has(:global(.photo)) .text::before {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    top: calc(-1 * var(--scrim-fade));
-    bottom: -100vh;
-    left: -100vw;
-    right: -100vw;
-    background: linear-gradient(
-      to bottom,
-      transparent,
-      rgba(var(--ink-rgb), var(--scrim-opacity)) var(--scrim-fade)
-    );
-    pointer-events: none;
+  /* The tint: a soft dark shadow that follows the letters of the name and
+     country, drawn from their own shapes (--tint-*), so there is no box. Only
+     over a photo; the monogram's plain half doesn't need it. The figure, "?"
+     and qualifier have the halo only. */
+  .side:has(:global(.photo)) .who {
+    filter: var(--tint);
   }
+  /* Never narrower than the name's longest word (min-width wins over
+     max-width), so a long one-word name isn't clipped and stays centred. */
   .who {
     max-width: var(--who-w);
+    min-width: min-content;
   }
+  /* At most --name-lines lines, ending in an ellipsis; the whole name stays in
+     the page for screen readers. The clip would cut a text-shadow, so the halo
+     is drawn as a filter, which comes after it. The padding keeps accents and
+     descenders clear of the clip without moving anything. */
   .name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--name-lines);
+    line-clamp: var(--name-lines);
+    overflow: hidden;
+    padding-block: var(--name-clip-pad);
+    margin-block: calc(-1 * var(--name-clip-pad));
     font-size: var(--fs-name);
     line-height: var(--lh-name);
     font-variation-settings: var(--fv-name);
     letter-spacing: var(--tracking-name);
-  }
-  /* An optional gold hairline under the name (--name-rule-*). */
-  .name::after {
-    content: "";
-    display: var(--name-rule-display);
-    width: var(--name-rule-w);
-    height: var(--name-rule-h);
-    margin: var(--name-rule-gap) auto 0;
-    background: var(--name-rule-colour);
+    text-shadow: none;
+    filter: var(--halo-filter);
   }
   .meta {
-    margin-top: 6px;
+    margin-top: var(--name-rule-gap);
     font-size: var(--fs-meta);
     color: var(--dim);
     font-variation-settings: var(--fv-meta);
   }
+  /* An optional gold hairline under the name (--name-rule-*). */
+  .meta::before {
+    content: "";
+    display: var(--name-rule-display);
+    width: var(--name-rule-w);
+    height: var(--name-rule-h);
+    margin: 0 auto var(--meta-gap);
+    background: var(--name-rule-colour);
+  }
   .value {
-    margin-top: 14px;
+    margin-top: var(--value-gap);
     min-height: var(--value-min-h);
     display: flex;
     flex-direction: column;
@@ -176,7 +189,7 @@
     justify-content: center;
   }
   .qual {
-    margin-top: 5px;
+    margin-top: var(--qual-gap);
     font-size: var(--fs-qual);
     color: var(--dim);
     font-variation-settings: var(--fv-caption);

@@ -38,6 +38,11 @@ a {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  /* The footer's small links grow a 44px hit area that hangs a few pixels
+     below the page. Clip it there, where nothing can be tapped anyway, so a
+     page that fits the screen doesn't scroll. Longer pages grow and scroll as
+     ever; clip, unlike hidden, makes no scroll container. */
+  overflow-y: clip;
 }
 
 /* A game page (/football-higher-or-lower/legends/friendly) is a fixed-height

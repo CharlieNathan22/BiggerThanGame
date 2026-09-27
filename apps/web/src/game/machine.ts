@@ -402,7 +402,7 @@ export function spinDelay(timings: Timings, reducedMotion: boolean): number {
  * later: the nominal count (`count` after the tap), or `settle` after arrival.
  * An on-time response therefore looks exactly like the plain count-up, and a
  * late one still counts for at least `settle` — the number never snaps. Until
- * the response lands, the number scrambles; it never freezes. ARCHITECTURE.md §9.
+ * the response lands, the number holds at zero. ARCHITECTURE.md §9.
  */
 export function settleWindow(
   count: CountClock,

@@ -164,6 +164,17 @@ describe("formatters", () => {
   });
 });
 
+describe("zero", () => {
+  it("gives every stat a zero in its own shape: prefix, decimals and unit", () => {
+    for (const key of STAT_KEYS) {
+      expect(STATS[key].zero, key).toMatch(/^\D*0(\.0+)?\D*$/);
+    }
+    expect(STATS.fee.zero).toBe("€0.0m");
+    expect(STATS.ig.zero).toBe("0.0m");
+    expect(STATS.caps.zero).toBe("0");
+  });
+});
+
 describe("qualifiers", () => {
   it("exposes the fee year", () => {
     expect(STATS.fee.qualifier?.(byId("alpha"))).toBe("2005");

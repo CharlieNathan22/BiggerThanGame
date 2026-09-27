@@ -1,23 +1,22 @@
 /**
  * The challenger's number during the reveal, frame by frame.
  *
- * From the tap until the response lands the number scrambles; once it lands it
- * counts up to the true value over `settleWindow` (machine.ts). Pure: the
+ * From the tap until the response lands the number holds at zero; once it
+ * lands it counts up to the true value over `settleWindow` (machine.ts), along an
+ * ease-out of power `countEase`. Pure: the
  * component calls `counterFrame` from `requestAnimationFrame` and renders the
  * result. ARCHITECTURE.md §9.
  */
 
-import { STATS } from "@bt/core";
-import type { StatKey } from "@bt/core";
 import { settleWindow } from "./machine";
 import type { CountClock } from "./machine";
 import type { Timings } from "./timing";
 
 export type CounterFrame =
-  /** Reduced motion and no answer yet: keep the "?" rather than scramble. */
+  /** Reduced motion and no answer yet: keep the "?". */
   | { readonly kind: "hidden" }
-  /** No answer yet. `tick` changes every `timings.scramble` ms; draw a new number when it does. */
-  | { readonly kind: "scramble"; readonly tick: number }
+  /** No answer yet: hold at the stat's zero, which gives nothing away. */
+  | { readonly kind: "waiting" }
   /** Counting up towards the answer. */
   | { readonly kind: "count"; readonly value: number }
   /** Settled: show the server's display string exactly. */
@@ -32,29 +31,35 @@ export function counterFrame(
 ): CounterFrame {
   const window = settleWindow(count, timings, reducedMotion);
   if (window === null || target === null) {
-    if (reducedMotion) return { kind: "hidden" };
-    const elapsed = Math.max(0, now - count.tappedAt);
-    return { kind: "scramble", tick: Math.floor(elapsed / Math.max(1, timings.scramble)) };
+    return reducedMotion ? { kind: "hidden" } : { kind: "waiting" };
   }
   const span = window.end - window.start;
-  const k = span <= 0 ? 1 : Math.min(1, Math.max(0, (now - window.start) / span));
-  if (k >= 1) return { kind: "done" };
-  // Ease-out cubic, as the prototype's count-up.
-  return { kind: "count", value: target * (1 - Math.pow(1 - k, 3)) };
+  if (span <= 0 || now >= window.end) return { kind: "done" };
+  const k = Math.max(0, now - window.start) / span;
+  // Ease out: most of the distance early, then a slow creep to the value.
+  return { kind: "count", value: target * (1 - Math.pow(1 - k, timings.countEase)) };
 }
 
 /**
- * A stand-in number while the answer is in flight, from a random draw in
- * [0, 1). It says nothing about the hidden value: it's scaled from the anchor's
- * figure, which is already on screen.
+ * Formats the count-up in the final display's own shape — its prefix, unit
+ * and decimals — so counting to `€100.5m` shows `€12.3m` and `€57.8m`, never
+ * `€850k` or `€37.18m`. `value` is in the stat's stored units, as the round
+ * sends it: millions for a fee or followers, so a `k` figure is scaled up.
  */
-export function scrambleValue(anchorValue: number, random: number): number {
-  return random * Math.max(anchorValue * 2, 10);
-}
-
-/** An in-between figure, formatted as the stat formats its real values. */
-export function formatFigure(stat: StatKey, value: number): string {
-  return STATS[stat].format(value);
+export function countFormat(display: string): (value: number) => string {
+  const match = /^(\D*?)[\d,]+(?:\.(\d+))?(\D*)$/u.exec(display);
+  if (match === null) return () => display;
+  const prefix = match[1] ?? "";
+  const places = (match[2] ?? "").length;
+  const unit = match[3] ?? "";
+  const scale = unit === "k" ? 1000 : 1;
+  return (value) =>
+    prefix +
+    (value * scale).toLocaleString("en-GB", {
+      minimumFractionDigits: places,
+      maximumFractionDigits: places,
+    }) +
+    unit;
 }
 
 /**

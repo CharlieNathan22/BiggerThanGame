@@ -1,25 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { counterFrame, formatFigure, scrambleValue, splitDisplay } from "../counter";
+import { countFormat, counterFrame, splitDisplay } from "../counter";
 import { TIMINGS } from "../timing";
 
 const tapped = { tappedAt: 1000, arrivedAt: null };
 
 describe("counterFrame", () => {
-  it("scrambles from the tap until the answer lands, however long that takes", () => {
+  it("holds at zero from the tap until the answer lands, however long that takes", () => {
     for (const now of [1000, 1300, 1640, 5000, 30_000]) {
-      expect(counterFrame(tapped, null, now, TIMINGS, false).kind).toBe("scramble");
+      expect(counterFrame(tapped, null, now, TIMINGS, false)).toEqual({ kind: "waiting" });
     }
-  });
-
-  it("changes the scrambled number once per scramble tick", () => {
-    const tick = (now: number) => {
-      const f = counterFrame(tapped, null, now, TIMINGS, false);
-      return f.kind === "scramble" ? f.tick : -1;
-    };
-    expect(tick(1000)).toBe(0);
-    expect(tick(1000 + TIMINGS.scramble - 1)).toBe(0);
-    expect(tick(1000 + TIMINGS.scramble)).toBe(1);
-    expect(tick(1000 + 10 * TIMINGS.scramble)).toBe(10);
   });
 
   it("counts up from zero once the answer lands, settling at the nominal time", () => {
@@ -49,6 +38,31 @@ describe("counterFrame", () => {
     }
   });
 
+  it("covers most of the distance early, then creeps in to land", () => {
+    const count = { tappedAt: 0, arrivedAt: 0 };
+    const at = (t: number) => {
+      const f = counterFrame(count, 100, t * TIMINGS.count, TIMINGS, false);
+      return f.kind === "count" ? f.value : 100;
+    };
+    // At 3: about 88% by half-time, and the last 40% of the time eases through
+    // the last 6%.
+    expect(at(0.5)).toBeGreaterThan(85);
+    expect(at(0.6)).toBeGreaterThan(92);
+    expect(at(0.6)).toBeLessThan(96);
+    expect(at(0.95)).toBeLessThan(100);
+  });
+
+  it("moves on every frame and lands exactly on time", () => {
+    const count = { tappedAt: 0, arrivedAt: 0 };
+    const value = (now: number) => {
+      const f = counterFrame(count, 1000, now, TIMINGS, false);
+      return f.kind === "count" ? f.value : null;
+    };
+    expect(value(101) ?? 0).toBeGreaterThan(value(100) ?? 0);
+    expect(counterFrame(count, 1000, TIMINGS.count - 1, TIMINGS, false).kind).toBe("count");
+    expect(counterFrame(count, 1000, TIMINGS.count, TIMINGS, false)).toEqual({ kind: "done" });
+  });
+
   it("gives a late answer the full settle time rather than snapping", () => {
     const late = TIMINGS.count + 1000;
     const count = { tappedAt: 0, arrivedAt: late };
@@ -58,8 +72,8 @@ describe("counterFrame", () => {
   });
 
   // The dev delay switch's settings (0, 200, 800 ms, 3 s), played frame by
-  // frame at 60 fps: the scramble never stalls while the answer is out, and
-  // once it lands the count rises smoothly from zero to the value.
+  // frame at 60 fps: zero holds while the answer is out, and once it lands
+  // the count rises smoothly from zero to the value.
   it.each([0, 200, 800, 3000])(
     "holds and settles without a snap or a freeze when the answer takes %i ms",
     (delay) => {
@@ -68,8 +82,6 @@ describe("counterFrame", () => {
       const count = { tappedAt: 0, arrivedAt: null };
       const arrived = { tappedAt: 0, arrivedAt: delay };
 
-      let lastTick = -1;
-      let lastChange = 0;
       let last = -1;
       let counted = 0;
       let doneAt: number | null = null;
@@ -81,14 +93,8 @@ describe("counterFrame", () => {
           TIMINGS,
           false,
         );
-        if (f.kind === "scramble") {
+        if (f.kind === "waiting") {
           expect(now).toBeLessThan(delay);
-          if (f.tick !== lastTick) {
-            lastTick = f.tick;
-            lastChange = now;
-          }
-          // Never frozen: a new number at least every scramble tick (plus a frame).
-          expect(now - lastChange).toBeLessThanOrEqual(TIMINGS.scramble + frame);
         } else if (f.kind === "count") {
           expect(f.value).toBeGreaterThanOrEqual(last);
           // No snap: no frame covers more than a fifth of the distance.
@@ -115,20 +121,40 @@ describe("counterFrame", () => {
   });
 });
 
-describe("scrambleValue", () => {
-  it("stays within a range scaled from the anchor's visible figure", () => {
-    expect(scrambleValue(100, 0)).toBe(0);
-    expect(scrambleValue(100, 0.999)).toBeLessThan(200);
-    expect(scrambleValue(1, 0.5)).toBe(5);
+describe("countFormat", () => {
+  it("keeps the final figure's unit and decimals all the way up", () => {
+    const fee = countFormat("€100.5m");
+    expect(fee(0)).toBe("€0.0m");
+    expect(fee(0.85)).toBe("€0.9m");
+    expect(fee(12.34)).toBe("€12.3m");
+    expect(fee(57.76)).toBe("€57.8m");
+    expect(fee(100.5)).toBe("€100.5m");
+    expect(countFormat("€12.95m")(3.3)).toBe("€3.30m");
+    expect(countFormat("87.7m")(3.14159)).toBe("3.1m");
+    expect(countFormat("36m")(12.6)).toBe("13m");
   });
-});
 
-describe("formatFigure", () => {
-  it("formats in-between figures as the stat formats real ones", () => {
-    expect(formatFigure("caps", 41.6)).toBe("42");
-    expect(formatFigure("apps", 1234)).toBe("1,234");
-    expect(formatFigure("ig", 3.141)).toBe("3.14m");
-    expect(formatFigure("fee", 77.524)).toBe("€77.52m");
+  it("counts a figure under a million in thousands", () => {
+    expect(countFormat("€850k")(0.3)).toBe("€300k");
+    expect(countFormat("14k")(0.0071)).toBe("7k");
+  });
+
+  it("groups and rounds whole numbers as the final one is written", () => {
+    expect(countFormat("1,234")(987.6)).toBe("988");
+    expect(countFormat("1,234")(1100)).toBe("1,100");
+    expect(countFormat("7")(3.4)).toBe("3");
+  });
+
+  it("never changes shape on the way up", () => {
+    for (const final of ["€100.5m", "€12.95m", "€850k", "87.7m", "1,234", "180"]) {
+      // Prefix, unit and number of decimals: "€100.5m" and "€7.2m" are both "€N.dm".
+      const shape = (s: string) => s.replace(/[\d,]+/, "N").replace(/\d/g, "d");
+      const format = countFormat(final);
+      for (let k = 0; k <= 1; k += 0.01) {
+        const target = final.startsWith("€8") ? 0.85 : Number(final.replace(/[^\d.]/g, ""));
+        expect(shape(format(target * k)), final).toBe(shape(final));
+      }
+    }
   });
 });
 

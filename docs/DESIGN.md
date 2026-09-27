@@ -185,14 +185,14 @@ leak the server-authoritative model exists to close.
    the client, not merely hidden in the DOM.
 4. A 10-second timer starts **after** the wheel lands.
 5. Player picks higher or lower. The guess goes to the server; the reveal animation begins
-   immediately on a scrambling number and settles when the real value arrives.
+   immediately on a 0, which counts up when the real value arrives.
 6. Correct → the challenger becomes the new anchor, a fresh challenger is dealt.
    Wrong → run over.
 
 Showing the players before the stat is the load-bearing detail. If the stat lands first, people
 evaluate the cards already knowing the question and the dissonance never happens.
 
-The ~1200ms count-up on reveal is what hides the network round trip. Keep it. Prefetch the next
+The ~2500ms count-up on reveal is what hides the network round trip. Keep it. Prefetch the next
 card's _visible_ data during the current round so the between-round transition stays instant.
 
 ### The winner does not stay on
@@ -571,10 +571,10 @@ current stat.
 - **Player photography**, one image per card, treated as a background layer rather than a portrait
   crop: desaturated or duotoned toward the palette, darkened enough that the name and number stay
   legible over it. The text sits just under the middle of each half, below the face, with no panel
-  behind it: a scrim darkens only the band behind the text and fades out above it, and a soft dark
-  halo rings the glyphs, so the face stays clear. The monogram treatment stays as the **fallback**
-  for any player without a usable free image — a gap that will exist, since Commons coverage is
-  uneven for pre-2000 players.
+  behind it: a soft dark halo rings every glyph, and the name and country carry a deeper shadow that
+  follows their letters, so the face and the rest of the photo stay clear. The monogram treatment
+  stays as the **fallback** for any player without a usable free image — a gap that will exist,
+  since Commons coverage is uneven for pre-2000 players.
 - **The numbers are the hero.** The one piece of orchestrated motion is the count-up on reveal;
   everything else stays still. The photo must never compete with the number.
 - **The plaque is the stat.** It changes colour with the tier and is the single most important

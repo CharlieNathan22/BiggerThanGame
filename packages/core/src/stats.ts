@@ -17,6 +17,11 @@ export interface StatDef {
   /** Returns undefined when the player has no figure for this stat. */
   get(player: Player, now: Date): number | undefined;
   format(value: number): string;
+  /**
+   * What the number shows while a hidden value is on its way: zero, in the
+   * stat's usual shape (`€0.0m`), so it says nothing about the value.
+   */
+  readonly zero: string;
   /** Small print under the number — the fee's year, the follower snapshot date. */
   qualifier?(player: Player): string | undefined;
 }
@@ -58,6 +63,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "basic",
     get: (p) => p.stats.club_goals,
     format: int,
+    zero: "0",
   },
   caps: {
     key: "caps",
@@ -65,6 +71,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "basic",
     get: (p) => p.stats.caps,
     format: int,
+    zero: "0",
   },
   apps: {
     key: "apps",
@@ -72,6 +79,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "basic",
     get: (p) => p.stats.apps,
     format: int,
+    zero: "0",
   },
   ig: {
     key: "ig",
@@ -80,6 +88,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     volatile: true,
     get: (p) => p.stats.ig?.value,
     format: formatMillions,
+    zero: "0.0m",
     qualifier: (p) => p.stats.ig?.asOf,
   },
   fee: {
@@ -88,6 +97,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "uncommon",
     get: (p) => p.stats.fee?.value,
     format: (v) => `€${formatMillions(v)}`,
+    zero: "€0.0m",
     qualifier: (p) => (p.stats.fee ? String(p.stats.fee.year) : undefined),
   },
   igoals: {
@@ -96,6 +106,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "uncommon",
     get: (p) => p.stats.igoals,
     format: int,
+    zero: "0",
   },
   ct: {
     key: "ct",
@@ -103,6 +114,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "rare",
     get: (p) => p.stats.ct,
     format: int,
+    zero: "0",
   },
   it: {
     key: "it",
@@ -110,6 +122,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "rare",
     get: (p) => p.stats.it,
     format: int,
+    zero: "0",
   },
   clubs: {
     key: "clubs",
@@ -117,6 +130,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "rare",
     get: (p) => p.stats.clubs,
     format: int,
+    zero: "0",
   },
   age: {
     key: "age",
@@ -124,6 +138,7 @@ export const STATS: Readonly<Record<StatKey, StatDef>> = {
     tier: "rare",
     get: (p, now) => (p.deceased === true ? undefined : ageAt(p.dob, now)),
     format: int,
+    zero: "0",
   },
 };
 

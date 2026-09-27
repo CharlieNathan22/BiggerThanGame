@@ -4,8 +4,9 @@
  *
  * Restyling the game should mean editing this file, not hunting through
  * components. Component styles reference these; they don't invent values.
- * Media-query breakpoints (560px, 780px) can't be custom properties, so they
- * stay literal; responsive values are redefined inside those queries below.
+ * Media-query breakpoints (560px, 780px, 1024px) can't be custom properties,
+ * so they stay literal; responsive values are redefined inside those queries
+ * below.
  */
 
 :root {
@@ -36,10 +37,10 @@
    * tint it.
    */
   --photo-focus: 50% 25%;
-  --photo-filter: grayscale(0.35) saturate(0.9) contrast(1.05) brightness(0.8);
+  --photo-filter: grayscale(0.2) saturate(1.05) contrast(1.05) brightness(0.8);
   --photo-blend: normal;
   --photo-opacity: 0.62;
-  /* --ink as channels, for the scrim's and halo's own opacities. */
+  /* --ink as channels, for the tint's and halo's own opacities. */
   --ink-rgb: 6, 18, 26;
   /*
    * Card text over the photo. No plate: the name, country and figure start
@@ -49,25 +50,20 @@
    * landscape phones) under them, and on stacked phones --plaque-clear under
    * the top half's.
    *
-   * The scrim darkens only the band behind the text: at --scrim-opacity from
-   * the top of the text down to the half's bottom edge, fading to nothing over
-   * --scrim-fade above it. Only over a photo. The halo is a soft dark
-   * text-shadow round every glyph: a tight edge and a wide glow.
-   *
-   * Sized by the contrast pass (M6). The brightest photo pixel at the text is
-   * clipped white — most of the deck has one there on a phone — which the photo
-   * filter and opacity cap at 204 × --photo-opacity over the half's colour.
-   * Over that, under the scrim alone (the halo is extra), 0.61 is the lightest
-   * that holds AA: --dim 4.5:1 as small print, and chalk, the three tier
-   * colours and the "?" 3:1 as large text, on --night, --night-2, --hit and
-   * --miss. The binding cases are --dim and the rare tier on --hit.
+   * The halo is a soft dark text-shadow round every glyph: a tight edge and a
+   * wide glow. The name and country also carry the tint, a deeper, wider
+   * shadow that follows their letters (a drop-shadow of the text itself), so
+   * there is no box and the photo shows between and around the words. Only
+   * over a photo. The figure, the "?" and the qualifier have the halo only.
+   * Their legibility is judged by eye.
    */
+  /* Clears the plaque; from 1024px wide (below) the halves are wide enough for
+     the name to sit level with the plaque's lower edge, nearer the middle. */
   --text-top-gap: calc(var(--plaque-h) / 2 + var(--plaque-halo) + 10px);
   --text-bottom: clamp(14px, 3.4vh, 34px);
   --text-bottom-short: 10px;
   --plaque-clear: calc(var(--plaque-h) / 2 + var(--plaque-halo) + 12px);
-  --scrim-opacity: 0.61;
-  --scrim-fade: clamp(56px, 12vh, 120px);
+  --plaque-clear-below: calc(var(--plaque-h) / 2 + var(--plaque-halo) + 4px);
   --halo-edge-blur: 2px;
   --halo-edge-opacity: 0.55;
   --halo-blur: 14px;
@@ -75,6 +71,20 @@
   --halo:
     0 0 var(--halo-edge-blur) rgba(var(--ink-rgb), var(--halo-edge-opacity)),
     0 0 var(--halo-blur) rgba(var(--ink-rgb), var(--halo-opacity));
+  /* The same halo as a filter, for the name, whose two-line clip would cut a
+     text-shadow. */
+  --halo-filter: drop-shadow(
+      0 0 var(--halo-edge-blur) rgba(var(--ink-rgb), var(--halo-edge-opacity))
+    )
+    drop-shadow(0 0 var(--halo-blur) rgba(var(--ink-rgb), var(--halo-opacity)));
+  /* The tint round the name and country: a close, dark shadow and a wider,
+     softer one, each following the letters. */
+  --tint-near-blur: 4px;
+  --tint-near-opacity: 0.8;
+  --tint-far-blur: 16px;
+  --tint-far-opacity: 0.7;
+  --tint: drop-shadow(0 0 var(--tint-near-blur) rgba(var(--ink-rgb), var(--tint-near-opacity)))
+    drop-shadow(0 0 var(--tint-far-blur) rgba(var(--ink-rgb), var(--tint-far-opacity)));
   /* The gold hairline under the name. `none` turns it off. */
   --name-rule-display: block;
   --name-rule-w: 28px;
@@ -84,10 +94,22 @@
   /* Higher / Lower: their slot under the challenger's figure (the anchor keeps
      the same room when the halves are side by side), and their fill, which
      keeps their text at AA on the photo. On a card with no photo it all but
-     vanishes into --night. */
+     vanishes into --night. Height never goes under --target-min. */
   --picks-gap: 16px;
-  --picks-slot: calc(var(--picks-gap) + var(--target-min));
+  --pick-h: clamp(44px, 7vh, 54px);
+  --pick-w: clamp(118px, 36vw, 156px);
+  --pick-gap: 16px;
+  --pick-pad-x: 20px;
+  --picks-slot: calc(var(--picks-gap) + max(var(--pick-h), var(--target-min)));
   --pick-bg: rgba(var(--ink-rgb), 0.62);
+  /* Up on Higher, down on Lower: inline, beside the word. */
+  --pick-arrow: 0.8em;
+  --pick-arrow-gap: 8px;
+  --pick-arrow-stroke: 1.8;
+  /* Hover and keyboard focus: a gold ring round the white button. */
+  --pick-ring: var(--gold);
+  --pick-ring-w: 3px;
+  --pick-ring-offset: 2px;
   /* The connection note under the challenger during a reconnect or slow-down. */
   --hitch-bg: rgba(6, 18, 26, 0.72);
   /* Notes over the pitch: a refused challenge link. */
@@ -155,13 +177,29 @@
   --fs-fig: clamp(36px, 6.7vh, 60px);
   --fs-qual: 11.5px;
   --fs-monogram: clamp(130px, 26vh, 270px);
-  --fs-pick: 15px;
-  --fs-plaque: 14px;
+  --fs-pick: 17px;
+  /*
+   * The stat on the plaque. Sized so the longest labels ("International
+   * trophies", "Highest transfer fee") stay on one line in the plaque's width
+   * (19px at 320px wide, 22px from about 367px; 23px from 780px, below), and
+   * two balanced lines, if they ever wrap, still fit --plaque-h.
+   */
+  --fs-plaque: clamp(19px, 6vw, 22px);
   /* The "m" after a follower count or fee, relative to the figure. */
   --fs-suffix: 0.4em;
   --tracking-name: -0.02em;
   --lh-plaque: 1.05;
   --who-w: 20ch;
+  /* A name longer than this many lines ends in an ellipsis: three where
+     there's room, two on short screens (below). No name in the deck needs
+     more than two there. */
+  --name-lines: 3;
+  --name-clip-pad: 0.12em;
+  /* The gaps down a card: name to country (the hairline sits in it), country to
+     figure, figure to its small print. Tighter on short screens, below. */
+  --meta-gap: 6px;
+  --value-gap: 14px;
+  --qual-gap: 5px;
   /* Reserves the figure's height so the card doesn't jump when it appears. */
   --value-min-h: clamp(46px, 7.4vh, 66px);
 
@@ -191,7 +229,6 @@
   --plaque-halo: 7px;
   /* Short landscape screens: the plaque sits this far below the top of the divide. */
   --plaque-top-gap: 10px;
-  --pick-min-w: 110px;
   --panel-w: 34ch;
   --prose-w: 62ch;
   --border: 1px;
@@ -324,13 +361,16 @@
   /* From the reel stopping to the plaque's pop and the anchor's value. */
   --dur-land: 40ms;
   /* The reveal count-up that masks the round trip (ARCHITECTURE.md §9). */
-  --dur-count: 1200ms;
+  --dur-count: 2500ms;
+  /* The count's ease-out, as a power: 1 - (1 - t)^p of the way at t. At 3,
+     half the time covers 88% and the last 40% eases through the last 6%.
+     Higher brakes harder. */
+  --count-ease: 3;
   /* The shortest count once a late response lands: it settles, never snaps. */
   --dur-settle: 380ms;
-  /* How often the scrambling number changes while the response is in flight. */
-  --dur-scramble: 75ms;
-  /* From tap to the correct/incorrect colour. */
-  --dur-verdict: 1240ms;
+  /* From tap to the correct/incorrect colour: 40ms after the count settles, so
+     raise it with --dur-count. */
+  --dur-verdict: 2540ms;
   /* From the verdict colour to the next deal. */
   --dur-next: 1400ms;
   /* From a wrong answer's colour to the game-over panel. */
@@ -380,5 +420,48 @@
     --fs-brand: 16px;
     --fs-sub: 14.5px;
     --fs-legends: 22px;
+  }
+}
+
+@media (min-width: 780px) {
+  :root {
+    --fs-plaque: 23px;
+  }
+}
+
+/* Wide screens: the text starts just under the middle, level with the lower
+   part of the plaque. From here no name in the deck reaches it sideways (the
+   closest, at 1024 × 700, is 11px clear); narrower, they would. */
+@media (min-width: 1024px) {
+  :root {
+    --text-top-gap: 12px;
+  }
+}
+
+/* Landscape phones: short halves, so a name gets two lines. */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root {
+    --name-lines: 2;
+  }
+}
+
+/*
+ * Short portrait phones (down to 320 × 568): the lower half has to hold the
+ * challenger's name, country, figure and Higher / Lower under the plaque, so
+ * the card's type and gaps tighten, and a name gets two lines. Nothing is
+ * hidden.
+ */
+@media (max-width: 779px) and (max-height: 760px) and (orientation: portrait) {
+  :root {
+    --name-lines: 2;
+    --fs-name: clamp(20px, 3.7vh, 30px);
+    --fs-fig: clamp(32px, 6vh, 46px);
+    --value-min-h: var(--fs-fig);
+    --name-rule-gap: 4px;
+    --meta-gap: 3px;
+    --value-gap: 4px;
+    --qual-gap: 2px;
+    --picks-gap: 8px;
+    --text-bottom: 8px;
   }
 }

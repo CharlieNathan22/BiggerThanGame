@@ -24,12 +24,15 @@ export interface Timings {
   /** The reveal count-up that masks the round trip (ARCHITECTURE.md §9). */
   readonly count: number;
   /**
+   * The count-up's ease-out, as a power: the value is `1 - (1 - t)^countEase`
+   * of the way at `t`. Higher brakes harder at the end.
+   */
+  readonly countEase: number;
+  /**
    * The shortest count once the response lands. A late response still counts
    * up for this long rather than snapping to the value.
    */
   readonly settle: number;
-  /** How often the scrambling number changes while the response is in flight. */
-  readonly scramble: number;
   /** From tap to the correct/incorrect colour, when the response is on time. */
   readonly verdict: number;
   /** From the verdict colour to the next deal. */
@@ -53,10 +56,10 @@ export const TIMINGS: Timings = {
   land: 40,
   pop: 420,
   spinTintAt: 0.62,
-  count: 1200,
+  count: 2500,
+  countEase: 3,
   settle: 380,
-  scramble: 75,
-  verdict: 1240,
+  verdict: 2540,
   next: 1400,
   over: 1400,
   modal: 180,
@@ -74,8 +77,8 @@ export const TIMING_TOKENS: Readonly<Record<keyof Timings, string>> = {
   pop: "--dur-pop",
   spinTintAt: "--spin-tint-at",
   count: "--dur-count",
+  countEase: "--count-ease",
   settle: "--dur-settle",
-  scramble: "--dur-scramble",
   verdict: "--dur-verdict",
   next: "--dur-next",
   over: "--dur-over",

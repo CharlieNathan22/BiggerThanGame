@@ -636,25 +636,26 @@ not a database query.
 
 ### What masks it
 
-**The reveal count-up (~1200ms) runs on every question**, not only on stat changes — there is a
+**The reveal count-up (~2500ms, `--dur-count`) runs on every question**, not only on stat changes — there is a
 number to reveal every round. That is the masking budget.
 
 Sequence after a tap:
 
 ```
-0ms      guess sent; challenger's number starts scrambling from local state
+0ms      guess sent; challenger's number shows 0 from local state
 25–430ms response lands (see table)
-1200ms   count-up settles on the true value
-~1240ms  correct/incorrect colour
-~2640ms  next pair deals
+2500ms   count-up settles on the true value
+~2540ms  correct/incorrect colour
+~3940ms  next pair deals
 ```
 
 On anything but a genuinely bad connection the response arrives well before the animation would
 have finished, so perceived latency is zero.
 
-**If the response has not arrived by 1200ms, hold the scramble — never snap or freeze.** The number
-keeps rolling and settles when the answer lands. It degrades as "the reveal took a beat", which is
-tolerable, rather than as a stall, which is not.
+**If the response has not arrived by 2500ms, hold at zero — never snap.** The number stays at 0
+until the answer lands, then counts up for at least `--dur-settle`. It degrades as "the reveal took
+a beat". A number that moved before the answer existed read as the answer flashing up, so it
+waits; the connection note under the challenger says when something is actually wrong.
 
 The 1.8s wheel spin on stat-change rounds is additional cover, not load-bearing. Do not design
 anything to depend on it, since it only fires on a switch.
@@ -727,7 +728,7 @@ are skipped.
 ### Image prefetch — requirement, not optimisation
 
 **Player images must never be fetched at reveal time.** That would put a second round trip inside
-the same 1200ms window and is the one thing that would actually make the game feel slow.
+the same 2500ms window and is the one thing that would actually make the game feel slow.
 
 Images are _display_ data, and the next round's display payload arrives with the current answer.
 So:
@@ -754,7 +755,7 @@ So:
 - The **3s timer grace** (section 8) absorbs slow rounds so a laggy connection does not cost the
   player their run.
 - **Bank and end** covers a genuine drop. The client retries a failed request visibly —
-  "Connection lost. Trying again…" under the challenger, with the number still scrambling — after
+  "Connection lost. Trying again…" under the challenger, with the number still at 0 — after
   0.5s, 1s, then every 2s, and banks the streak once the connection has been gone for 5s
   (`RECONNECT` in `apps/web/src/game/machine.ts`). A request unanswered for 8s counts as dropped.
   A refusal retrying can't fix (a `4xx` other than `429`) banks at once.
@@ -982,37 +983,55 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
 - **Challenge links** are read from the game page's URL on load (`game/challenge.ts`) and sent
   with the first start; the start panel says "Beat n". The parameters are removed from the
   address bar once the run starts, and "Play again" is a fresh run. See §7.
-- The reveal count-up (~1200ms) is what masks the round trip — see section 9 for the full budget,
-  the hold-don't-snap rule, and the image prefetch requirement. The challenger's number scrambles
-  from the tap until the response lands, then counts up from zero until the nominal 1200ms or, for a
-  late response, for at least `--dur-settle` (380ms), so it never snaps.
+- The reveal count-up (~2500ms) is what masks the round trip — see section 9 for the full budget,
+  the hold-don't-snap rule, and the image prefetch requirement. The challenger's number shows 0 from
+  the tap — the stat's `zero` from `@bt/core`, in its usual shape (`€0.0m`, `0`), which gives
+  nothing away — until the response lands, then counts up from zero until the nominal 2500ms or, for
+  a late response, for at least `--dur-settle` (380ms), so it never snaps. It eases out
+  (`--count-ease`, a power: at 3 half the time covers 88% and the last 40% eases through the last
+  6%) and moves on every frame; the final value lands exactly at the end of the window. Every
+  in-between number takes the final figure's prefix, unit and decimals (`countFormat`: counting to
+  €100.5m shows €12.3m, never €850k or €37.18m), centred in a box sized by an invisible copy of the
+  final figure, where the 0 already sat. Digits are tabular (`.num`), so nothing clips, and a digit
+  is only gained in the fast early part of the count.
 - **Photos** are a background layer in each half (`Photo.svelte`): `object-fit: cover`, positioned
   by the payload's `focus` through `--focus`, else `--photo-focus` (`50% 25%`); lightly muted and
   dimmed, drawn at partial opacity over the half's colour, which tints it teal at rest and green or
   red on the verdict. A background layer, never the hero (tokens `--photo-*`). The card's text
   starts just under the middle of its half (`Side.svelte`, `--text-top-gap`) — side by side, just
-  under the plaque, with the two names level (the anchor keeps the room of the challenger's Higher /
-  Lower) — below the face at the default focus. A half too short for that puts it as low as fits
-  instead; on stacked phones the top half's stops short of the plaque (`--plaque-clear`). Only over
-  a photo, a scrim darkens the band from the top of the text to the half's bottom edge and fades to
-  nothing over `--scrim-fade` above it; a dark `text-shadow` halo (`--halo-*`) rings the glyphs; an
-  optional gold hairline sits under the name (`--name-rule-*`). Higher / Lower and the connection
-  note share one slot that keeps its room whether they show or not, so the text never moves between
-  rounds. `srcset` comes from `srcsetFor`; `sizes` from `photoSizes`, which allows for a wide photo
-  drawn wider than its half by the cover crop. The monogram shows when there is no photo or it fails
-  to load, including a `403`. The controller preloads round one's two photos when the run starts,
-  each new challenger's photo when an answer lands, and the round's `upcoming` photo as soon as the
-  round is dealt, through an off-screen `Image` with the card's own `sizes` and `srcset`
-  (`game/photos.ts`). A photo already fetched is not fetched again.
-- **Accessibility:** every control is a native button or link with a visible focus ring; the
-  game plays from the keyboard (arrow keys, and focus returns to Higher and to Play again);
-  `prefers-reduced-motion` stops the reel, the count-up and every transition; live regions
-  announce the question (and a stat change), the verdict, slow-downs and share results; the grid
-  has a text label, so tier colour is never the only signal; touch targets are at least 44px
-  (`--target-min`; small footer links grow an invisible hit area). Card text is held to WCAG AA
-  by the band **scrim** alone (`--scrim-opacity`, 0.61), the halo being extra: over a clipped-white
-  photo pixel, the brightest the photo treatment can produce, `--dim` holds 4.5:1 and chalk, the
-  tier colours and the "?" 3:1 as large text, on `--night`, `--night-2`, `--hit` and `--miss`.
+  under the plaque, or from 1024px wide, where the halves are wide enough, level with its lower
+  edge, with the two names level (the anchor keeps the room of the challenger's Higher / Lower) —
+  below the face at the default focus. A half too short for that puts it as low as fits instead; on
+  stacked phones the top half's stops short of the plaque (`--plaque-clear`) and the bottom half's
+  starts below it (`--plaque-clear-below`). The text and the button slot are never squeezed: on a
+  short half the space above the text gives way. Short portrait phones (to 320 × 568) tighten the
+  card's type and gaps and the buttons' height, never below `--target-min`. A name ends in an
+  ellipsis after `--name-lines` lines — three, two on short screens, where no deck name needs more —
+  with the whole name still in the page for screen readers; its halo is a filter (`--halo-filter`)
+  so the clip can't cut it, and its box is never narrower than its longest word. Only over a photo,
+  the name and country carry a tint (`--tint-*`): a deeper, wider dark shadow drawn from the letters
+  themselves (`filter: drop-shadow` on their block), so it follows the text's shape with no box, and
+  the photo shows between and around the words. The figure, the "?" and the qualifier have no tint;
+  a dark `text-shadow` halo (`--halo-*`) rings the glyphs; an optional gold hairline sits under the
+  name (`--name-rule-*`). Higher and Lower (`--pick-*`) carry an up and a down arrow (inline SVG,
+  `aria-hidden`); hover, only where the device has one, and keyboard focus turn the button white
+  inside a gold ring (`--pick-ring*`); a press turns it white and pushes it in, which is what touch
+  sees. Higher / Lower and the connection note share one slot that keeps its room whether they show
+  or not, so the text never moves between rounds. `srcset` comes from `srcsetFor`; `sizes` from
+  `photoSizes`, which allows for a wide photo drawn wider than its half by the cover crop. The
+  monogram shows when there is no photo or it fails to load, including a `403`. The controller
+  preloads round one's two photos when the run starts, each new challenger's photo when an answer
+  lands, and the round's `upcoming` photo as soon as the round is dealt, through an off-screen
+  `Image` with the card's own `sizes` and `srcset` (`game/photos.ts`). A photo already fetched is
+  not fetched again.
+- **Accessibility:** every control is a native button or link with a visible focus ring; the game
+  plays from the keyboard (arrow keys, and focus returns to Higher and to Play again);
+  `prefers-reduced-motion` stops the reel, the count-up and every transition; live regions announce
+  the question (and a stat change), the verdict, slow-downs and share results; the grid has a text
+  label, so tier colour is never the only signal; touch targets are at least 44px (`--target-min`;
+  small footer links grow an invisible hit area). Card text sits on the photo with a dark halo round
+  every glyph, and the name and country with the deeper tint too; their legibility over the photos
+  is judged by eye.
 - **Short landscape screens** (`orientation: landscape` and at most 500px tall) put the halves side
   by side and the plaque at the top of the divide, with that strip kept clear, so it never covers
   a card.

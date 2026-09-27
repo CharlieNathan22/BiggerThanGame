@@ -273,7 +273,11 @@ describe("a dropped connection", () => {
     await flush();
     expect(latest.hitch).toBeNull();
     expect(latest.reveal?.correct).toBe(true);
-    await vi.advanceTimersByTimeAsync(TIMINGS.settle + TIMINGS.verdict - TIMINGS.count);
+    // The answer lands 1500ms after the tap: the count settles at the nominal
+    // time or a settle after that, whichever is later, then the verdict.
+    const arrived = 1500;
+    const settles = Math.max(TIMINGS.count, arrived + TIMINGS.settle);
+    await vi.advanceTimersByTimeAsync(settles + TIMINGS.verdict - TIMINGS.count - arrived);
     expect(latest.phase).toBe("verdict");
     expect(latest.streak).toBe(1);
   });

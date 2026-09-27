@@ -36,9 +36,9 @@ describe("tokens.css and the script timings", () => {
     expect(TIMINGS.verdict).toBeGreaterThanOrEqual(TIMINGS.count);
   });
 
-  it("keeps the count within 500–1200ms — it is what masks the round trip", () => {
+  it("keeps the count within 500–3000ms — it is what masks the round trip", () => {
     expect(TIMINGS.count).toBeGreaterThanOrEqual(500);
-    expect(TIMINGS.count).toBeLessThanOrEqual(1200);
+    expect(TIMINGS.count).toBeLessThanOrEqual(3000);
   });
 
   it("keeps a share note up for 2–8 s: long enough to read, short enough to go", () => {
