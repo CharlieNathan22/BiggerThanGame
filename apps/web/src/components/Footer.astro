@@ -1,11 +1,20 @@
 ---
-// The prototype's footer line, carrying site links instead of the prototype notice.
+// The prototype's footer line, carrying site links instead of the prototype
+// notice, and the two general feedback forms.
 import { t } from "../i18n";
 
 const links = [
   { href: "/about", label: t("footer.about") },
   { href: "/credits", label: t("footer.credits") },
   { href: "/about#how-to-play", label: t("footer.howToPlay") },
+];
+
+// The forms live in the game island on `/`. There, the island opens them
+// directly from these links (`data-feedback`); from any other page the link
+// goes to `/`, whose hash opens the form on load.
+const feedback = [
+  { kind: "suggest", label: t("footer.suggest") },
+  { kind: "problem", label: t("footer.problem") },
 ];
 ---
 
@@ -18,16 +27,36 @@ const links = [
       </>
     ))}
   </nav>
+  <nav aria-label={t("footer.feedbackNav")}>
+    {feedback.map((link, i) => (
+      <>
+        {i > 0 && <span aria-hidden="true"> · </span>}
+        <a href={`/#${link.kind}`} data-feedback={link.kind}>
+          {link.label}
+        </a>
+      </>
+    ))}
+  </nav>
 </footer>
 
 <style>
+  /* Two groups on one line; on a narrow screen the second wraps below, far
+     enough down that the two rows' 44px hit areas don't overlap. */
   .foot {
     flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: var(--foot-group-gap);
+    row-gap: var(--foot-row-gap);
     padding: 6px 18px 8px;
     font-size: var(--fs-foot);
     color: var(--faint);
     text-align: center;
     font-variation-settings: var(--fv-meta);
+  }
+  nav {
+    white-space: nowrap;
   }
   /* The links read at --dim (4.5:1 and up); only the separators stay faint. */
   a {

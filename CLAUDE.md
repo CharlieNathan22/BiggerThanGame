@@ -57,6 +57,15 @@ pnpm typecheck    # tsc, then astro check + svelte-check for apps/web; needs the
 pnpm lint
 ```
 
+### Secrets
+
+Worker secrets, set with `wrangler secret put` by the owner and read locally from `.dev.vars`
+(gitignored): **`RUN_SECRET`**, **`TURNSTILE_SECRET`** and **`FEEDBACK_TO`** (where feedback is
+emailed; never in the repo). Names only here, never values. Locally, `TURNSTILE_SECRET` is
+Cloudflare's always-pass test secret, `1x0000000000000000000000000000000AA`, which pairs with the
+always-pass test site key `1x00000000000000000000AA` that `apps/web/src/config.ts` uses under
+`pnpm dev`. `wrangler dev` simulates the `send_email` binding and sends nothing.
+
 `pnpm build` fails on invalid deck data by design. A failing build usually means a data problem,
 not a code problem — read the error before changing code.
 
@@ -68,7 +77,7 @@ not a code problem — read the error before changing code.
 packages/core/    framework-free TypeScript. The game.
 packages/deck/    schema, validation, build pipeline. Data is a private submodule.
 apps/web/         Astro + Svelte
-worker/           fetch handler and /api/round/next; Durable Object and tokens arrive in Phase 5
+worker/           fetch handler, /api/round/next and /api/feedback; DO and tokens arrive in Phase 5
 ```
 
 **The Worker bundles the deck from `packages/deck/dist` via `worker/src/deck.ts` and nothing else.**

@@ -4,9 +4,9 @@
   from ../../i18n.
 -->
 <script lang="ts">
-  import type { Guess } from "@bt/core";
+  import type { Guess, SitePage } from "@bt/core";
   import { onMount, tick } from "svelte";
-  import { CORRECTIONS_EMAIL, IMAGE_BASE, SITE_LABEL, SITE_URL } from "../../config";
+  import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
   import { statLabel, t } from "../../i18n";
   import { TIER_COLOUR } from "../../lib/tiers";
   import { createApi } from "../../game/api";
@@ -14,6 +14,14 @@
   import { browserStorage, readBest, saveBest } from "../../game/best";
   import { readChallenge, withoutChallenge } from "../../game/challenge";
   import { GameController } from "../../game/controller";
+  import {
+    arrivedFrom,
+    linkedFeedback,
+    reportedRound,
+    sendFeedback,
+    sitePage,
+  } from "../../game/feedback";
+  import type { FeedbackKind, ReportedRound } from "../../game/feedback";
   import { initialState, shouldSpin } from "../../game/machine";
   import type { Challenge, GameState } from "../../game/machine";
   import { createPreloader } from "../../game/photos";
@@ -35,16 +43,18 @@
   import type { SharePlatform } from "../../game/share-actions";
   import { TIMINGS, readTimings } from "../../game/timing";
   import type { Timings } from "../../game/timing";
+  import { createTurnstileLoader } from "../../game/turnstile";
+  import type { ScriptDocument, Turnstile, TurnstileHost } from "../../game/turnstile";
   import {
     announcement,
     challengeNotice,
     hitchText,
     overCaption,
     qualifierText,
-    reportHref,
   } from "../../game/view";
   import TitleBar from "../TitleBar.svelte";
   import Counter from "./Counter.svelte";
+  import FeedbackModal from "./FeedbackModal.svelte";
   import Figure from "./Figure.svelte";
   import Plaque from "./Plaque.svelte";
   import Side from "./Side.svelte";
@@ -56,6 +66,15 @@
 
   let higherButton: HTMLButtonElement | undefined = $state();
   let againButton: HTMLButtonElement | undefined = $state();
+  let startButton: HTMLButtonElement | undefined = $state();
+
+  /** The open feedback form, if any; the round a report is about; the page a problem names. */
+  let feedback = $state<FeedbackKind | null>(null);
+  let feedbackReport = $state<ReportedRound | null>(null);
+  let feedbackPage = $state<SitePage>("/");
+  /** Where focus goes back to when the form closes. */
+  let feedbackOpener: HTMLElement | null = null;
+  let loadTurnstile = $state<(() => Promise<Turnstile>) | null>(null);
 
   let platform: SharePlatform | null = $state(null);
   /** What the last share did: "Copied", "Image saved", or a problem. Announced. */
@@ -74,6 +93,39 @@
     timings = readTimings((property) => root.getPropertyValue(property));
 
     platform = browserSharePlatform();
+    // The DOM's own types are wider than the loader needs; it touches only these parts.
+    loadTurnstile = createTurnstileLoader(
+      document as unknown as ScriptDocument,
+      window as unknown as TurnstileHost,
+    );
+
+    // The footer's feedback links. Static pages have no island, so there they
+    // go to /#suggest and /#problem, which open the form here on load; the
+    // page they came from is the referrer. On this page they open it directly.
+    const linked = linkedFeedback(location.hash);
+    if (linked !== null) {
+      history.replaceState(history.state, "", `${location.pathname}${location.search}`);
+      openFeedback(linked, null, arrivedFrom(document.referrer, location.origin));
+    }
+    const onLinkClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link =
+        event.target instanceof Element ? event.target.closest("a[data-feedback]") : null;
+      const kind = linkedFeedback(link?.getAttribute("data-feedback") ?? "");
+      if (!(link instanceof HTMLElement) || kind === null) return;
+      event.preventDefault();
+      openFeedback(kind, link, sitePage(location.pathname));
+    };
+    // A hash typed or followed on this page without a reload.
+    const onHashChange = () => {
+      const kind = linkedFeedback(location.hash);
+      if (kind === null) return;
+      history.replaceState(history.state, "", `${location.pathname}${location.search}`);
+      openFeedback(kind, null, sitePage(location.pathname));
+    };
+    document.addEventListener("click", onLinkClick);
+    window.addEventListener("hashchange", onHashChange);
 
     // A challenge link in the URL frames the first run; a plainly broken one
     // starts a fresh run with a note, as a forged one would.
@@ -114,6 +166,8 @@
     controller = c;
 
     return () => {
+      document.removeEventListener("click", onLinkClick);
+      window.removeEventListener("hashchange", onHashChange);
       removeDevPanel?.();
       unsubscribe();
       c.destroy();
@@ -143,6 +197,7 @@
   const title = $derived(titleText(game.streak));
   const result = $derived(challengeResult(game));
   const cells = $derived(gridCells(game.history));
+  const report = $derived(reportedRound(game));
 
   function start(): void {
     shareStatus = "";
@@ -191,6 +246,33 @@
     }
   }
 
+  /**
+   * Opens a form. `opener` gets focus back when it closes; by default, whatever
+   * has focus now. A deep link on load has no opener, and falls back below.
+   */
+  function openFeedback(
+    kind: FeedbackKind,
+    opener: HTMLElement | null = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+    page: SitePage = sitePage(location.pathname),
+  ): void {
+    if (feedback !== null) return;
+    if (kind === "correction" && report === null) return;
+    feedbackOpener = opener;
+    feedbackReport = kind === "correction" ? report : null;
+    feedbackPage = page;
+    feedback = kind;
+  }
+
+  function closeFeedback(): void {
+    if (feedback === null) return;
+    const back = feedbackOpener?.isConnected ? feedbackOpener : (againButton ?? startButton);
+    feedback = null;
+    feedbackOpener = null;
+    void tick().then(() => back?.focus());
+  }
+
   function pick(guess: Guess): void {
     controller?.guess(guess);
   }
@@ -223,7 +305,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="game" style:--tier={TIER_COLOUR[tier]}>
+<div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null}>
   <TitleBar scores={{ streak: game.streak, best: game.best }} />
 
   <main class="pitch" aria-label={t("pitch.label")}>
@@ -305,6 +387,7 @@
           {/if}
           <button
             class="cta"
+            bind:this={startButton}
             disabled={controller === null || phase === "starting"}
             onclick={start}
           >
@@ -379,17 +462,35 @@
               >{copyByHand}</textarea
             >
           {/if}
-          {#if round && reveal}
-            <a class="ghost" href={reportHref(CORRECTIONS_EMAIL, round, reveal)}>
-              {t("over.report")}
-            </a>
-            <div class="email">{t("over.reportEmail", { email: CORRECTIONS_EMAIL })}</div>
-          {/if}
+          <div class="feedback">
+            {#if report}
+              <button class="ghost" onclick={() => openFeedback("correction")}>
+                {t("over.report")}
+              </button>
+            {/if}
+            <button class="ghost" onclick={() => openFeedback("suggest")}>
+              {t("over.suggest")}
+            </button>
+          </div>
         </div>
       </div>
     {/if}
   </main>
 </div>
+
+{#if feedback !== null && loadTurnstile !== null}
+  <FeedbackModal
+    kind={feedback}
+    report={feedbackReport}
+    page={feedbackPage}
+    {timings}
+    {reducedMotion}
+    siteKey={TURNSTILE_SITE_KEY}
+    {loadTurnstile}
+    send={(body) => sendFeedback((input, init) => fetch(input, init), body)}
+    onclose={closeFeedback}
+  />
+{/if}
 
 <style>
   .game {
@@ -556,15 +657,12 @@
     display: block;
     width: 100%;
   }
-  a.ghost,
-  .shares .ghost {
+  .shares .ghost,
+  .feedback .ghost {
     min-height: var(--target-min);
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-  a.ghost {
-    margin-top: 0;
   }
   .shares {
     margin-top: 4px;
@@ -574,6 +672,16 @@
   .shares .ghost {
     margin-top: 0;
     flex: 1;
+  }
+  .feedback {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 10px;
+  }
+  .feedback .ghost {
+    margin-top: 0;
+    flex: 1 1 auto;
+    width: auto;
   }
   .ghost:disabled {
     cursor: progress;
@@ -604,12 +712,6 @@
   .ghost:focus-visible {
     outline: var(--focus-ring-thin) solid var(--gold);
     outline-offset: var(--focus-offset);
-  }
-  .email {
-    margin-top: 4px;
-    font-size: var(--fs-lab);
-    color: var(--faint);
-    font-variation-settings: var(--fv-meta);
   }
 
   .panel .beat {

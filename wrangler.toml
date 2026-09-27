@@ -11,6 +11,18 @@ directory = "./apps/web/dist"
 binding = "ASSETS"
 not_found_handling = "404-page"
 run_worker_first = ["/api/*"]
+
+# Workers Logs: errors and warnings from the Worker, kept for a few days.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+# Feedback forms (POST /api/feedback) are emailed through Email Routing. The
+# destination is the FEEDBACK_TO secret, deliberately not a destination_address
+# here: this file is public. TURNSTILE_SECRET is a secret too.
+[[send_email]]
+name = "FEEDBACK_EMAIL"
+
 # Rate limits for POST /api/round/next — the only thing between the deck and a
 # scraper (DESIGN.md §3), without blocking many players behind one shared IP.
 # Answers are limited per signed run id; run starts and every request per IP
@@ -39,4 +51,13 @@ namespace_id = "1005"
 
   [ratelimits.simple]
   limit = 800
+  period = 60
+
+# Feedback messages per IP (POST /api/feedback).
+[[ratelimits]]
+name = "FEEDBACK_SENDS"
+namespace_id = "1006"
+
+  [ratelimits.simple]
+  limit = 10
   period = 60

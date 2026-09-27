@@ -50,13 +50,16 @@ export {
   contentTypeFor,
   createDryRunUploader,
   createR2Uploader,
+  ORIGINAL_CACHE_CONTROL,
   r2ConfigFromEnv,
 } from "./upload.js";
-export type { R2Config, UploadItem, Uploader } from "./upload.js";
+export type { MetadataStore, ObjectMetadata, R2Config, UploadItem, Uploader } from "./upload.js";
 
 export { displayedSize, hashBytes, originalKeyFor, shortHash, syncImages } from "./sync.js";
 export { runSync } from "./sync-cli.js";
 export type { SyncOptions, SyncResult } from "./sync.js";
+export { refreshMetadata } from "./refresh.js";
+export type { RefreshOptions, RefreshResult } from "./refresh.js";
 
 export { CsvError, parseCsv } from "./csv.js";
 export type { CsvRow, CsvTable } from "./csv.js";

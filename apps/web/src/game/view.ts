@@ -3,7 +3,7 @@
  * and the edge cases are under test rather than buried in markup.
  */
 
-import type { Reveal, RoundPayload, StatKey } from "@bt/core";
+import type { StatKey } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
 import type { GameState, Hitch } from "./machine";
 
@@ -88,19 +88,4 @@ export function hitchText(hitch: Hitch | null): string {
 /** "in a row", or "correct, then out" for a streak of one. */
 export function overCaption(streak: number): string {
   return streak === 1 ? t("over.caption.one") : t("over.caption.other");
-}
-
-/**
- * The interim report-an-error link (M5b replaces it with a form): a mailto
- * whose subject names both players, the stat and both values.
- */
-export function reportHref(email: string, round: RoundPayload, reveal: Reveal): string {
-  const subject = t("over.reportSubject", {
-    anchor: round.anchor.name,
-    challenger: round.challenger.name,
-    stat: statLabel(round.stat.key),
-    anchorValue: round.anchor.display,
-    challengerValue: reveal.display,
-  });
-  return `mailto:${email}?subject=${encodeURIComponent(subject)}`;
 }

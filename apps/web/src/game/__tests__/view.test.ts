@@ -3,15 +3,7 @@ import type { StatKey } from "@bt/core";
 import { describe, expect, it } from "vitest";
 import { initialState, reduce } from "../machine";
 import type { GameEvent, GameState } from "../machine";
-import {
-  announcement,
-  hitchText,
-  initial,
-  overCaption,
-  qualifierText,
-  reelStrip,
-  reportHref,
-} from "../view";
+import { announcement, hitchText, initial, overCaption, qualifierText, reelStrip } from "../view";
 import { cont, round, wrong } from "./fixtures";
 
 describe("initial", () => {
@@ -103,27 +95,6 @@ describe("overCaption", () => {
     expect(overCaption(1)).toBe("correct, then out");
     expect(overCaption(0)).toBe("in a row");
     expect(overCaption(12)).toBe("in a row");
-  });
-});
-
-describe("reportHref", () => {
-  it("names both players, the stat and both values in the subject", () => {
-    const r = {
-      ...round(4, { stat: "fee", anchorValue: 77.5 }),
-      anchor: { ...round(4).anchor, name: "Zinedine Zidane", value: 77.5, display: "€77.5m" },
-      challenger: { ...round(4).challenger, name: "Luís Figo" },
-    };
-    const href = reportHref("corrections@example.com", r, {
-      round: 4,
-      value: 62,
-      display: "€62m",
-      correct: false,
-    });
-    expect(href.startsWith("mailto:corrections@example.com?subject=")).toBe(true);
-    const subject = decodeURIComponent(href.split("?subject=")[1] ?? "");
-    expect(subject).toBe(
-      "Correction: Zinedine Zidane v Luís Figo, Highest transfer fee (€77.5m v €62m)",
-    );
   });
 });
 

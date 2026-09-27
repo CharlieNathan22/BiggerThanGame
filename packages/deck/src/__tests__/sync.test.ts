@@ -5,11 +5,17 @@ import { join } from "node:path";
 import { MIN_IMAGE_EDGE } from "../images.js";
 import { deckDirFor } from "../load.js";
 import { loadManifest } from "../manifest.js";
-import { createDryRunUploader, contentTypeFor } from "../upload.js";
+import {
+  createDryRunUploader,
+  contentTypeFor,
+  createR2Uploader,
+  ORIGINAL_CACHE_CONTROL,
+} from "../upload.js";
 import type { Uploader, UploadItem } from "../upload.js";
 import { displayedSize, hashBytes, originalKeyFor, shortHash, syncImages } from "../sync.js";
 import { playerSchema } from "../schema.js";
 import { runSync } from "../sync-cli.js";
+import { FAKE_CONFIG, fakeR2 } from "./helpers/fake-r2.js";
 import { writePng } from "./helpers/png.js";
 
 let dir: string;
@@ -120,6 +126,22 @@ describe("syncImages", () => {
     const stored = bucket.objects.get(one.key)!;
     expect(stored.bytes.equals(readFileSync(join(sourceDir, "one.png")))).toBe(true);
     expect(stored.contentType).toBe("image/png");
+  });
+
+  it("stores every original in R2 with the immutable Cache-Control", async () => {
+    const r2 = fakeR2();
+    const result = await syncImages({
+      raws: both(),
+      sourceDir,
+      manifestPath: join(dir, "r2.json"),
+      uploader: await createR2Uploader(FAKE_CONFIG, r2.fetch),
+      write: false,
+    });
+    expect(result.uploaded).toBe(2);
+    expect([...r2.objects.values()].map((o) => o.headers)).toEqual([
+      { "content-type": "image/png", "cache-control": ORIGINAL_CACHE_CONTROL },
+      { "content-type": "image/png", "cache-control": ORIGINAL_CACHE_CONTROL },
+    ]);
   });
 
   it("skips unchanged sources on a second run", async () => {

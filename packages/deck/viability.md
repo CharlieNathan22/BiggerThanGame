@@ -1,6 +1,6 @@
 # Deck viability
 
-Generated 2026-09-26 from 108 players.
+Generated 2026-09-27 from 108 players.
 
 Counts are **unordered pairs that clear the band**, before the recently-seen
 queue takes its cut. Bands are in rank distance — how far apart two players sit
@@ -19,7 +19,7 @@ and will force relaxation every time the wheel picks it.
 | Club trophies | 108 | 31 | 196 | 1763 | 2752 | 2769 | 2254 | 1992 | 970 |
 | International trophies | 108 | 6 | 1445 | 1692 | 3047 | 2331 | 2340 | 894 | 112 |
 | Clubs played for | 108 | 14 | 678 | 1673 | 3036 | 2714 | 2353 | 1530 | 505 |
-| Age | 100 | 30 | 185 | 1534 | 2355 | 2409 | 1950 | 1730 | 885 |
+| Age | 100 | 30 | 189 | 1546 | 2358 | 2381 | 1949 | 1719 | 824 |
 
 ## Problems
 
@@ -59,11 +59,11 @@ the correlated-pair exclusion in `wheel.ts` exists to prevent.
 | Instagram followers / Highest transfer fee | 0.51 |  |
 | Caps / Club appearances | 0.40 |  |
 | Club appearances / Club trophies | 0.38 |  |
-| Club trophies / Age | -0.37 |  |
+| Club trophies / Age | -0.38 |  |
 | Caps / Instagram followers | 0.35 |  |
 | Caps / Club trophies | 0.34 |  |
 | Instagram followers / Club trophies | 0.34 |  |
 | Caps / International trophies | 0.30 |  |
-| Caps / Age | -0.29 |  |
+| Caps / Age | -0.30 |  |
 
 Pairs at or above ρ = 0.8 should be in `CORRELATED_PAIRS` in `stats.ts`.

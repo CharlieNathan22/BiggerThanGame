@@ -27,6 +27,9 @@ export const en = {
   "footer.about": "About",
   "footer.credits": "Credits",
   "footer.howToPlay": "How to play",
+  "footer.feedbackNav": "Feedback",
+  "footer.suggest": "Suggest a legend",
+  "footer.problem": "Report a problem",
 
   // Start panel
   "start.intro":
@@ -67,9 +70,7 @@ export const en = {
   "over.network": "The connection dropped. Your streak of {streak} stands.",
   "over.again": "Play again",
   "over.report": "Something wrong with that card?",
-  "over.reportEmail": "Or email {email}",
-  "over.reportSubject":
-    "Correction: {anchor} v {challenger}, {stat} ({anchorValue} v {challengerValue})",
+  "over.suggest": "Suggest a legend",
   "over.share": "Share result",
   "over.shareImage": "Share image",
   "over.saveImage": "Save image",
@@ -78,6 +79,39 @@ export const en = {
   "over.shareText": "Your result, to copy",
   "over.imageSaved": "Image saved.",
   "over.imageFailed": "Couldn't make the image. Try sharing the result instead.",
+
+  // Feedback forms: "Suggest a legend", "Report an error" and "Report a problem"
+  "feedback.suggest.title": "Suggest a legend",
+  "feedback.suggest.intro": "Who should be in the deck? Retired players only.",
+  "feedback.suggest.name": "Player's name",
+  "feedback.suggest.note": "Anything we should know? (optional)",
+  "feedback.report.title": "Report an error",
+  "feedback.report.intro":
+    "The card that ended your run. Tell us what looks wrong and we'll check it.",
+  "feedback.report.card": "What you saw",
+  "feedback.report.note": "What's wrong, and where did you find the right figure? (optional)",
+  "feedback.report.figure": "{name}: {display}",
+  "feedback.report.qualified": "{name}: {display} ({qualifier})",
+  "feedback.problem.title": "Report a problem",
+  "feedback.problem.intro": "A bug, a typo, something that doesn't look right? Tell us about it.",
+  "feedback.problem.note": "What's wrong?",
+  "feedback.problem.page": "Sent with the page you were on ({page}) and nothing else about you.",
+  "feedback.privacy": "No email address or other details needed.",
+  "feedback.nameRequired": "Add the player's name.",
+  "feedback.noteRequired": "Tell us what's wrong.",
+  "feedback.tooLong": "That's a little long. Trim it down and try again.",
+  "feedback.checking": "Checking you're a person…",
+  "feedback.checkFailed":
+    "The check couldn't load. A content blocker may be stopping challenges.cloudflare.com.",
+  "feedback.send": "Send",
+  "feedback.sending": "Sending…",
+  "feedback.sent": "Thanks — that's with us now.",
+  "feedback.failed": "Couldn't send that just now. Give it a moment and try again.",
+  "feedback.slowDown":
+    "Lots of messages have come from your connection. Take a breather and try again in a minute.",
+  "feedback.verifyFailed": "The check didn't go through. Please try again.",
+  "feedback.cancel": "Cancel",
+  "feedback.close": "Close",
 
   // Streak titles, by StreakTitleId (@bt/core STREAK_TITLES)
   "title.squad": "Squad player",

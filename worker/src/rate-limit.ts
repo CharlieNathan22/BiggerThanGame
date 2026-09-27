@@ -1,5 +1,5 @@
 /**
- * Rate limiting for `/api/round/next`.
+ * Rate limiting for `/api/round/next`, and for `/api/feedback`.
  *
  * This limit is the only thing between the deck and a scraper (DESIGN.md §3,
  * §15), so it is load-bearing rather than hygiene. It has to be invisible to
@@ -12,7 +12,11 @@
  * per IP. The per-IP limit on everything is a generous flood backstop only.
  * ARCHITECTURE.md §12 has the numbers and the trade-off.
  *
- * Three Workers Rate Limiting bindings, configured in `wrangler.toml` (periods
+ * `/api/feedback` has a binding of its own, keyed on the IP like run starts:
+ * each message costs a Turnstile check and an email, and nobody honest sends
+ * many.
+ *
+ * Workers Rate Limiting bindings, configured in `wrangler.toml` (periods
  * can only be 10 or 60 seconds). The numbers live there; `RATE_LIMITS` mirrors
  * them so code and tests can name them, and a test fails if the two drift
  * apart. Counters are per Cloudflare location and deliberately approximate —
@@ -31,6 +35,8 @@ export const RATE_LIMITS = {
   starts: { binding: "RUN_STARTS", limit: 60, period: 60 },
   /** Every request per IP. A flood backstop, sized for a full classroom. */
   flood: { binding: "ROUND_FLOOD", limit: 800, period: 60 },
+  /** Feedback messages per IP (`/api/feedback`), checked before any other work. */
+  feedback: { binding: "FEEDBACK_SENDS", limit: 10, period: 60 },
 } as const;
 
 export type RateRule = keyof typeof RATE_LIMITS;
@@ -56,8 +62,8 @@ export async function checkRateLimit(
 }
 
 /**
- * The IP key for run starts and the flood backstop: the IPv4 address, or the
- * IPv6 /64.
+ * The IP key for run starts, the flood backstop and feedback: the IPv4
+ * address, or the IPv6 /64.
  *
  * Cloudflare's docs advise against IP keys because addresses are shared (CGNAT,
  * offices, schools), which is why neither IP limit is the tight one — answers

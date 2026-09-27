@@ -4,8 +4,8 @@
  */
 
 /**
- * Where corrections go. Shown as text as well as a `mailto:` link, because
- * mailto links don't open anything on a device with no mail client.
+ * Where corrections can be emailed, for the about page. In the game, the
+ * feedback forms send through `/api/feedback` instead.
  */
 export const CORRECTIONS_EMAIL = "corrections@biggerthangame.com";
 
@@ -20,3 +20,20 @@ export const SITE_URL = "https://biggerthangame.com";
 
 /** How the site's address is written on the share image. */
 export const SITE_LABEL = "biggerthangame.com";
+
+/**
+ * The Turnstile widget's site key, for the feedback forms. Public by design:
+ * it only identifies the widget, and the secret stays in the Worker. From the
+ * Turnstile dashboard; the widget allows biggerthangame.com, www and localhost.
+ */
+export const TURNSTILE_PROD_SITE_KEY = "0x4AAAAAAFE-kLACTXmVHqjj";
+
+/**
+ * Cloudflare's published test site key, which always passes. `pnpm dev` uses
+ * it, paired with the always-pass test secret in `.dev.vars` (CLAUDE.md).
+ */
+export const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
+
+export const TURNSTILE_SITE_KEY = import.meta.env.DEV
+  ? TURNSTILE_TEST_SITE_KEY
+  : TURNSTILE_PROD_SITE_KEY;

@@ -152,10 +152,71 @@ export interface EndResponse {
 export type AnswerResponse = ContinueResponse | EndResponse;
 
 export type ApiErrorCode =
-  "bad_request" | "not_found" | "method_not_allowed" | "rate_limited" | "unavailable" | "internal";
+  | "bad_request"
+  | "not_found"
+  | "method_not_allowed"
+  | "rate_limited"
+  | "unavailable"
+  | "internal"
+  /** Feedback only: the Turnstile check didn't pass. */
+  | "verification_failed"
+  /** Feedback only: the message couldn't be sent on. */
+  | "send_failed";
 
 export interface ApiError {
   readonly error: ApiErrorCode;
   /** Human-readable, for debugging. Never shown to players verbatim. */
   readonly detail?: string;
+}
+
+// ------------------------------------------------------------ feedback
+
+/**
+ * `POST /api/feedback`: the two feedback forms. Nothing personal travels here —
+ * no email field, no name of the sender — and the Worker sends the message on
+ * as a plain-text email; it stores nothing. Length limits are `FEEDBACK_LIMITS`
+ * (feedback.ts).
+ */
+export interface SuggestRequest {
+  readonly kind: "suggest";
+  /** The legend's name. */
+  readonly name: string;
+  readonly note?: string;
+  readonly turnstileToken: string;
+}
+
+/**
+ * A report about the round that ended a run. It carries the run id and round
+ * index only: the server rebuilds the round from the seed and puts the two
+ * players, the stat and both values into the email itself. Values never come
+ * from the client, and none are sent back to it.
+ */
+export interface CorrectionRequest {
+  readonly kind: "correction";
+  readonly runId: string;
+  /** 1-based. */
+  readonly round: number;
+  readonly note?: string;
+  readonly turnstileToken: string;
+}
+
+/**
+ * "Report a problem": anything about the site that isn't a card — a bug, a
+ * typo. The page it was sent from is one of `SITE_PAGES`, and nothing else
+ * about the sender travels with it.
+ */
+export interface ProblemRequest {
+  readonly kind: "problem";
+  /** Required: the problem itself. */
+  readonly note: string;
+  /** The page it was sent from, e.g. `/about`. One of `SITE_PAGES`. */
+  readonly page: string;
+  readonly turnstileToken: string;
+}
+
+export type FeedbackRequest = SuggestRequest | CorrectionRequest | ProblemRequest;
+
+/** The whole success response: nothing is echoed back. */
+export interface FeedbackResponse {
+  readonly ok: true;
 }

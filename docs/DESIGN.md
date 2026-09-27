@@ -549,8 +549,11 @@ Deck size is governed by **recognition**, not by how many players exist. A pair 
 is familiar is a coin flip and feels terrible, so the usable deck is a few hundred names at most.
 Adding beyond that makes the game worse, not richer.
 
-Add a **report-an-error link** on the game-over screen. It turns the most annoyed users into free
-QA, and it means a wrong number gets fixed rather than screenshotted.
+Add a **report-an-error form** on the game-over screen. It turns the most annoyed users into free
+QA, and it means a wrong number gets fixed rather than screenshotted. It reports the round that
+ended the run, which the server looks up for itself, and asks for nothing personal; a "Suggest a
+legend" form sits beside it, and the footer of every page offers "Suggest a legend" and a general
+"Report a problem" (ARCHITECTURE.md §8).
 
 ---
 

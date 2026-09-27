@@ -85,14 +85,22 @@ export type {
   ChallengeStartRequest,
   ChallengeStatus,
   ContinueResponse,
+  CorrectionRequest,
   EndResponse,
+  FeedbackRequest,
+  FeedbackResponse,
   Guess,
   NextRoundRequest,
   PlayerCard,
+  ProblemRequest,
   Reveal,
   RoundPayload,
   RunEnd,
   StartRequest,
   StartResponse,
   StatPayload,
+  SuggestRequest,
 } from "./api.js";
+
+export { FEEDBACK_LIMITS, SITE_PAGES, isSitePage, textLength } from "./feedback.js";
+export type { SitePage } from "./feedback.js";

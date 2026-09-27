@@ -52,10 +52,13 @@ Astro is configured for **static output**, not SSR. Every page is prerendered at
 Worker only executes for `/api/*`. No Astro Cloudflare adapter is needed.
 
 **Bindings:** `ASSETS`, `DB` (D1), `BOARDS` (KV), `RUNS` (Durable Object namespace), `RUN_SECRET` (secret),
-`TURNSTILE_SECRET` (secret), `RUN_ANSWERS`, `RUN_STARTS` and `ROUND_FLOOD` (Workers Rate Limiting).
+`TURNSTILE_SECRET` (secret), `FEEDBACK_TO` (secret), `FEEDBACK_EMAIL` (`send_email`, Email Routing),
+`RUN_ANSWERS`, `RUN_STARTS`, `ROUND_FLOOD` and `FEEDBACK_SENDS` (Workers Rate Limiting).
 
-Phase 3 (Friendly) uses only `ASSETS`, `RUN_SECRET` and the three rate limiters. The rest arrive with
-Ranked and Endless.
+Phase 3 (Friendly) uses `ASSETS`, `RUN_SECRET` and the round endpoint's three rate limiters, plus
+`TURNSTILE_SECRET`, `FEEDBACK_TO`, `FEEDBACK_EMAIL` and `FEEDBACK_SENDS` for the feedback forms
+(§8). The rest arrive with Ranked and Endless. Workers Logs is on (`[observability]` in
+`wrangler.toml`).
 
 There is **no R2 binding**. Images are served from R2 through a custom domain
 (`img.biggerthangame.com`) and resized by Image Transformations, so the Worker never touches the
@@ -101,6 +104,9 @@ bucket — see section 9.
 │   │   ├── payload.ts     # Round → declared response DTOs
 │   │   ├── run-id.ts      # signed run ids and replay ids
 │   │   ├── challenge.ts   # signed challenge links
+│   │   ├── feedback.ts    # /api/feedback as a pure function; feedback-validate.ts parses
+│   │   ├── turnstile.ts   # Siteverify
+│   │   ├── mail.ts        # the plain-text MIME message for send_email
 │   │   └── deck.ts        # the only import of packages/deck/dist
 │   ├── run-do.ts          # Durable Object (Phase 5)
 │   └── token.ts           # sign / verify progress tokens (Phase 5)
@@ -554,9 +560,44 @@ below describe the enforcement that hardening adds.
 Validates the final token chain, moderates the nickname, writes to D1 if `publish` is true.
 Local-only scores never reach this endpoint.
 
-**`POST /api/report`** → `{ playerId, stat, note }` — rate-limited, writes to D1 and sends an
-email notification to the maintainer. Corrections land in the deck repo and take effect at the next
-rollover, never mid-game.
+**`POST /api/feedback`** — the three feedback forms, Phase 3. Types in `packages/core/src/api.ts`,
+handler in `worker/src/feedback.ts`. Stateless: it stores nothing and sends a plain-text email.
+
+```jsonc
+→ { "kind": "suggest", "name": "…", "note"?: "…", "turnstileToken": "…" }
+→ { "kind": "correction", "runId": "…", "round": 7, "note"?: "…", "turnstileToken": "…" }
+→ { "kind": "problem", "note": "…", "page": "/about", "turnstileToken": "…" }
+← 200 { "ok": true }
+← 400 { "error": "bad_request", "detail": "<short code>" }   // e.g. unexpected_key, invalid_run
+← 403 { "error": "verification_failed" }                     // Turnstile said no
+← 429 { "error": "rate_limited" }                            // with retry-after
+← 502 { "error": "send_failed" | "unavailable" }            // the email, or Siteverify
+```
+
+- **Strict.** Known kinds only, strings where text belongs, no extra keys, a size cap on the body,
+  `name` up to 80 characters and `note` up to 1,000 (`FEEDBACK_LIMITS`, counted in code points);
+  a problem's `note` is required and its `page` must be one of the site's own paths
+  (`SITE_PAGES`, which a test holds to the pages Astro builds).
+  Text is trimmed and stripped of control characters; a note keeps its line breaks. Anything else is
+  `400` with a short code.
+- **A correction carries the run id and round index only.** The Worker verifies the run id's
+  signature (and that the run is still answerable, §7), rebuilds that round from the seed, and
+  writes the two players, the stat and both values into the email itself. A value from the client
+  is an unexpected key. The response is `{ "ok": true }` whatever the round held, so nothing reaches
+  the client that it hasn't been shown (§4).
+- **A problem report** is anything that isn't a card: a bug, a typo. It carries the page it was
+  sent from and nothing else about the sender.
+- **Turnstile** is checked server-side with Siteverify before anything is sent. The widget's script
+  loads only when a form opens.
+- **Email** goes through the `send_email` binding (Email Routing) as a hand-built `text/plain`
+  UTF-8 message (`mail.ts`). The subject is fixed per kind (three subjects); user text appears only in the
+  base64-encoded body, never in a header, a log line or a response. The destination is the
+  `FEEDBACK_TO` secret and is not in the repo. A failed send is a calm `502`.
+- **Privacy.** No email field and no other personal details. The IP is used for rate limiting and
+  nothing else: it is not sent to Siteverify, written into the email or logged.
+
+Corrections land in the deck repo and take effect at the next update (for Ranked, the next rollover),
+never mid-game.
 
 **`GET /api/board/:mode/:gameNo`** — served from KV.
 
@@ -752,6 +793,9 @@ CREATE TABLE error_reports (
 );
 ```
 
+`error_reports` predates `/api/feedback` (§8), which emails reports and stores nothing. If reports
+move into D1 later, they follow that endpoint's privacy rules: no user agent, no IP.
+
 `device_hash` is a salted hash of a first-party random id in localStorage plus coarse request
 signals. It is **friction, not identity** — clearing storage resets it. Log how often a device
 requests a second Ranked run; if that number is high, accounts need bringing forward.
@@ -768,7 +812,9 @@ path entirely — the board is the same for everyone, so it should be served fro
 
 ## 12. Abuse surface
 
-- **Turnstile** on run start and on submission.
+- **Turnstile** on run start and on submission, and on the feedback forms today.
+- **Feedback** (`/api/feedback`, §8) is rate-limited, checked before any other work, as well as
+  protected by Turnstile. Nothing it receives reaches a response.
 - **Rate limits** per device and per IP: Endless run starts, submissions, error reports.
 - **Friendly (`/api/round/next`)** is limited by three Workers Rate Limiting bindings. The tight
   limit is on the **run**, not the IP, because schools, offices, VPNs and mobile carriers put many
@@ -823,7 +869,8 @@ path entirely — the board is the same for everyone, so it should be served fro
 
 ### Telemetry signals
 
-M5c adds **Workers Logs** for errors and warnings, and **Workers Analytics Engine** for one data
+**Workers Logs** is switched on (M5b); M5c adds structured error and warning logs to it, and
+**Workers Analytics Engine** for one data
 point per answered round (mode, round, stat, band, correct, streak, country; no IP, user agent or
 hidden values). The full schema arrives with M5c's Observability section.
 
@@ -916,6 +963,22 @@ anti-cheat work, under the same no-personal-data rule.
   **round history** of `{ index, stat, tier, correct }` per answered round — no values — for the
   share grid and image. Script timers read the `--dur-*` tokens at runtime; a test keeps their
   fallbacks equal to `tokens.css`.
+- **Feedback forms** (`FeedbackModal.svelte`, logic in `game/feedback.ts`): "Report an error" on
+  the game-over panel, about the round that ended the run; "Suggest a legend" there too; and
+  "Suggest a legend" and "Report a problem" in the footer of every page. The forms live in the one
+  island on `/`, so on `/` the footer links (`data-feedback`) open the modal directly, and on static
+  pages they go to `/#suggest` and `/#problem`, which open the form on load. A problem report
+  names the page it came from — the referrer's path when it is one of the site's pages — and
+  nothing else. One modal dialog in the island: labelled, `aria-modal`, focus held inside and
+  returned to the opener, Esc and a close button, 44px targets. After a send goes through,
+  "Thanks" is announced and shows for `--dur-thanks` (5 s), then the modal fades and closes itself
+  (no fade with reduced motion; the pause stays). Esc, the close button or a click anywhere closes
+  it at once, and focus goes back to the button or link that opened it.
+  The report shows the two players, the stat and both figures the player has already seen, and
+  sends only the run id and round. The Turnstile script (`game/turnstile.ts`) is added on first
+  open, never for someone who only plays; the site key is in `config.ts` (Cloudflare's always-pass
+  test key under `pnpm dev`). The form shows sending, sent and failed states, and a calm note on
+  `429`.
 - **All visible game text is in `apps/web/src/i18n/en.ts`**, a flat keyed object with
   `{placeholder}` interpolation (`t()`). Components hold no user-facing string literals. Another
   language is another file with the same keys; there is no language switching yet.

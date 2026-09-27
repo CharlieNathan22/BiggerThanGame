@@ -36,6 +36,10 @@ export interface Timings {
   readonly next: number;
   /** From a run's last verdict colour to the game-over panel. */
   readonly over: number;
+  /** The feedback modal's fade, in and out. None with reduced motion. */
+  readonly modal: number;
+  /** How long the feedback modal's "Thanks" shows before it closes itself. */
+  readonly thanks: number;
 }
 
 export const TIMINGS: Timings = {
@@ -51,6 +55,8 @@ export const TIMINGS: Timings = {
   verdict: 1240,
   next: 1400,
   over: 1400,
+  modal: 180,
+  thanks: 5000,
 };
 
 /** The custom property behind each timing. */
@@ -67,6 +73,8 @@ export const TIMING_TOKENS: Readonly<Record<keyof Timings, string>> = {
   verdict: "--dur-verdict",
   next: "--dur-next",
   over: "--dur-over",
+  modal: "--dur-modal",
+  thanks: "--dur-thanks",
 };
 
 /**

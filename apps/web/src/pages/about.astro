@@ -26,7 +26,7 @@ const reportHref = `mailto:${CORRECTIONS_EMAIL}?subject=${encodeURIComponent("Co
 
 <Page
   title="About — Bigger Than Game"
-  description="How Bigger Than works: two football legends, one stat, higher or lower. The ten stats, what counts as a club trophy, and how to report a wrong number."
+  description="How Bigger Than works: two football legends, one stat, higher or lower. The ten stats, what counts as a club trophy, how to report a wrong number and how to suggest a legend."
 >
   <h1>
     About Bigger<em>Than</em>
@@ -126,8 +126,17 @@ const reportHref = `mailto:${CORRECTIONS_EMAIL}?subject=${encodeURIComponent("Co
 
   <h2 id="corrections">Spotted a wrong number?</h2>
   <p>
-    Email <a href={reportHref}>{CORRECTIONS_EMAIL}</a> with the player, the stat and where you found
-    the right figure. Corrections are checked and go into the next update.
+    At the end of a run, tap <strong>Something wrong with that card?</strong> The report carries the
+    two players, the stat and both figures, so just say what's wrong and where you found the right
+    one. Or email <a href={reportHref}>{CORRECTIONS_EMAIL}</a> with the player, the stat and your
+    source. Corrections are checked and go into the next update.
+  </p>
+
+  <h2 id="suggest">Missing a legend?</h2>
+  <p>
+    <a href="/#suggest">Suggest a legend</a> for the deck. Retired players only. Anything else, like
+    a bug or a typo? <a href="/#problem">Report a problem</a>. None of the forms asks for your email
+    or any other details.
   </p>
 </Page>
 

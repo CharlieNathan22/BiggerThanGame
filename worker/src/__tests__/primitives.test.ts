@@ -136,7 +136,7 @@ describe("checkRateLimit", () => {
   const tripped = { limit: async () => ({ success: false }) };
 
   it("allows a request under the limit", async () => {
-    const limiters = { answers: ok, starts: ok, flood: ok };
+    const limiters = { answers: ok, starts: ok, flood: ok, feedback: ok };
     expect(await checkRateLimit(limiters, "answers", "k")).toEqual({ ok: true });
   });
 
@@ -144,8 +144,9 @@ describe("checkRateLimit", () => {
     ["answers", 10],
     ["starts", 60],
     ["flood", 60],
+    ["feedback", 60],
   ] as const)("reports the %s window when that limit trips", async (rule, period) => {
-    const limiters = { answers: ok, starts: ok, flood: ok, [rule]: tripped };
+    const limiters = { answers: ok, starts: ok, flood: ok, feedback: ok, [rule]: tripped };
     expect(await checkRateLimit(limiters, rule, "k")).toEqual({ ok: false, retryAfter: period });
   });
 });

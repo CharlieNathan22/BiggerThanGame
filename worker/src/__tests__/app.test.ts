@@ -32,6 +32,8 @@ function env(overrides: Partial<Env> = {}): Env {
     RUN_ANSWERS: limiter(),
     RUN_STARTS: limiter(),
     ROUND_FLOOD: limiter(),
+    FEEDBACK_SENDS: limiter(),
+    FEEDBACK_EMAIL: { send: vi.fn(async () => ({ messageId: "m1" })) },
     ...overrides,
   };
 }

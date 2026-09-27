@@ -56,6 +56,8 @@ function world() {
     RUN_ANSWERS: fakeLimiter(RATE_LIMITS.answers.limit, RATE_LIMITS.answers.period, now),
     RUN_STARTS: fakeLimiter(RATE_LIMITS.starts.limit, RATE_LIMITS.starts.period, now),
     ROUND_FLOOD: fakeLimiter(RATE_LIMITS.flood.limit, RATE_LIMITS.flood.period, now),
+    FEEDBACK_SENDS: fakeLimiter(RATE_LIMITS.feedback.limit, RATE_LIMITS.feedback.period, now),
+    FEEDBACK_EMAIL: { send: async () => ({}) },
   };
   const send = (body: unknown, ip = SHARED_IP) =>
     app.fetch(

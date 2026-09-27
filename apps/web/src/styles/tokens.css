@@ -178,6 +178,32 @@
   --grid-gap: 4px;
   --grid-radius: 3px;
 
+  /* The feedback modal and its fields. The field edge holds 3:1 on --modal-bg. */
+  --modal-w: 30rem;
+  --modal-pad: 22px;
+  --modal-gutter: 16px;
+  --modal-radius: 18px;
+  --modal-bg: var(--night-2);
+  --modal-edge: var(--gold-rule);
+  --modal-backdrop: rgba(6, 18, 26, 0.82);
+  --shadow-modal: 0 18px 60px rgba(0, 0, 0, 0.5);
+  --field-bg: var(--night);
+  --field-edge: rgba(238, 243, 241, 0.45);
+  --field-radius: 10px;
+  --field-pad: 10px 12px;
+  /* 16px keeps iOS from zooming the page when a field takes focus. */
+  --fs-field: 16px;
+  --note-rows-h: 6.5em;
+  /* Turnstile's flexible widget is at least 300px wide and 65px tall. */
+  --check-min-h: 65px;
+  /* A button that can't be pressed yet, like Send before the check has passed. */
+  --disabled-opacity: 0.55;
+
+  /* The footer's two groups of links: apart on one line, and far enough apart
+     when they wrap that the rows' touch targets (--target-min) don't overlap. */
+  --foot-group-gap: 18px;
+  --foot-row-gap: 32px;
+
   /* ---------- shape ---------- */
   --radius-pill: 100px;
   --shadow-plaque: 0 0 0 var(--plaque-halo) var(--night), 0 6px 24px rgba(0, 0, 0, 0.35);
@@ -225,6 +251,10 @@
   --dur-next: 1400ms;
   /* From a wrong answer's colour to the game-over panel. */
   --dur-over: 1400ms;
+  /* The feedback modal fading in and out. Off with reduced motion. */
+  --dur-modal: 180ms;
+  /* The feedback modal's "Thanks" before it closes itself. Kept with reduced motion. */
+  --dur-thanks: 5000ms;
 }
 
 /*
