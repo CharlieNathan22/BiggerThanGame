@@ -200,6 +200,9 @@ export const en = {
   "feedback.cancel": "Cancel",
   "feedback.close": "Close",
 
+  // The score badge after a right answer; at a milestone, with its title
+  "badge.milestone": "{score} · {title}",
+
   // Streak titles, by StreakTitleId (@bt/core STREAK_TITLES, one table per mode)
   "title.squad": "Squad player",
   "title.starter": "Starter",

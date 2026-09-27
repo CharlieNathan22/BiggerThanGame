@@ -366,6 +366,34 @@
     rgba(255, 255, 255, 0.85) 50%,
     transparent 62%
   );
+  /* The score badge after a right answer ("3/20"; "5/20 · Squad player" at
+     a milestone): a gold pill at the top of the pitch, --badge-top down. It
+     rises in from --badge-rise and --badge-from-scale over the first 15% of
+     --dur-score-badge, holds to 80%, and leaves; a sheen crosses it and its
+     glow pulses to --badge-glow-peak at --badge-in-at. Milestones glow more. */
+  --badge-top: 8px;
+  --badge-below-plaque: 8px;
+  --badge-pad: 5px 12px;
+  --fs-badge-score: 12.5px;
+  --tracking-badge: 0.06em;
+  --badge-bg: var(--legends-gradient);
+  --badge-text: var(--ink);
+  --badge-glow: 0 0 10px rgba(var(--glow-rgb), 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --badge-glow-peak: 0 0 20px rgba(var(--glow-rgb), 0.95), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --badge-glow-milestone: 0 0 16px rgba(var(--glow-rgb), 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --badge-glow-milestone-peak: 0 0 30px 4px rgba(var(--glow-rgb), 1), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --badge-sheen: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.75) 50%,
+    transparent 70%
+  );
+  --badge-rise: 8px;
+  --badge-from-scale: 0.9;
+  --dur-score-badge: 2000ms;
+  --badge-in-at: 300ms;
+  --dur-badge-sheen: 700ms;
+  --dur-badge-pulse: 800ms;
   /* "New high score" on the game-over panel, in the best line's place: gold
      caps with the gold glow, popping in from --highscore-from-scale after
      --highscore-delay (after the win's own entrance), then one brighter pulse
@@ -713,6 +741,9 @@
 
 @media (min-width: 780px) {
   :root {
+    --badge-top: 16px;
+    --badge-pad: 9px 20px;
+    --fs-badge-score: 17px;
     --title-grow: 2.6;
     --fs-plaque: 23px;
     --track-h: 8px;

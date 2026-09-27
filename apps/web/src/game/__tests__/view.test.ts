@@ -21,6 +21,7 @@ import {
   progressText,
   qualifierText,
   reelStrip,
+  scoreBadge,
   scoreFigure,
   titleCard,
   trackSteps,
@@ -403,6 +404,54 @@ describe("a new high score", () => {
     expect(onNewBest(playing(6, 5))).toBe(true);
     expect(onNewBest(playing(6, 0))).toBe(false);
     expect(playing(6, 5).best).toBe(6);
+  });
+});
+
+describe("the score badge", () => {
+  const rec = (index: number, correct = true) =>
+    ({ index, stat: "caps", tier: "basic", correct }) as const;
+  const at = (
+    streak: number,
+    phase: GameState["phase"] = "verdict",
+    extra: Partial<GameState> = {},
+  ): GameState => ({
+    ...initialState(),
+    phase,
+    streak,
+    history: Array.from({ length: streak }, (_, i) => rec(i + 1)),
+    ...extra,
+  });
+
+  it("shows the new score after a right answer, keyed by it", () => {
+    expect(scoreBadge(at(3), "friendly")).toEqual({ key: 3, text: "3/20", milestone: false });
+    expect(scoreBadge(at(1), "friendly")?.text).toBe("1/20");
+  });
+
+  it("adds the streak title at 5, 10 and 15", () => {
+    expect(scoreBadge(at(5), "friendly")).toEqual({
+      key: 5,
+      text: "5/20 · Squad player",
+      milestone: true,
+    });
+    expect(scoreBadge(at(10), "friendly")?.text).toBe("10/20 · Starter");
+    expect(scoreBadge(at(15), "friendly")?.text).toBe("15/20 · Captain");
+    expect(scoreBadge(at(6), "friendly")?.milestone).toBe(false);
+  });
+
+  it("stays through the slide and the next deal, and goes with the next guess", () => {
+    for (const phase of ["sliding", "dealing", "spinning", "awaiting"] as const) {
+      expect(scoreBadge(at(3, phase), "friendly")).not.toBeNull();
+    }
+    expect(scoreBadge(at(3, "revealing"), "friendly")).toBeNull();
+    expect(scoreBadge(at(3, "over"), "friendly")).toBeNull();
+  });
+
+  it("never shows on a wrong answer, the winning one, before any point, or outside Friendly", () => {
+    const missed = at(3, "verdict", { history: [rec(1), rec(2), rec(3), rec(4, false)] });
+    expect(scoreBadge(missed, "friendly")).toBeNull();
+    expect(scoreBadge(at(20, "verdict", { end: "won" }), "friendly")).toBeNull();
+    expect(scoreBadge(at(0, "dealing"), "friendly")).toBeNull();
+    expect(scoreBadge(at(3), "endless")).toBeNull();
   });
 });
 

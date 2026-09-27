@@ -70,6 +70,7 @@
     plaqueStage,
     progressText,
     qualifierText,
+    scoreBadge,
     scoreFigure,
     titleCard,
     trackSteps,
@@ -269,6 +270,8 @@
   const steps = $derived(trackSteps(game, mode));
   const finalQuestion = $derived(isFinalQuestion(game, mode));
   const verdictText = $derived(verdictLabel(game));
+  /** "3/20" at the top of the pitch after a right answer, Friendly only. */
+  const badge = $derived(scoreBadge(game, mode));
   const report = $derived(reportedRound(game));
 
   /** The small print under a card's figure. */
@@ -546,7 +549,21 @@
       <h1 class="sr">{t("brand.heading")}</h1>
     {/if}
 
-    <p class="notice" role="status" class:empty={notice === "" || phase === "idle"}>
+    {#if badge !== null}
+      <!-- The new score, at the top of the pitch. The live region already
+           says it, so screen readers skip this. Replays for each answer. -->
+      {#key badge.key}
+        <p class="badge" class:milestone={badge.milestone} aria-hidden="true">
+          <span class="badgetext">{badge.text}</span>
+        </p>
+      {/key}
+    {/if}
+
+    <p
+      class="notice"
+      role="status"
+      class:empty={notice === "" || phase === "idle" || badge !== null}
+    >
       {phase === "idle" ? "" : notice}
     </p>
 
@@ -907,6 +924,103 @@
   .notice.empty {
     display: none;
   }
+  /* The score badge. Over the divide at the top on a desktop, under the
+     plaque on a landscape phone (where the plaque is at the top), and at the
+     top of the top half on a portrait phone, close to the track and above
+     the face. It rises in, a sheen crosses it and its glow pulses, it holds,
+     then it leaves: --dur-score-badge in all, from the verdict, so it is going
+     as the next question settles. Reduced motion: a fade in and out. */
+  .badge {
+    position: absolute;
+    left: 50%;
+    top: var(--badge-top);
+    z-index: 6;
+    margin: 0;
+    overflow: hidden;
+    padding: var(--badge-pad);
+    border-radius: var(--radius-pill);
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    font-size: var(--fs-badge-score);
+    font-variation-settings: var(--fv-caps);
+    letter-spacing: var(--tracking-badge);
+    line-height: var(--lh-tight);
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: var(--badge-glow);
+    transform: translateX(-50%);
+    animation:
+      badge var(--dur-score-badge) var(--ease) both,
+      badge-glow var(--dur-badge-pulse) var(--ease) var(--badge-in-at) 1;
+  }
+  .badge.milestone {
+    --badge-glow: var(--badge-glow-milestone);
+    --badge-glow-peak: var(--badge-glow-milestone-peak);
+  }
+  /* The sheen, once, as it settles in. */
+  .badge::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--badge-sheen);
+    opacity: 0;
+    transform: translateX(-100%);
+    animation: badge-sheen var(--dur-badge-sheen) var(--ease-sheen) var(--badge-in-at) both;
+  }
+  .badgetext {
+    position: relative;
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .badge {
+      top: calc(var(--plaque-top-gap) + var(--plaque-h) + var(--badge-below-plaque));
+    }
+  }
+  @keyframes badge {
+    0% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(var(--badge-rise)) scale(var(--badge-from-scale));
+    }
+    15%,
+    80% {
+      opacity: 1;
+      transform: translateX(-50%);
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(calc(-0.5 * var(--badge-rise)));
+    }
+  }
+  @keyframes badge-glow {
+    50% {
+      box-shadow: var(--badge-glow-peak);
+    }
+  }
+  @keyframes badge-sheen {
+    from {
+      opacity: 1;
+      transform: translateX(-100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(100%);
+    }
+  }
+  @keyframes badge-fade {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    15%,
+    80% {
+      opacity: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .badge {
+      animation: badge-fade var(--dur-score-badge) linear both !important;
+    }
+  }
+
   .notice {
     position: absolute;
     top: 12px;

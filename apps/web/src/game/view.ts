@@ -3,7 +3,7 @@
  * and the edge cases are under test rather than buried in markup.
  */
 
-import { WIN_ROUNDS, isFinalRound } from "@bt/core";
+import { STREAK_TITLES, WIN_ROUNDS, isFinalRound } from "@bt/core";
 import type { Mode, PlayerCard, StatKey, Tier } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
 import type { GameState, Hitch, RoundRecord } from "./machine";
@@ -326,6 +326,46 @@ export function plaqueLead(state: GameState, mode: Mode): string | null {
   return target === null
     ? t("plaque.question", { round: 1 })
     : t("plaque.questionOf", { round: 1, target });
+}
+
+/**
+ * The score badge after a right answer, in a mode with a win target: the new
+ * score ("3/20"), and at a streak title's milestone the title too ("5/20 ·
+ * Squad player"). `key` changes with each right answer, so each one replays
+ * its entrance. It shows from the verdict until the next guess (its own
+ * animation fades it out long before), and not on a wrong answer or the
+ * winning one, which the panel covers.
+ */
+export interface ScoreBadge {
+  readonly key: number;
+  readonly text: string;
+  readonly milestone: boolean;
+}
+
+export function scoreBadge(state: GameState, mode: Mode): ScoreBadge | null {
+  const target = WIN_ROUNDS[mode];
+  if (target === null || state.streak === 0 || state.end === "won") return null;
+  const { phase } = state;
+  if (
+    phase !== "verdict" &&
+    phase !== "sliding" &&
+    phase !== "dealing" &&
+    phase !== "spinning" &&
+    phase !== "awaiting"
+  ) {
+    return null;
+  }
+  const last = state.history.at(-1);
+  if (last === undefined || !last.correct) return null;
+  const score = scoreFigure(state.streak, mode);
+  const title = STREAK_TITLES[mode].find((t) => t.min === state.streak && t.min < target);
+  return title === undefined
+    ? { key: state.streak, text: score, milestone: false }
+    : {
+        key: state.streak,
+        text: t("badge.milestone", { score, title: t(`title.${title.id}`) }),
+        milestone: true,
+      };
 }
 
 /** The note under the challenger while a request waits to go again. */

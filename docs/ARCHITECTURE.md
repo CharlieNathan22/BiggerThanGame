@@ -1129,6 +1129,15 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   motion the title fades in and out where it stands and the plaque fades in, with no glide or
   scaling; the hold still waits for the photos, without the shimmer, and the cards' text fades in
   rather than sliding. Later rounds deal without any of it.
+- **The score badge** (Friendly, from `WIN_ROUNDS`; `scoreBadge` in `game/view.ts`): after each
+  right answer but the winning one, the new score ("3/20") shows in a small gold pill at the top of
+  the pitch, centred on the screen: over the divide at the top on a desktop, just under the plaque
+  on a landscape phone, and at the top of the top half on a portrait phone, close to the track and
+  above the face. It rises in, a sheen crosses it and its glow pulses, it holds, then it leaves:
+  `--dur-score-badge` (2s) from the verdict, so it is going as the next question settles. At 5, 10
+  and 15 it adds the streak title ("5/20 · Squad player") and glows more. Overlaid, so nothing moves;
+  `aria-hidden`, as the live region says the score; with reduced motion it only fades. Other modes
+  show none. While it shows, the refused-challenge note at the top of round one steps aside.
 - **The slide to the next pair** after a right answer is a carousel, the machine's `sliding`
   phase: the challenger's whole card (photo, name, country, revealed figure and qualifier) moves
   into the anchor's place, the anchor's card slides off, and the next challenger comes in with
