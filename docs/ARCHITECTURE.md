@@ -1062,13 +1062,15 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   transform on the spin's own timing, so each label tilts away and shrinks towards the top and
   bottom edges, fading there (`--drum-fade`), with the middle one flat. On landing the drum is
   swapped for a flat line, so the stat is crisp. The plaque keeps its size, position and tier
-  colours, and looks raised and glazed: an inner bevel (`--plaque-bevel`), a gloss over its top
-  half (`--plaque-gloss`), a thin gold metallic rim on every tier (`--plaque-rim-*`), and a soft
-  glow in its own tier's colour (`--plaque-glow-*`; the colour is one token, `--plaque-glow-colour`,
+  colours, and looks like a glazed drum: shade at its top and bottom edges and a band of
+  reflection just above the middle (`--plaque-gloss`), an inner bevel (`--plaque-bevel`), a gold
+  metallic rim drawn inside its edge on every tier (`--plaque-rim`, a gradient ring, with no dark
+  outline round it), a soft shadow under it (`--shadow-plaque`) and a soft glow in its own tier's
+  colour (`--plaque-glow-*`; the colour is one token, `--plaque-glow-colour`,
   set on the plaque so it follows the tier; `var(--gold)` makes it always gold; no glow where
   `color-mix` isn't supported). A sheen (`--plaque-sheen`, `--dur-sheen`) sweeps across when the
-  wheel lands and as the title card hands over "Question 1 of 20". The final question keeps its
-  gold ring. With reduced motion the label just changes: no drum and no sheen; the gloss, rim and
+  wheel lands and as the title card hands over "Question 1 of 20". The final question adds a gold
+  ring outside the rim (`--shadow-plaque-final`). With reduced motion the label just changes: no drum and no sheen; the gloss, rim and
   glow stay.
 - **Photos** are a background layer in each half (`Photo.svelte`): `object-fit: cover`, positioned
   by the payload's `focus` through `--focus`, else `--photo-focus` (`50% 25%`); lightly muted and

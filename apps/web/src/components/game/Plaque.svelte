@@ -302,13 +302,32 @@
       transform: translate(-50%, -50%) scale(var(--win-from-scale));
     }
   }
+  /* The gold rim, inside the edge: the rim's gradient shows only in a ring
+     --plaque-rim-w wide (the box minus its padding). */
+  .plaque::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: var(--radius-pill);
+    padding: var(--plaque-rim-w);
+    background: var(--plaque-rim);
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
   .plaque::after {
     content: "";
     position: absolute;
     inset: 0;
     pointer-events: none;
     border-radius: var(--radius-pill);
-    /* The glass: a gloss over the top half, and the raised bevel inside. */
+    /* The glaze: the drum's shading and reflection, and the raised bevel. */
     background: var(--plaque-gloss);
     box-shadow: var(--plaque-bevel);
   }
