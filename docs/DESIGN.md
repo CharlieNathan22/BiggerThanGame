@@ -829,7 +829,8 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
 
 ```
 /                                  homepage: the brand, one line on the idea, a card per game
-│                                  (Football Legends today, straight to its deck). Static, no JS.
+│                                  (Football Legends today, straight to its deck; Football
+│                                  Managers as a "Coming soon" card). Static, no JS.
 └── /football-higher-or-lower      football hub: football higher or lower in general, and a
     │                              card per deck (Legends today). Static, no JS.
     └── /legends                   the Legends deck: its intro and the three modes. Static,

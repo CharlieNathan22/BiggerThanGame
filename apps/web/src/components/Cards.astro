@@ -1,17 +1,21 @@
 ---
 // A list of <Card>s. By default a grid with room for more cards alongside the
-// first (the homepage's games, the football page's decks); `stack` keeps one
-// card per row, as a deck's modes are.
+// first (the homepage's games, the football page's decks). `stack` is a
+// deck's modes: one per row on a phone, then two to a row (a `wide` card
+// taking a whole row, the others sharing the rows below), and from 900px
+// across a band wider than the text (--cards-wide-w), centred.
 interface Props {
   /** Names the list for screen readers, e.g. "Modes". */
   label: string;
   stack?: boolean;
+  /** More room above and between the cards: the homepage's games. */
+  roomy?: boolean;
 }
 
-const { label, stack = false } = Astro.props;
+const { label, stack = false, roomy = false } = Astro.props;
 ---
 
-<ul class:list={["cards", { stack }]} role="list" aria-label={label}>
+<ul class:list={["cards", { stack, roomy }]} role="list" aria-label={label}>
   <slot />
 </ul>
 
@@ -24,7 +28,22 @@ const { label, stack = false } = Astro.props;
     gap: var(--card-gap);
     grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-w)), 1fr));
   }
+  .cards.roomy {
+    margin-top: var(--cards-top-roomy);
+    gap: var(--card-gap-roomy);
+  }
   .cards.stack {
     grid-template-columns: 1fr;
+  }
+  @media (min-width: 560px) {
+    .cards.stack {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 900px) {
+    .cards.stack {
+      width: var(--cards-wide-w);
+      margin-left: calc((100% - var(--cards-wide-w)) / 2);
+    }
   }
 </style>

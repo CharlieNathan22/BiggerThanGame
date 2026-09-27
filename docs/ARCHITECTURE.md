@@ -996,10 +996,23 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   canonical URL. Every page is canonical to itself; `Base.astro` can take another `canonical`
   path for a duplicate (there are none) or `false` (the 404).
 - **Cards** (`Card.astro`, `Cards.astro`) list the games on `/`, the decks on the football hub
-  (a grid, with room for more) and the modes on the Legends page. An open one is a single link,
-  named by its heading. A mode that isn't open yet is not a link and not focusable, says "Coming
-  soon" in text, and is dimmed without dropping below AA — a test checks the card tokens'
-  contrast.
+  (a grid, with room for more; the homepage's with more room, `roomy`) and the modes on the Legends
+  page, with their titles and text centred. The modes stack on a phone; from 560px Friendly
+  (`wide`) takes a whole row with the others two to a row below it, and from 900px they spread
+  across a band wider than the text (`--cards-wide-w`, up to 1160px); from 900px
+  every card is taller with more padding. Each is a raised surface: a gentle gradient
+  (`--card-surface`, ending in `--card-bg`, which the contrast test measures), light on its top
+  edge, a thin gold-tinted border and two shadows beneath, a close crisp one and a wide soft one
+  (`--card-shadow`). An open one is a single link, named by its heading. On hover and keyboard
+  focus it lifts (`--card-lift-y`, `--card-lift-scale`), its shadows grow deeper and softer in a
+  gold glow (`--card-shadow-lifted`), a sheen crosses it once (`--card-sheen`), and its title turns
+  gold with the larger glow; pressed, it settles (`--card-press-*`). On a mouse it also tilts
+  towards the pointer, up to `--card-tilt-max` degrees, easing back to flat when the pointer leaves:
+  a few lines of inline script in `Page.astro` set `--tilt-x` and `--tilt-y`; on touch, with JS off
+  or with reduced motion it is a plain lift. "Coming soon" cards have the same surface, dimmed and
+  dashed, and never move. With reduced motion only colours and glows change. Everything moves by
+  transform, so nothing shifts, and the page frame clips sideways so a lifted card at the edge
+  can't make the page scroll.
 - **Breadcrumb** (`Breadcrumb.astro`): "Football › Legends" above the Legends page's heading, a
   `<nav aria-label="Breadcrumb">` around an ordered list, the last item a link with
   `aria-current="page"` and the separators `aria-hidden`. Not on the game page, which has no

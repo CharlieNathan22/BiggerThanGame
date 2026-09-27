@@ -263,7 +263,7 @@ export function shareFonts(palette: SharePalette, layout: ShareLayout): string[]
   ];
 }
 
-/** The title bar's words: "Bigger" "Than" " Game — Football " "Legends". */
+/** The title bar's words: "Bigger " "Than" " Game — Football " "Legends". */
 export interface ShareBrand {
   readonly bigger: string;
   readonly than: string;

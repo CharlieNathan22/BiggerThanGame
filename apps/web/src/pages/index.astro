@@ -9,14 +9,14 @@ import { LEGENDS_PATH } from "../lib/paths";
 ---
 
 <Page title={t("home.title")} description={t("home.description")}>
-  <h1>
-    {t("brand.bigger")}
-    <em>{t("brand.than")}</em>
+  <h1 class="brand glow">
+    {t("brand.bigger")} <em>{t("brand.than")}</em> {t("brand.game")}
   </h1>
   <p class="tagline">{t("home.tagline")}</p>
 
-  <Cards label={t("home.games")}>
+  <Cards label={t("home.games")} roomy>
     <Card large name={t("home.legends.name")} body={t("home.legends.body")} href={LEGENDS_PATH} />
+    <Card large name={t("home.managers.name")} body={t("home.managers.body")} />
   </Cards>
 </Page>
 

@@ -112,7 +112,7 @@ export async function renderShareImage(card: ShareCard): Promise<Blob> {
   const layout = readShareLayout(read);
   const palette = readPalette(read);
   const brand: ShareBrand = {
-    bigger: t("brand.bigger"),
+    bigger: `${t("brand.bigger")} `,
     than: t("brand.than"),
     middle: ` ${t("brand.game")} — ${t("brand.football")} `,
     legends: t("brand.legends"),

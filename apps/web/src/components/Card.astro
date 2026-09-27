@@ -1,7 +1,9 @@
 ---
 // One card in a <Cards> list: a game on the homepage, a deck on the football
-// page, or a mode on a deck's page. With `href` the whole card is one link,
-// named by its heading. Without, it is a mode that isn't open yet: dimmed, not
+// page, or a mode on a deck's page. Title and text centred. With `href` the
+// whole card is one link, named by its heading, that lifts, tilts with the
+// pointer and glows gold on hover and focus (the tilt's few lines of script
+// are in Page.astro). Without, it is a mode that isn't open yet: dimmed, not
 // a link and not focusable, with "Coming soon" written out rather than shown by
 // tint alone. Dimmed text still meets AA (tokens.css, and a test).
 import { t } from "../i18n";
@@ -12,38 +14,103 @@ interface Props {
   href?: string;
   /** The homepage's size: one big card per game. */
   large?: boolean;
+  /** Takes a whole row of its list, the others sharing the rows below. */
+  wide?: boolean;
 }
 
-const { name, body, href, large = false } = Astro.props;
+const { name, body, href, large = false, wide = false } = Astro.props;
 const soon = href === undefined;
 ---
 
-<li class:list={["card", { large, soon }]}>
+<li class:list={["card", { large, soon, wide, open: !soon }]}>
   <h2>{soon ? name : <a href={href}>{name}</a>}</h2>
   <p class="body">{body}</p>
   {soon ? <p class="badge">{t("mode.soon")}</p> : <span class="go" aria-hidden="true" />}
 </li>
 
 <style>
+  /* A raised surface: a gentle gradient, light catching the top edge, a thin
+       gold-tinted border, and two shadows under it (a close, crisp one and a
+       wide, soft one), so it floats above the page. Title and text centred,
+       with room either side for the chevron. */
   .card {
     position: relative;
     margin: 0;
     display: flex;
     flex-direction: column;
+    align-items: center;
+    justify-content: center;
     gap: var(--card-inner-gap);
+    min-height: var(--card-min-h);
     padding: var(--card-pad);
-    padding-right: var(--card-pad-end);
+    text-align: center;
+    overflow: hidden;
     border: var(--border) solid var(--card-edge);
     border-radius: var(--card-radius);
-    background: var(--card-bg);
-    transition: border-color var(--dur-hover);
+    background: var(--card-surface);
+    box-shadow: var(--card-shadow);
+    /* The tilt, from the pointer (Page.astro), in degrees; flat without it. */
+    --tilt-x: 0deg;
+    --tilt-y: 0deg;
+    transform: perspective(var(--card-perspective)) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+    transition:
+      border-color var(--dur-card) var(--ease-card),
+      transform var(--dur-card) var(--ease-card),
+      box-shadow var(--dur-card) var(--ease-card);
   }
   .card.large {
     padding: var(--card-pad-large);
-    padding-right: var(--card-pad-end);
   }
-  .card:not(.soon):hover {
+  .card.wide {
+    grid-column: 1 / -1;
+  }
+  /* A card you can open lifts towards you on hover and keyboard focus, tilts
+       with the pointer on a mouse (a fixed gentle lift without JS or on touch),
+       its shadows grow deeper and softer in a gold glow, and a sheen crosses it
+       once. Pressed, it settles down. With reduced motion only the colours and
+       glow change, at once. */
+  .card.open:hover,
+  .card.open:has(a:focus-visible) {
     border-color: var(--card-edge-hover);
+    box-shadow: var(--card-shadow-lifted);
+    transform: perspective(var(--card-perspective)) rotateX(var(--tilt-x)) rotateY(var(--tilt-y))
+      translateY(var(--card-lift-y)) scale(var(--card-lift-scale));
+  }
+  .card.open:active {
+    border-color: var(--card-edge-hover);
+    box-shadow: var(--card-shadow-pressed);
+    transform: perspective(var(--card-perspective)) rotateX(var(--tilt-x)) rotateY(var(--tilt-y))
+      translateY(var(--card-press-y)) scale(var(--card-press-scale));
+  }
+  .card.open::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--card-sheen);
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  .card.open:hover::before,
+  .card.open:has(a:focus-visible)::before {
+    animation: card-sheen var(--dur-card-sheen) var(--ease-card) both;
+  }
+  @keyframes card-sheen {
+    from {
+      opacity: 1;
+      transform: translateX(-100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(100%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card.open:hover,
+    .card.open:has(a:focus-visible),
+    .card.open:active {
+      transform: none;
+    }
   }
 
   .card h2 {
@@ -60,15 +127,30 @@ const soon = href === undefined;
     font-variation-settings: var(--fv-display);
     letter-spacing: var(--tracking-display);
   }
+  /* The title glows like the title bar's and footer's links, and turns gold
+       with the larger glow on hover, focus and press. */
   .card a {
     color: inherit;
     text-decoration: none;
+    text-shadow: var(--glow);
+    transition:
+      color var(--dur-card) var(--ease-card),
+      text-shadow var(--dur-card) var(--ease-card);
   }
-  /* The whole card is the link's hit area. */
+  .card.open:hover a,
+  .card.open:active a,
+  .card a:focus-visible {
+    color: var(--gold);
+    text-shadow: var(--glow-hover);
+  }
+  /* The whole card is the link's hit area: laid over everything in it (the
+       title's box must stay unpositioned, so this spans the card, not the
+       title). */
   .card a::after {
     content: "";
     position: absolute;
     inset: 0;
+    z-index: 1;
     border-radius: inherit;
   }
   /* The focus ring goes round the card, not the heading inside it. */
@@ -84,6 +166,9 @@ const soon = href === undefined;
 
   .card .body {
     margin: 0;
+    /* A "\n" in the text is a line break. */
+    white-space: pre-line;
+    max-width: var(--card-body-w);
     font-size: var(--fs-body);
     line-height: var(--lh-body);
     color: var(--card-body);
@@ -101,17 +186,18 @@ const soon = href === undefined;
     transform: translateY(-50%) rotate(45deg);
   }
 
+  /* Not open yet: the same raised card, dimmed and dashed, and still. */
   .soon {
     border-style: dashed;
     border-color: var(--card-soon-edge);
     background: var(--card-soon-bg);
+    box-shadow: var(--card-shadow-soon);
   }
   .soon h2,
   .soon .body {
     color: var(--card-soon-text);
   }
   .card .badge {
-    align-self: flex-start;
     margin: 2px 0 0;
     padding: var(--badge-pad);
     border: var(--border) solid var(--card-soon-badge-edge);

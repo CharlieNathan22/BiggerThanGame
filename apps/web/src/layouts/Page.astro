@@ -48,6 +48,34 @@ const path = servedPath(Astro.url.pathname);
     returning focus to "Menu" if it was inside, and a click outside closes it.
     Inline and framework-free; with JS off the menu still opens and closes.
   -->
+  <!--
+    The cards' tilt: on a mouse, a card leans towards the pointer (up to
+    --card-tilt-max) and eases back to flat when it leaves. Nothing on touch,
+    with reduced motion or with JS off, where hover is a plain lift.
+  -->
+  <script is:inline>
+    (() => {
+      const still = matchMedia("(prefers-reduced-motion: reduce)");
+      const max = () =>
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--card-tilt-max"),
+        ) || 0;
+      for (const card of document.querySelectorAll(".card.open")) {
+        card.addEventListener("pointermove", (event) => {
+          if (event.pointerType !== "mouse" || still.matches) return;
+          const box = card.getBoundingClientRect();
+          const x = (event.clientX - box.left) / box.width - 0.5;
+          const y = (event.clientY - box.top) / box.height - 0.5;
+          card.style.setProperty("--tilt-x", `${(-y * 2 * max()).toFixed(2)}deg`);
+          card.style.setProperty("--tilt-y", `${(x * 2 * max()).toFixed(2)}deg`);
+        });
+        card.addEventListener("pointerleave", () => {
+          card.style.removeProperty("--tilt-x");
+          card.style.removeProperty("--tilt-y");
+        });
+      }
+    })();
+  </script>
   <script is:inline>
     (() => {
       const menu = document.querySelector("[data-menu]");

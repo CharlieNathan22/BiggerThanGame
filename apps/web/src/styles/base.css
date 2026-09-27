@@ -53,6 +53,8 @@ a {
      page that fits the screen doesn't scroll. Longer pages grow and scroll as
      ever; clip, unlike hidden, makes no scroll container. */
   overflow-y: clip;
+  /* Nor sideways: a lifted card near the edge mustn't make the page scroll. */
+  overflow-x: clip;
 }
 
 /* A game page (/football-higher-or-lower/legends/friendly) is a fixed-height

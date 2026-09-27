@@ -24,6 +24,35 @@
   font-style: normal;
   color: var(--gold);
 }
+/* A heading of two short lines (the Legends page's): each line whole at
+   every width, scaled to fit, centred. */
+.prose h1.twoline {
+  font-size: var(--fs-twoline-heading);
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* A paragraph centred under a centred heading (the Legends page's intro). */
+.prose p.centred {
+  text-align: center;
+}
+
+/* A big heading in the site's gold glow: the homepage's and the Legends
+   page's. */
+.prose h1.glow {
+  text-shadow: var(--heading-glow);
+}
+
+/* The homepage's "Bigger Than Game": one line at every width, scaled to fit,
+   and centred with the line under it. */
+.prose h1.brand,
+.prose .tagline {
+  text-align: center;
+}
+.prose h1.brand {
+  font-size: var(--fs-home-brand);
+  white-space: nowrap;
+}
 
 /* The start panel's "Football Legends" line. */
 .prose .sublegend {

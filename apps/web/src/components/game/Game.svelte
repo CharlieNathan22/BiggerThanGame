@@ -523,16 +523,20 @@
       </Side>
     {/each}
 
-    <Plaque
-      stat={game.plaque}
-      {spinIndex}
-      spinTo={round?.stat ?? null}
-      {timings}
-      {reducedMotion}
-      final={finalQuestion}
-      {lead}
-      stage={plaqueStage(game)}
-    />
+    <!-- No plaque before a run: there's nothing on it yet, and its glow would
+         show faintly through the start panel. -->
+    {#if phase !== "idle" && phase !== "starting"}
+      <Plaque
+        stat={game.plaque}
+        {spinIndex}
+        spinTo={round?.stat ?? null}
+        {timings}
+        {reducedMotion}
+        final={finalQuestion}
+        {lead}
+        stage={plaqueStage(game)}
+      />
+    {/if}
 
     {#if titleCardText !== null}
       <!-- The title card: large in the centre, then shrinking and gliding
@@ -569,36 +573,43 @@
 
     {#if phase === "idle" || phase === "starting"}
       <div class="veil">
-        <div class="panel">
-          <h1>{t("brand.bigger")}<em>{t("brand.than")}</em></h1>
-          <div class="sublegend">{t("brand.footballLegends")}</div>
-          {#if offered}
-            <p class="beat">{challengeHeading(offered.score, mode)}</p>
-            <p>{challengeIntro(offered.score, mode)}</p>
-          {:else if target !== null}
-            <p>{t("start.introTarget", { target })}</p>
-          {:else}
-            <p>{t("start.intro")}</p>
-          {/if}
-          <button
-            class="cta"
-            bind:this={startButton}
-            disabled={controller === null || phase === "starting"}
-            onclick={start}
-          >
-            {phase === "starting"
-              ? t("start.starting")
-              : offered
-                ? t("challenge.cta")
-                : t("start.cta")}
-          </button>
-          {#if game.startFailed}
-            <p class="problem" role="alert">{t("start.failed")}</p>
-          {/if}
-          <p class="problem" role="status" class:empty={!(phase === "starting" && resting)}>
-            {phase === "starting" && resting ? t("start.slowDown") : ""}
-          </p>
-          <p class="problem" role="status" class:empty={notice === ""}>{notice}</p>
+        <!-- The brand, the deck and the mode, then what to do; side by side on
+             a landscape phone, so it fits. -->
+        <div class="panel start">
+          <div class="head">
+            <h1>{t("brand.bigger")} <em>{t("brand.than")}</em> {t("brand.game")}</h1>
+            <div class="deckname">{t("brand.footballLegends")}</div>
+            <div class="modename"><span>{t(`mode.${mode}.name`)}</span></div>
+          </div>
+          <div class="lead">
+            {#if offered}
+              <p class="beat">{challengeHeading(offered.score, mode)}</p>
+              <p>{challengeIntro(offered.score, mode)}</p>
+            {:else if target !== null}
+              <p>{t("start.introTarget", { target })}</p>
+            {:else}
+              <p>{t("start.intro")}</p>
+            {/if}
+            <button
+              class="cta"
+              bind:this={startButton}
+              disabled={controller === null || phase === "starting"}
+              onclick={start}
+            >
+              {phase === "starting"
+                ? t("start.starting")
+                : offered
+                  ? t("challenge.cta")
+                  : t("start.cta")}
+            </button>
+            {#if game.startFailed}
+              <p class="problem" role="alert">{t("start.failed")}</p>
+            {/if}
+            <p class="problem" role="status" class:empty={!(phase === "starting" && resting)}>
+              {phase === "starting" && resting ? t("start.slowDown") : ""}
+            </p>
+            <p class="problem" role="status" class:empty={notice === ""}>{notice}</p>
+          </div>
         </div>
       </div>
     {:else if phase === "over"}
@@ -933,52 +944,54 @@
   .badge {
     position: absolute;
     left: 50%;
-    top: var(--badge-top);
+    top: var(--score-badge-top);
     z-index: 6;
     margin: 0;
     overflow: hidden;
-    padding: var(--badge-pad);
+    padding: var(--score-badge-pad);
     border-radius: var(--radius-pill);
-    background: var(--badge-bg);
-    color: var(--badge-text);
-    font-size: var(--fs-badge-score);
+    background: var(--score-badge-bg);
+    color: var(--score-badge-text);
+    font-size: var(--fs-score-badge);
     font-variation-settings: var(--fv-caps);
-    letter-spacing: var(--tracking-badge);
+    letter-spacing: var(--tracking-score-badge);
     line-height: var(--lh-tight);
     white-space: nowrap;
     pointer-events: none;
-    box-shadow: var(--badge-glow);
+    box-shadow: var(--score-badge-glow);
     transform: translateX(-50%);
     animation:
       badge var(--dur-score-badge) var(--ease) both,
-      badge-glow var(--dur-badge-pulse) var(--ease) var(--badge-in-at) 1;
+      badge-glow var(--dur-score-badge-pulse) var(--ease) var(--score-badge-in-at) 1;
   }
   .badge.milestone {
-    --badge-glow: var(--badge-glow-milestone);
-    --badge-glow-peak: var(--badge-glow-milestone-peak);
+    --score-badge-glow: var(--score-badge-glow-milestone);
+    --score-badge-glow-peak: var(--score-badge-glow-milestone-peak);
   }
   /* The sheen, once, as it settles in. */
   .badge::after {
     content: "";
     position: absolute;
     inset: 0;
-    background: var(--badge-sheen);
+    background: var(--score-badge-sheen);
     opacity: 0;
     transform: translateX(-100%);
-    animation: badge-sheen var(--dur-badge-sheen) var(--ease-sheen) var(--badge-in-at) both;
+    animation: badge-sheen var(--dur-score-badge-sheen) var(--ease-sheen) var(--score-badge-in-at)
+      both;
   }
   .badgetext {
     position: relative;
   }
   @media (orientation: landscape) and (max-height: 500px) {
     .badge {
-      top: calc(var(--plaque-top-gap) + var(--plaque-h) + var(--badge-below-plaque));
+      top: calc(var(--plaque-top-gap) + var(--plaque-h) + var(--score-badge-below-plaque));
     }
   }
   @keyframes badge {
     0% {
       opacity: 0;
-      transform: translateX(-50%) translateY(var(--badge-rise)) scale(var(--badge-from-scale));
+      transform: translateX(-50%) translateY(var(--score-badge-rise))
+        scale(var(--score-badge-from-scale));
     }
     15%,
     80% {
@@ -987,12 +1000,12 @@
     }
     100% {
       opacity: 0;
-      transform: translateX(-50%) translateY(calc(-0.5 * var(--badge-rise)));
+      transform: translateX(-50%) translateY(calc(-0.5 * var(--score-badge-rise)));
     }
   }
   @keyframes badge-glow {
     50% {
-      box-shadow: var(--badge-glow-peak);
+      box-shadow: var(--score-badge-glow-peak);
     }
   }
   @keyframes badge-sheen {
@@ -1123,6 +1136,66 @@
   .panel h1 em {
     font-style: normal;
     color: var(--gold);
+  }
+  /* The start panel: "Bigger Than Game" in the site's gold glow, sized to
+     stay on one line on a phone; "Football Legends" in Cinzel, gold leaf with
+     a glow; the mode beneath in gold. */
+  /* Nearer the top than the centre, with room under the title bar; wider than
+     other panels so the names stay on one line on a phone. */
+  .panel.start {
+    max-width: var(--start-w);
+    margin: var(--start-top) auto auto;
+  }
+  .start h1 {
+    font-size: var(--fs-start-brand);
+    white-space: nowrap;
+    text-shadow: var(--heading-glow);
+  }
+  .deckname {
+    margin-top: var(--deckname-top);
+    font-family: var(--font-display);
+    font-weight: var(--fw-legends);
+    font-size: var(--fs-deckname);
+    letter-spacing: var(--tracking-legends);
+    line-height: var(--lh-tight);
+    white-space: nowrap;
+    background: var(--legends-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: var(--legends-shadow) var(--glow-filter);
+  }
+  /* The glow on the letters themselves (an inline span), not the line's box. */
+  .modename {
+    margin-top: var(--modename-top);
+    font-size: var(--fs-modename);
+    font-variation-settings: var(--fv-caps);
+    letter-spacing: var(--tracking-modename);
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+  .modename span {
+    text-shadow: var(--modename-glow);
+  }
+  /* Start the run: bigger than the panel's other buttons, with more room
+     above it, so on a desktop it sits near the middle of the screen. */
+  .start .cta {
+    margin-top: var(--start-cta-top);
+    min-height: var(--start-cta-h);
+    padding: 0 var(--start-cta-pad-x);
+    font-size: var(--fs-start-cta);
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .panel.start {
+      max-width: var(--start-w-wide);
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: var(--over-col-gap);
+      align-items: center;
+    }
+    .start .lead > p:first-child {
+      margin-top: 0;
+    }
   }
   .sublegend {
     margin-top: 8px;

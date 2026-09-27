@@ -66,7 +66,7 @@
 
 <header class="topbar" class:sticky>
   <a class="title" href={HOME_PATH} aria-current={currentPage(HOME_PATH, current)}>
-    <span class="bt">{t("brand.bigger")}<em>{t("brand.than")}</em> {t("brand.game")}</span>
+    <span class="bt">{t("brand.bigger")} <em>{t("brand.than")}</em> {t("brand.game")}</span>
     {#if legends}
       <span class="dash">—</span>
       <span class="fl">{t("brand.football")} <span class="legends">{t("brand.legends")}</span></span
@@ -185,12 +185,21 @@
   .bt,
   .fl {
     text-shadow: var(--glow);
-    transition: text-shadow var(--dur-hover);
+    transition:
+      color var(--dur-hover),
+      text-shadow var(--dur-hover);
   }
-  .title:hover :is(.bt, .fl),
-  .title:active :is(.bt, .fl),
-  .title:focus-visible :is(.bt, .fl) {
+  .title:hover .fl,
+  .title:active .fl,
+  .title:focus-visible .fl {
     text-shadow: var(--glow-hover);
+  }
+  /* The brand's white turns gold, and its glow grows stronger. */
+  .title:hover .bt,
+  .title:active .bt,
+  .title:focus-visible .bt {
+    color: var(--gold);
+    text-shadow: var(--glow-strong);
   }
   .bt em {
     font-style: normal;

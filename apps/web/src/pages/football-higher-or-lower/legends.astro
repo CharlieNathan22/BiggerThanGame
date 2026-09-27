@@ -16,13 +16,17 @@ import { FOOTBALL_PATH, FRIENDLY_PATH, LEGENDS_PATH } from "../../lib/paths";
       { label: t("breadcrumb.legends"), href: LEGENDS_PATH },
     ]}
   />
-  <h1>
-    {t("legends.heading")} <em>{t("legends.headingEm")}</em>
+  <!-- One heading, on two lines, each kept whole, centred, in the gold glow. -->
+  <h1 class="twoline glow">
+    {t("legends.heading")}
+    <br />
+    <em>{t("legends.headingHigher")}</em> {t("legends.headingOr")}{" "}
+    <em>{t("legends.headingLower")}</em>
   </h1>
-  <p>{t("legends.intro")}</p>
+  <p class="centred">{t("legends.intro")}</p>
 
   <Cards label={t("legends.modes")} stack>
-    <Card name={t("mode.friendly.name")} body={t("mode.friendly.body")} href={FRIENDLY_PATH} />
+    <Card name={t("mode.friendly.name")} body={t("mode.friendly.body")} href={FRIENDLY_PATH} wide />
     <Card name={t("mode.endless.name")} body={t("mode.endless.body")} />
     <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} />
   </Cards>

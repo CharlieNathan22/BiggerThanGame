@@ -53,9 +53,11 @@ export const en = {
     "Higher or lower where the stat keeps changing under you. Start with football: two legends, one stat, one hidden number. Free, no sign-up.",
   "home.tagline": "Higher or lower, where the question keeps changing.",
   "home.games": "Games",
+  "home.managers.name": "Football Managers",
+  "home.managers.body": "Higher or lower with the greatest managers in the game's history.",
   "home.legends.name": "Football Legends",
   "home.legends.body":
-    "Two retired football legends, one stat. Is the hidden number higher or lower? Watch out — the stat keeps changing.",
+    "Test your knowledge on football legends. Features the greatest retired footballers in history.",
 
   // The football page (/football-higher-or-lower): football higher or lower in
   // general, and a card per deck. Nothing Legends-specific. Drafts.
@@ -76,14 +78,17 @@ export const en = {
   "legends.title": "Football Legends Higher or Lower — Bigger Than Game",
   "legends.description":
     "Higher or lower with retired football legends, where the stat keeps changing. Play Friendly now, with no clock; Endless and Daily Ranked are on the way.",
-  "legends.heading": "Football legends",
-  "legends.headingEm": "higher or lower",
+  "legends.heading": "Football Legends",
+  // The heading's second line: "Higher" and "Lower" in gold, "or" in white
+  "legends.headingHigher": "Higher",
+  "legends.headingOr": "or",
+  "legends.headingLower": "Lower",
   "legends.intro":
-    "Two retired legends, one stat. Guess whether the hidden number is higher or lower, and keep the run going. Read the plaque before you pick: every few rounds the stat changes.",
+    "Higher or lower game for football legends. Guess if the number is higher or lower to keep the run going. The question will change throughout the game, so make sure to read the plaque.",
   "legends.modes": "Modes",
   "mode.friendly.name": "Friendly",
-  "mode.friendly.body":
-    "Twenty questions, no clock — get them all right to win, at your own pace, with every player and every stat.",
+  // A "\n" is a line break on the card
+  "mode.friendly.body": "Twenty questions, no timer.\nGet them all right to win.",
   "mode.endless.name": "Endless",
   "mode.endless.body":
     "Unlimited runs against a 10-second clock, with a daily board for your best of the day.",
@@ -98,9 +103,9 @@ export const en = {
 
   // Start panel
   "start.intro":
-    "Two legends, one stat. Guess whether the hidden number is higher or lower. The stat changes as you go — watch the plaque before you pick.",
+    "Football Legends features the greatest footballers of all time who no longer play professionally. Guess whether the hidden number is higher or lower. Watch the plaque, the stat changes as you play.",
   "start.introTarget":
-    "Two legends, one stat. Guess whether the hidden number is higher or lower — and watch the plaque, because the stat changes as you go. Get all {target} right to win.",
+    "Football Legends features the greatest footballers of all time who no longer play professionally. Guess whether the hidden number is higher or lower. Watch the plaque, the stat changes as you play. Get all {target} right to win.",
   "start.cta": "Start the run",
   "start.starting": "Dealing…",
   "start.failed": "Couldn't reach the server. Check your connection and try again.",
