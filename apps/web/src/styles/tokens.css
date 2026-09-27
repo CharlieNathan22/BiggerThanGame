@@ -33,33 +33,61 @@
    * Player photos (DESIGN.md §12): a background layer, never the hero. Lightly
    * muted and dimmed, then drawn at partial opacity over the half's own colour,
    * so the night teal at rest and the verdict's green or red after a guess
-   * tint it. The scrim keeps the name and number legible.
+   * tint it.
    */
   --photo-focus: 50% 25%;
   --photo-filter: grayscale(0.35) saturate(0.9) contrast(1.05) brightness(0.8);
   --photo-blend: normal;
   --photo-opacity: 0.62;
-  --photo-scrim: radial-gradient(
-    ellipse 75% 65% at 50% 50%,
-    rgba(6, 18, 26, 0.5) 0%,
-    rgba(6, 18, 26, 0.22) 70%,
-    rgba(6, 18, 26, 0.08) 100%
-  );
+  /* --ink as channels, for the scrim's and halo's own opacities. */
+  --ink-rgb: 6, 18, 26;
   /*
-   * The card plate: a soft dark panel behind the name, meta line and figure, so
-   * the text sits on a guaranteed-dark area over any photo while the half's
-   * colour — teal, or the verdict's green or red — stays strong around it.
-   * Sized by the contrast pass: at this opacity, chalk, --dim and all three
-   * tier colours hold AA over a white photo pixel under the lightest scrim.
+   * Card text over the photo. No plate: the name, country and figure start
+   * --text-top-gap below the middle of the half — side by side, just under the
+   * plaque — below the face at the default focus. On a half too short for that
+   * they sit as low as fits, keeping --text-bottom (--text-bottom-short on
+   * landscape phones) under them, and on stacked phones --plaque-clear under
+   * the top half's.
+   *
+   * The scrim darkens only the band behind the text: at --scrim-opacity from
+   * the top of the text down to the half's bottom edge, fading to nothing over
+   * --scrim-fade above it. Only over a photo. The halo is a soft dark
+   * text-shadow round every glyph: a tight edge and a wide glow.
+   *
+   * Sized by the contrast pass (M6). The brightest photo pixel at the text is
+   * clipped white — most of the deck has one there on a phone — which the photo
+   * filter and opacity cap at 204 × --photo-opacity over the half's colour.
+   * Over that, under the scrim alone (the halo is extra), 0.61 is the lightest
+   * that holds AA: --dim 4.5:1 as small print, and chalk, the three tier
+   * colours and the "?" 3:1 as large text, on --night, --night-2, --hit and
+   * --miss. The binding cases are --dim and the rare tier on --hit.
    */
-  --plate-bg: rgba(6, 18, 26, 0.62);
-  --plate-blur: 6px;
-  --plate-feather: 18px;
-  --plate-radius: 22px;
-  --plate-pad: 12px 22px 14px;
-  /* Higher / Lower sit below the plate, on the photo: the same fill keeps their
-     text at AA. On a card with no photo it all but vanishes into --night. */
-  --pick-bg: var(--plate-bg);
+  --text-top-gap: calc(var(--plaque-h) / 2 + var(--plaque-halo) + 10px);
+  --text-bottom: clamp(14px, 3.4vh, 34px);
+  --text-bottom-short: 10px;
+  --plaque-clear: calc(var(--plaque-h) / 2 + var(--plaque-halo) + 12px);
+  --scrim-opacity: 0.61;
+  --scrim-fade: clamp(56px, 12vh, 120px);
+  --halo-edge-blur: 2px;
+  --halo-edge-opacity: 0.55;
+  --halo-blur: 14px;
+  --halo-opacity: 0.5;
+  --halo:
+    0 0 var(--halo-edge-blur) rgba(var(--ink-rgb), var(--halo-edge-opacity)),
+    0 0 var(--halo-blur) rgba(var(--ink-rgb), var(--halo-opacity));
+  /* The gold hairline under the name. `none` turns it off. */
+  --name-rule-display: block;
+  --name-rule-w: 28px;
+  --name-rule-h: 1px;
+  --name-rule-gap: 7px;
+  --name-rule-colour: rgba(255, 176, 32, 0.75);
+  /* Higher / Lower: their slot under the challenger's figure (the anchor keeps
+     the same room when the halves are side by side), and their fill, which
+     keeps their text at AA on the photo. On a card with no photo it all but
+     vanishes into --night. */
+  --picks-gap: 16px;
+  --picks-slot: calc(var(--picks-gap) + var(--target-min));
+  --pick-bg: rgba(var(--ink-rgb), 0.62);
   /* The connection note under the challenger during a reconnect or slow-down. */
   --hitch-bg: rgba(6, 18, 26, 0.72);
   /* Notes over the pitch: a refused challenge link. */

@@ -36,7 +36,6 @@
     style:--focus={focusPosition(image.focus)}
     onerror={() => (failed = true)}
   />
-  <div class="scrim" aria-hidden="true"></div>
 {:else}
   <div class="monogram" aria-hidden="true">{initial}</div>
 {/if}
@@ -54,12 +53,6 @@
     opacity: var(--photo-opacity);
     pointer-events: none;
     user-select: none;
-  }
-  .scrim {
-    position: absolute;
-    inset: 0;
-    background: var(--photo-scrim);
-    pointer-events: none;
   }
   .monogram {
     position: absolute;

@@ -378,20 +378,24 @@
         {/if}
       {/snippet}
       {#if round}
-        <div
-          class="picks"
-          role="group"
-          aria-label={t("pick.group", { name: round.challenger.name })}
-          hidden={phase !== "awaiting"}
-        >
-          <button class="pick" bind:this={higherButton} onclick={() => pick("higher")}>
-            {t("pick.higher")}
-          </button>
-          <button class="pick" onclick={() => pick("lower")}>{t("pick.lower")}</button>
+        <!-- One slot for Higher / Lower and the connection note, kept whether
+             they show or not, so the text above never moves. -->
+        <div class="slot">
+          <div
+            class="picks"
+            role="group"
+            aria-label={t("pick.group", { name: round.challenger.name })}
+            hidden={phase !== "awaiting"}
+          >
+            <button class="pick" bind:this={higherButton} onclick={() => pick("higher")}>
+              {t("pick.higher")}
+            </button>
+            <button class="pick" onclick={() => pick("lower")}>{t("pick.lower")}</button>
+          </div>
+          <p class="hitch" role="status" class:empty={phase !== "revealing" || game.hitch === null}>
+            {phase === "revealing" ? hitchText(game.hitch) : ""}
+          </p>
         </div>
-        <p class="hitch" role="status" class:empty={phase !== "revealing" || game.hitch === null}>
-          {phase === "revealing" ? hitchText(game.hitch) : ""}
-        </p>
       {/if}
     </Side>
 
@@ -553,18 +557,26 @@
     }
   }
 
-  .picks {
+  .slot {
     position: relative;
-    margin-top: 16px;
+    margin-top: var(--picks-gap);
+    min-height: var(--target-min);
+    display: grid;
+    place-items: center;
+  }
+  .slot > * {
+    grid-area: 1 / 1;
+  }
+  .picks {
     display: flex;
     gap: 10px;
   }
+  /* Hidden, but still holding its room. */
   .picks[hidden] {
-    display: none;
+    display: flex;
+    visibility: hidden;
   }
   .hitch {
-    position: relative;
-    margin-top: 16px;
     padding: 7px 14px;
     border-radius: var(--radius-pill);
     background: var(--hitch-bg);
