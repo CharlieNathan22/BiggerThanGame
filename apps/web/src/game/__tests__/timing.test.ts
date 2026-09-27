@@ -40,6 +40,16 @@ describe("tokens.css and the script timings", () => {
     expect(TIMINGS.count).toBeGreaterThanOrEqual(500);
     expect(TIMINGS.count).toBeLessThanOrEqual(1200);
   });
+
+  it("keeps a share note up for 2–8 s: long enough to read, short enough to go", () => {
+    expect(TIMINGS.notice).toBeGreaterThanOrEqual(2000);
+    expect(TIMINGS.notice).toBeLessThanOrEqual(8000);
+  });
+
+  it("fades a share note out quickly, well inside the time it's shown", () => {
+    expect(TIMINGS.noticeFade).toBeGreaterThan(0);
+    expect(TIMINGS.noticeFade).toBeLessThan(TIMINGS.notice);
+  });
 });
 
 describe("parseTokenValue", () => {

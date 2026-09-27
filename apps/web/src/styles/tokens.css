@@ -204,6 +204,23 @@
   --foot-group-gap: 18px;
   --foot-row-gap: 32px;
 
+  /* Site navigation in the title bar: inline links on desktop, a "Menu" on
+     phones whose list overlays the page. Text is --dim or chalk on --ink (AA). */
+  --z-topbar: 15;
+  --nav-gap: 18px;
+  --nav-underline-offset: 4px;
+  --fs-nav: 13.5px;
+  --fs-menu: 12px;
+  --fs-menu-link: 16px;
+  --menu-pad-y: 4px;
+  --menu-pad-x: 11px;
+  --menu-edge: rgba(238, 243, 241, 0.45);
+  --menu-open-bg: var(--rule);
+  --menu-bg: var(--ink);
+  --menu-sheet-pad: 6px 0 10px;
+  --menu-link-pad: 0 20px;
+  --shadow-menu: 0 14px 32px rgba(0, 0, 0, 0.45);
+
   /*
    * Cards: the homepage's games and the football hub's modes. A mode that isn't
    * open yet is dimmed — no fill, a dashed faint edge, --dim text — but never
@@ -287,6 +304,10 @@
   --dur-modal: 180ms;
   /* The feedback modal's "Thanks" before it closes itself. Kept with reduced motion. */
   --dur-thanks: 5000ms;
+  /* A share result note on the game-over panel: shown this long, then faded
+     out over --dur-notice-fade and cleared. A test keeps it within 2–8 s. */
+  --dur-notice: 5000ms;
+  --dur-notice-fade: 300ms;
 }
 
 /*

@@ -22,11 +22,17 @@ export const en = {
   "scores.streak": "Streak",
   "scores.best": "Best",
 
+  // Site navigation in the title bar: inline on desktop, a menu on phones
+  "nav.label": "Main",
+  "nav.menu": "Menu",
+  "nav.play": "Play",
+  "nav.howToPlay": "How to play",
+  "nav.about": "About",
+
   // Footer
   "footer.nav": "Site",
-  "footer.about": "About",
   "footer.credits": "Credits",
-  "footer.howToPlay": "How to play",
+  "footer.github": "GitHub",
   "footer.feedbackNav": "Feedback",
   "footer.suggest": "Suggest a legend",
   "footer.problem": "Report a problem",

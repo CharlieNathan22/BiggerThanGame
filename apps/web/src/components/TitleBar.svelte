@@ -3,46 +3,101 @@
   with no JS; the game island reuses it with live scores. "— Football Legends"
   shows only on the Legends pages (`legends`); elsewhere it is the brand alone
   (DESIGN.md §17).
+
+  Site navigation: the brand links home, then Play, How to play and About.
+  Desktop shows them inline. Phones and short landscape screens get a "Menu"
+  built on <details>/<summary>, so it opens with no JS and from the keyboard.
+  Esc and a click outside close it: here on the game page, where the island
+  hydrates the bar, and through a small inline script in Page.astro on the
+  static pages, which find it by `data-menu`.
+  It sits on the bar's existing rows and opens as an overlay, so the game's
+  fixed-height screen loses nothing. Only one of the two lists is displayed.
 -->
 <script lang="ts">
   import { t } from "../i18n";
+  import { NAV_LINKS, currentPage } from "../lib/nav";
   import { HOME_PATH } from "../lib/paths";
 
   interface Props {
     /** Streak and best. Shown on the game only; other pages have no run. */
     scores?: { streak: number; best: number };
-    /** Make the title a link to the homepage. Off on the homepage itself. */
-    home?: boolean;
     /** Add "— Football Legends": /football-higher-or-lower/legends and the pages under it. */
     legends?: boolean;
+    /** The page being shown, as served (`/about`), for `aria-current`. */
+    current?: string;
   }
 
-  let { scores, home = false, legends = false }: Props = $props();
+  let { scores, legends = false, current }: Props = $props();
+
+  // The element's own `open` is the state, never a binding: hydration would
+  // otherwise close a menu opened before the island loaded.
+  let menu: HTMLDetailsElement | undefined = $state();
+
+  /** Esc closes the menu; focus goes back to "Menu" if it was inside. */
+  function onDocumentKeydown(event: KeyboardEvent): void {
+    if (event.key !== "Escape" || !menu?.open) return;
+    const inside = menu.contains(document.activeElement);
+    menu.open = false;
+    if (inside) menu.querySelector("summary")?.focus();
+  }
+
+  function onDocumentClick(event: MouseEvent): void {
+    if (!menu?.open || !(event.target instanceof Node) || menu.contains(event.target)) return;
+    menu.open = false;
+  }
 </script>
 
+<svelte:document onclick={onDocumentClick} onkeydown={onDocumentKeydown} />
+
 <header class="topbar">
-  <svelte:element this={home ? "a" : "div"} class="title" href={home ? HOME_PATH : undefined}>
+  <a class="title" href={HOME_PATH} aria-current={currentPage(HOME_PATH, current)}>
     <span class="bt">{t("brand.bigger")}<em>{t("brand.than")}</em> {t("brand.game")}</span>
     {#if legends}
       <span class="dash">—</span>
       <span class="fl">{t("brand.football")} <span class="legends">{t("brand.legends")}</span></span
       >
     {/if}
-  </svelte:element>
-  {#if scores}
-    <div class="scores">
-      <div class="score">
-        <span>{t("scores.streak")}</span><strong class="num">{scores.streak}</strong>
+  </a>
+  <div class="end">
+    {#if scores}
+      <div class="scores">
+        <div class="score">
+          <span>{t("scores.streak")}</span><strong class="num">{scores.streak}</strong>
+        </div>
+        <div class="score">
+          <span>{t("scores.best")}</span><strong class="num">{scores.best}</strong>
+        </div>
       </div>
-      <div class="score">
-        <span>{t("scores.best")}</span><strong class="num">{scores.best}</strong>
-      </div>
-    </div>
-  {/if}
+    {/if}
+    <nav class="links" aria-label={t("nav.label")}>
+      <ul>
+        {#each NAV_LINKS as link (link.href)}
+          <li>
+            <a href={link.href} aria-current={currentPage(link.href, current)}>{t(link.label)}</a>
+          </li>
+        {/each}
+      </ul>
+    </nav>
+    <details class="menu" data-menu bind:this={menu}>
+      <summary>{t("nav.menu")}</summary>
+      <nav class="sheet" aria-label={t("nav.label")}>
+        <ul>
+          {#each NAV_LINKS as link (link.href)}
+            <li>
+              <a href={link.href} aria-current={currentPage(link.href, current)}>{t(link.label)}</a>
+            </li>
+          {/each}
+        </ul>
+      </nav>
+    </details>
+  </div>
 </header>
 
 <style>
   .topbar {
+    /* The menu's sheet hangs from the bar, over the page, above the game's veil. */
+    position: relative;
+    z-index: var(--z-topbar);
     flex: none;
     background: var(--ink);
     border-bottom: var(--border) solid var(--gold-rule);
@@ -67,8 +122,8 @@
     color: inherit;
     text-decoration: none;
   }
-  /* As a link, a 44px touch target however small the type. */
-  a.title::after {
+  /* A 44px touch target however small the type. */
+  .title::after {
     content: "";
     position: absolute;
     left: 0;
@@ -111,11 +166,18 @@
     color: transparent;
     filter: var(--legends-shadow);
   }
+  /* Scores and navigation, at the end of the bar; on a narrow screen they wrap
+     to a second row together, where the scores already sat. */
+  .end {
+    display: flex;
+    align-items: center;
+    gap: var(--nav-gap);
+    margin-left: auto;
+  }
   .scores {
     display: flex;
     gap: 18px;
     align-items: baseline;
-    margin-left: auto;
   }
   .score {
     display: flex;
@@ -129,5 +191,116 @@
   }
   .score strong {
     font-size: var(--fs-score);
+  }
+
+  ul {
+    list-style: none;
+  }
+  nav a {
+    position: relative;
+    color: var(--dim);
+    text-decoration: none;
+    text-underline-offset: var(--nav-underline-offset);
+  }
+  nav a:hover {
+    color: var(--chalk);
+    text-decoration: underline;
+  }
+  nav a[aria-current="page"] {
+    color: var(--chalk);
+    text-decoration: underline;
+    text-decoration-color: var(--gold);
+  }
+
+  /* Desktop: the links inline. */
+  .links {
+    display: none;
+  }
+  .links ul {
+    display: flex;
+    gap: var(--nav-gap);
+  }
+  .links a {
+    font-size: var(--fs-nav);
+    font-variation-settings: var(--fv-sub);
+  }
+  .links a::after {
+    content: "";
+    position: absolute;
+    left: -6px;
+    right: -6px;
+    top: 50%;
+    height: var(--target-min);
+    transform: translateY(-50%);
+  }
+
+  /* Phones: "Menu". Its padding overflows into the bar's own, so it adds no
+     height to the row it sits on: the game keeps every pixel it had. */
+  summary {
+    position: relative;
+    display: block;
+    padding: var(--menu-pad-y) var(--menu-pad-x);
+    margin-block: calc(-1 * var(--menu-pad-y));
+    border: var(--border) solid var(--menu-edge);
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-menu);
+    line-height: var(--lh-tight);
+    font-variation-settings: var(--fv-caption);
+    color: var(--chalk);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::after {
+    content: "";
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: 50%;
+    height: var(--target-min);
+    transform: translateY(-50%);
+  }
+  .menu[open] summary {
+    background: var(--menu-open-bg);
+  }
+  /* The open list covers the page below the bar rather than pushing it down. */
+  .sheet {
+    position: absolute;
+    top: calc(100% + var(--border));
+    left: 0;
+    right: 0;
+    padding: var(--menu-sheet-pad);
+    background: var(--menu-bg);
+    border-bottom: var(--border) solid var(--gold-rule);
+    box-shadow: var(--shadow-menu);
+  }
+  .sheet a {
+    display: flex;
+    align-items: center;
+    min-height: var(--target-min);
+    padding: var(--menu-link-pad);
+    font-size: var(--fs-menu-link);
+    font-variation-settings: var(--fv-sub);
+  }
+
+  @media (min-width: 780px) {
+    .links {
+      display: block;
+    }
+    .menu {
+      display: none;
+    }
+  }
+  /* A landscape phone keeps the menu, however wide. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .links {
+      display: none;
+    }
+    .menu {
+      display: block;
+    }
   }
 </style>

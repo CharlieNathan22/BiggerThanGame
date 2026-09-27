@@ -782,6 +782,10 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
 - **Title bar.** The word _Legends_ (Cinzel, gold) appears only on
   `/football-higher-or-lower/legends` and the pages under it, as "Bigger Than Game — Football
   _Legends_". Everywhere else the bar shows the brand alone. One component; the page decides.
+- **Navigation** is in the title bar on every page: the brand to `/`, then Play (the football
+  hub), How to play and About, with the current page marked. Inline on desktop; a "Menu" on
+  phones and short landscape screens, which opens over the page rather than pushing it down.
+  The footer keeps Credits, GitHub, "Suggest a legend" and "Report a problem".
 - **Local best** is kept per deck and mode — `bt:best:<deck>:<mode>`, `bt:best:legends:friendly`
   today — and shown only on the game pages under `/legends`.
 - **Challenge links** point at the game page:

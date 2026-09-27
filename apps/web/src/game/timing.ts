@@ -40,6 +40,10 @@ export interface Timings {
   readonly modal: number;
   /** How long the feedback modal's "Thanks" shows before it closes itself. */
   readonly thanks: number;
+  /** How long a share result note ("Copied", "Image saved") shows before it fades. */
+  readonly notice: number;
+  /** That note's fade out. None with reduced motion. */
+  readonly noticeFade: number;
 }
 
 export const TIMINGS: Timings = {
@@ -57,6 +61,8 @@ export const TIMINGS: Timings = {
   over: 1400,
   modal: 180,
   thanks: 5000,
+  notice: 5000,
+  noticeFade: 300,
 };
 
 /** The custom property behind each timing. */
@@ -75,6 +81,8 @@ export const TIMING_TOKENS: Readonly<Record<keyof Timings, string>> = {
   over: "--dur-over",
   modal: "--dur-modal",
   thanks: "--dur-thanks",
+  notice: "--dur-notice",
+  noticeFade: "--dur-notice-fade",
 };
 
 /**

@@ -1,13 +1,16 @@
 ---
 // The prototype's footer line, carrying site links instead of the prototype
-// notice, and the two general feedback forms.
+// notice, and the two general feedback forms. About and How to play are in the
+// title bar's navigation, so they aren't repeated here: that keeps the footer
+// to one row on a 360px phone, and the game its height.
+import { GITHUB_URL } from "../config";
 import { t } from "../i18n";
-import { FRIENDLY_PATH } from "../lib/paths";
+import { CREDITS_PATH, FRIENDLY_PATH } from "../lib/paths";
 
+// `rel` only where the link leaves the site.
 const links = [
-  { href: "/about", label: t("footer.about") },
-  { href: "/credits", label: t("footer.credits") },
-  { href: "/about#how-to-play", label: t("footer.howToPlay") },
+  { href: CREDITS_PATH, label: t("footer.credits") },
+  { href: GITHUB_URL, label: t("footer.github"), rel: "noopener" },
 ];
 
 // The forms live in the game island on the game page. There, the island opens
@@ -24,7 +27,9 @@ const feedback = [
     {links.map((link, i) => (
       <>
         {i > 0 && <span aria-hidden="true"> · </span>}
-        <a href={link.href}>{link.label}</a>
+        <a href={link.href} rel={link.rel}>
+          {link.label}
+        </a>
       </>
     ))}
   </nav>

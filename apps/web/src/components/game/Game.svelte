@@ -8,7 +8,7 @@
   import { onMount, tick } from "svelte";
   import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
   import { statLabel, t } from "../../i18n";
-  import { FRIENDLY_PATH } from "../../lib/paths";
+  import { FRIENDLY_PATH, isLegendsPath } from "../../lib/paths";
   import { TIER_COLOUR } from "../../lib/tiers";
   import { createApi } from "../../game/api";
   import type { Fetch } from "../../game/api";
@@ -25,6 +25,8 @@
   } from "../../game/feedback";
   import type { FeedbackKind, ReportedRound } from "../../game/feedback";
   import { initialState, shouldSpin } from "../../game/machine";
+  import { NO_NOTICE, TimedNotice } from "../../game/notice";
+  import type { NoticeState } from "../../game/notice";
   import type { Challenge, GameState } from "../../game/machine";
   import { createPreloader } from "../../game/photos";
   import {
@@ -65,11 +67,11 @@
     /** The deck and mode being played, which name the local best (`bt:best:legends:friendly`). */
     deck: BestDeck;
     mode: "friendly";
-    /** Show "Legends" in the title bar: the page is under /football-higher-or-lower/legends. */
-    legends?: boolean;
+    /** The game page's path, for the title bar: "Legends" under /legends, and the current page. */
+    path: string;
   }
 
-  let { deck, mode, legends = false }: Props = $props();
+  let { deck, mode, path }: Props = $props();
 
   let game: GameState = $state(initialState());
   let controller: GameController | null = $state(null);
@@ -90,7 +92,17 @@
 
   let platform: SharePlatform | null = $state(null);
   /** What the last share did: "Copied", "Image saved", or a problem. Announced. */
-  let shareStatus = $state("");
+  let shareNote = $state<NoticeState>(NO_NOTICE);
+  // Shows for --dur-notice, then fades and clears (game/notice.ts).
+  const shareNotes = new TimedNotice({
+    schedule: (fn, ms) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    },
+    timings: () => timings,
+    reducedMotion: () => reducedMotion,
+    onChange: (state) => (shareNote = state),
+  });
   /** The share text, shown to copy by hand when the clipboard refused it. */
   let copyByHand: string | null = $state(null);
   let drawing = $state(false);
@@ -185,6 +197,7 @@
       removeDevPanel?.();
       unsubscribe();
       c.destroy();
+      shareNotes.destroy();
       motion.removeEventListener("change", onMotion);
     };
   });
@@ -214,7 +227,7 @@
   const report = $derived(reportedRound(game));
 
   function start(): void {
-    shareStatus = "";
+    shareNotes.clear();
     copyByHand = null;
     // The link has done its job once a run starts from it; a reload shouldn't replay it.
     const rest = withoutChallenge(location.search);
@@ -232,29 +245,31 @@
   async function onShareText(): Promise<void> {
     if (platform === null) return;
     const text = shareText(game.streak, game.history, game.end, game.link, site());
-    shareStatus = "";
+    const show = shareNotes.begin();
     const outcome = await shareResultText(text, platform);
     copyByHand = outcome === "failed" ? text : null;
-    shareStatus =
-      outcome === "copied" ? t("over.copied") : outcome === "failed" ? t("over.copyFailed") : "";
+    show(
+      outcome === "copied" ? t("over.copied") : outcome === "failed" ? t("over.copyFailed") : "",
+    );
   }
 
   async function onShareImage(): Promise<void> {
     if (platform === null || drawing) return;
     drawing = true;
-    shareStatus = "";
+    const show = shareNotes.begin();
     try {
       const blob = await renderShareImage(shareCard(game, SITE_LABEL));
       const name = t("share.fileName", { score: game.streak });
       const outcome = await shareResultImage(blob, name, platform);
-      shareStatus =
+      show(
         outcome === "saved"
           ? t("over.imageSaved")
           : outcome === "failed"
             ? t("over.imageFailed")
-            : "";
+            : "",
+      );
     } catch {
-      shareStatus = t("over.imageFailed");
+      show(t("over.imageFailed"));
     } finally {
       drawing = false;
     }
@@ -320,7 +335,11 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null}>
-  <TitleBar scores={{ streak: game.streak, best: game.best }} {legends} home />
+  <TitleBar
+    scores={{ streak: game.streak, best: game.best }}
+    legends={isLegendsPath(path)}
+    current={path}
+  />
 
   <main class="pitch" aria-label={t("pitch.label")}>
     <Side
@@ -470,7 +489,7 @@
               {platform?.touch ? t("over.shareImage") : t("over.saveImage")}
             </button>
           </div>
-          <p class="status" role="status">{shareStatus}</p>
+          <p class="status" class:fading={shareNote.fading} role="status">{shareNote.text}</p>
           {#if copyByHand !== null}
             <textarea class="copy" readonly rows="6" aria-label={t("over.shareText")}
               >{copyByHand}</textarea
@@ -700,12 +719,17 @@
   .ghost:disabled {
     cursor: progress;
   }
+  /* Its height is reserved, so the panel doesn't move as a note comes and goes. */
   .panel .status {
     margin-top: 0;
     min-height: 1.4em;
     font-size: var(--fs-lab);
     color: var(--chalk);
     font-variation-settings: var(--fv-caption);
+    transition: opacity var(--dur-notice-fade) var(--ease);
+  }
+  .panel .status.fading {
+    opacity: 0;
   }
   .copy {
     margin-top: 8px;

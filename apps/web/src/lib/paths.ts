@@ -15,6 +15,12 @@ export const LEGENDS_PATH = "/football-higher-or-lower/legends";
 /** The game: Friendly Mode on the Legends deck. */
 export const FRIENDLY_PATH = "/football-higher-or-lower/legends/friendly";
 
+export const ABOUT_PATH = "/about";
+export const CREDITS_PATH = "/credits";
+
+/** How to play is a section of the about page. */
+export const HOW_TO_PLAY_PATH = "/about#how-to-play";
+
 /**
  * A built page's URL path as it is served: `/about.html` and `/index.html`
  * read as `/about` and `/`, since pages build to files (astro.config.mjs).

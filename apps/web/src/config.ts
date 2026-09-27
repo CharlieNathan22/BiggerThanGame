@@ -18,6 +18,9 @@ export const IMAGE_BASE = "https://img.biggerthangame.com";
 /** The site's origin, for challenge links. Matches `site` in astro.config.mjs. */
 export const SITE_URL = "https://biggerthangame.com";
 
+/** The public source repository, linked from the footer. */
+export const GITHUB_URL = "https://github.com/CharlieNathan22/BiggerThanGame";
+
 /** How the site's address is written on the share image. */
 export const SITE_LABEL = "biggerthangame.com";
 

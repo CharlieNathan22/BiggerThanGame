@@ -928,7 +928,19 @@ pages. **Svelte** hydrates one island: the game, on its own page. The URL tree i
 - `TitleBar.svelte` renders server-side with no JS on static pages; the game island reuses it.
   Its `legends` prop adds "— Football Legends", set on `/football-higher-or-lower/legends` and
   every page under it (`isLegendsPath`); elsewhere the bar is the brand alone, at the same height.
-  The brand links to `/` everywhere but `/` itself.
+- **Site navigation** is in the title bar on every page (`lib/nav.ts`): the brand links to `/`,
+  then Play (`/football-higher-or-lower`), How to play (`/about#how-to-play`) and About. The current page's link carries `aria-current="page"`; a link to a section never does.
+  From 780px the links sit inline. Below that, and on short landscape screens, a "Menu" built on
+  `<details>`/`<summary>` opens them with no JS and from the keyboard. Esc (returning focus to
+  "Menu" when it was inside) and a click outside close it: on the game page through the island,
+  which hydrates the bar, and on the static pages through a few lines of inline script in
+  `Page.astro` that find it by `data-menu` — no framework, no second island. With JS off it
+  still opens and closes by tapping "Menu". Its padding overflows into
+  the bar's, so it adds no height to the row it shares, and the open list is an overlay hanging
+  from the bar (`--z-topbar`), so the game's fixed-height screen loses nothing. Both lists are
+  in the markup; only one is ever displayed.
+- The footer links Credits and GitHub, then the two feedback forms. About and How to play are in
+  the title bar, not repeated here, which keeps the footer to one row down to 320px.
 - Only the game page gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag); every
   other page scrolls.
 - Pages build to files (`about.html`, `football-higher-or-lower/legends/friendly.html`) and are
@@ -955,7 +967,10 @@ pages. **Svelte** hydrates one island: the game, on its own page. The URL tree i
   image can't carry. It waits for `document.fonts` and uses only fonts and data already on the
   page, so it works offline once the run has ended. On touch devices both go to the share sheet
   (the image as a file); elsewhere the text is copied, with a visible "Copied", and the image
-  downloads.
+  downloads. Each result note — "Copied", "Image saved" or a failure — is announced once and
+  shows for `--dur-notice` (5 s), then fades over `--dur-notice-fade` and clears (no fade with
+  reduced motion; `game/notice.ts`). Another tap restarts it; a new run clears it at once. Its
+  space on the panel is reserved, so nothing moves when it goes.
 - **Challenge links** are read from the game page's URL on load (`game/challenge.ts`) and sent
   with the first start; the start panel says "Beat n". The parameters are removed from the
   address bar once the run starts, and "Play again" is a fresh run. See §7.

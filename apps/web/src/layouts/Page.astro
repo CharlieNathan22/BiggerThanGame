@@ -4,7 +4,7 @@ import "../styles/prose.css";
 import Base from "./Base.astro";
 import TitleBar from "../components/TitleBar.svelte";
 import Footer from "../components/Footer.astro";
-import { HOME_PATH, isLegendsPath, servedPath } from "../lib/paths";
+import { isLegendsPath, servedPath } from "../lib/paths";
 
 interface Props {
   title: string;
@@ -17,9 +17,31 @@ const path = servedPath(Astro.url.pathname);
 ---
 
 <Base title={title} description={description} {...(canonical !== undefined ? { canonical } : {})}>
-  <TitleBar home={path !== HOME_PATH} legends={isLegendsPath(path)} />
+  <TitleBar legends={isLegendsPath(path)} current={path} />
   <main class="prose">
     <slot />
   </main>
   <Footer />
+  <!--
+    The title bar's menu, as the game page's island handles it: Esc closes it,
+    returning focus to "Menu" if it was inside, and a click outside closes it.
+    Inline and framework-free; with JS off the menu still opens and closes.
+  -->
+  <script is:inline>
+    (() => {
+      const menu = document.querySelector("[data-menu]");
+      if (!menu) return;
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || !menu.open) return;
+        const inside = menu.contains(document.activeElement);
+        menu.open = false;
+        if (inside) menu.querySelector("summary").focus();
+      });
+      document.addEventListener("click", (event) => {
+        if (menu.open && event.target instanceof Node && !menu.contains(event.target)) {
+          menu.open = false;
+        }
+      });
+    })();
+  </script>
 </Base>
