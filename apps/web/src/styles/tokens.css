@@ -28,6 +28,8 @@
   --flare: #e2453c;
   --hit: #1f7a45;
   --miss: #b8322a;
+  --hit-rgb: 31, 122, 69;
+  --miss-rgb: 184, 50, 42;
   --veil: rgba(6, 18, 26, 0.97);
 
   /*
@@ -142,6 +144,24 @@
   /* Side by side on a short landscape screen: the score, then the actions. */
   --over-w-wide: 600px;
   --over-col-gap: 28px;
+  /* "Correct" / "Incorrect" on the challenger's half when the verdict lands:
+     a pill in the verdict colour, white text (AA on both), a dark ring like
+     the plaque's and a glow in its own colour. */
+  --verdict-hit-bg: var(--hit);
+  --verdict-miss-bg: var(--miss);
+  --verdict-text: #ffffff;
+  --fs-verdict: 17px;
+  --fv-verdict: "wdth" 105, "wght" 800;
+  --tracking-verdict: 0.02em;
+  --verdict-pad: 9px 18px 9px 14px;
+  --verdict-gap: 8px;
+  --verdict-icon: 0.95em;
+  --verdict-icon-stroke: 2.2;
+  --verdict-ring: 0 0 0 3px rgba(var(--ink-rgb), 0.55);
+  --verdict-glow-blur: 12px;
+  --verdict-hit-shadow: var(--verdict-ring), 0 0 var(--verdict-glow-blur) rgba(var(--hit-rgb), 0.9);
+  --verdict-miss-shadow:
+    var(--verdict-ring), 0 0 var(--verdict-glow-blur) rgba(var(--miss-rgb), 0.9);
   /* The connection note under the challenger during a reconnect or slow-down. */
   --hitch-bg: rgba(6, 18, 26, 0.72);
   /* Notes over the pitch: a refused challenge link. */
@@ -511,6 +531,12 @@
   --dur-notice-fade: 300ms;
   /* The progress track's current round, pulsing. Off with reduced motion. */
   --dur-track-pulse: 900ms;
+  /* The verdict label rising in as the verdict colour lands. Off with reduced
+     motion, which shows it at once. It leaves when the next pair is dealt. */
+  --dur-verdict-in: 300ms;
+  --ease-verdict: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --verdict-rise: 6px;
+  --verdict-from-scale: 0.88;
   /* The win: the trophy and "You won" rising in, the gold burst behind them
      and one shine across the words. All off with reduced motion, which shows
      the finished panel at once. */

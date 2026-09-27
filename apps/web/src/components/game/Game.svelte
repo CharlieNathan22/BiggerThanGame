@@ -62,6 +62,7 @@
     qualifierText,
     scoreFigure,
     trackSteps,
+    verdictLabel,
   } from "../../game/view";
   import TitleBar from "../TitleBar.svelte";
   import Counter from "./Counter.svelte";
@@ -241,6 +242,7 @@
   const cells = $derived(gridCells(game.history, mode));
   const steps = $derived(trackSteps(game, mode));
   const finalQuestion = $derived(isFinalQuestion(game, mode));
+  const verdictText = $derived(verdictLabel(game));
   const report = $derived(reportedRound(game));
 
   function start(): void {
@@ -402,8 +404,8 @@
         {/if}
       {/snippet}
       {#if round}
-        <!-- One slot for Higher / Lower and the connection note, kept whether
-             they show or not, so the text above never moves. -->
+        <!-- One slot for Higher / Lower, the connection note and the verdict
+             label, kept whether they show or not, so the text above never moves. -->
         <div class="slot">
           <div
             class="picks"
@@ -427,6 +429,21 @@
           <p class="hitch" role="status" class:empty={phase !== "revealing" || game.hitch === null}>
             {phase === "revealing" ? hitchText(game.hitch) : ""}
           </p>
+          <!-- "Correct" / "Incorrect" with the verdict colour, until the next
+               pair is dealt or the game-over panel covers it. The live region
+               already says it, so screen readers skip this. -->
+          {#if verdictText !== null && reveal}
+            <p class="verdict" class:right={reveal.correct} aria-hidden="true">
+              <svg class="mark" viewBox="0 0 12 12" focusable="false">
+                {#if reveal.correct}
+                  <path d="M2.2 6.4l2.6 2.6 5-5.8" />
+                {:else}
+                  <path d="M3 3l6 6M9 3l-6 6" />
+                {/if}
+              </svg>
+              {verdictText}
+            </p>
+          {/if}
         </div>
       {/if}
     </Side>
@@ -677,6 +694,46 @@
     font-size: var(--fs-qual);
     color: var(--chalk);
     font-variation-settings: var(--fv-caption);
+  }
+  /* The verdict label, in the slot Higher / Lower have left: a pill in the
+     verdict colour with white text, a dark ring like the plaque's and a glow
+     of its own colour. It rises in; with reduced motion it simply appears. */
+  .verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--verdict-gap);
+    padding: var(--verdict-pad);
+    border-radius: var(--radius-pill);
+    background: var(--verdict-miss-bg);
+    color: var(--verdict-text);
+    font-size: var(--fs-verdict);
+    font-variation-settings: var(--fv-verdict);
+    letter-spacing: var(--tracking-verdict);
+    line-height: var(--lh-tight);
+    white-space: nowrap;
+    box-shadow: var(--verdict-miss-shadow);
+    pointer-events: none;
+    animation: verdict-in var(--dur-verdict-in) var(--ease-verdict) both;
+  }
+  .verdict.right {
+    background: var(--verdict-hit-bg);
+    box-shadow: var(--verdict-hit-shadow);
+  }
+  .mark {
+    flex: none;
+    width: var(--verdict-icon);
+    height: var(--verdict-icon);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: var(--verdict-icon-stroke);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  @keyframes verdict-in {
+    from {
+      opacity: 0;
+      transform: translateY(var(--verdict-rise)) scale(var(--verdict-from-scale));
+    }
   }
   .hitch.empty,
   .problem.empty,

@@ -14,6 +14,7 @@ import {
   reelStrip,
   scoreFigure,
   trackSteps,
+  verdictLabel,
 } from "../view";
 import { cont, round, won, wrong } from "./fixtures";
 
@@ -121,6 +122,56 @@ describe("announcement", () => {
     expect(
       announcement(at([...start, { type: "guess", guess: "higher", at: 0 }]), "friendly"),
     ).toBe("");
+  });
+});
+
+describe("verdictLabel", () => {
+  const r1 = round(1, { stat: "caps", anchorValue: 50 });
+  const toGuess: GameEvent[] = [
+    { type: "start" },
+    { type: "started", runId: "20260926-a", round: r1 },
+    { type: "dealt" },
+    { type: "spun" },
+    { type: "guess", guess: "higher", at: 0 },
+  ];
+  const at = (events: GameEvent[]): GameState => events.reduce(reduce, initialState());
+
+  it("says nothing until the verdict lands", () => {
+    expect(verdictLabel(at(toGuess))).toBeNull();
+    const answered = at([...toGuess, { type: "answered", response: cont(1, round(2)), at: 1 }]);
+    expect(verdictLabel(answered)).toBeNull();
+  });
+
+  it("says Correct on a right answer, until the next pair is dealt", () => {
+    const right = at([
+      ...toGuess,
+      { type: "answered", response: cont(1, round(2)), at: 1 },
+      { type: "settled" },
+    ]);
+    expect(verdictLabel(right)).toBe("Correct");
+    expect(verdictLabel(reduce(right, { type: "advance" }))).toBeNull();
+  });
+
+  it("says Incorrect on a wrong one, and is gone once the game-over panel is up", () => {
+    const lost = at([
+      ...toGuess,
+      { type: "answered", response: wrong(1), at: 1 },
+      { type: "settled" },
+    ]);
+    expect(verdictLabel(lost)).toBe("Incorrect");
+    expect(verdictLabel(reduce(lost, { type: "advance" }))).toBeNull();
+  });
+
+  it("says Correct on the winning answer, then hands over to the win panel", () => {
+    const winning = at([
+      ...toGuess,
+      { type: "answered", response: won(1), at: 1 },
+      { type: "settled" },
+    ]);
+    expect(verdictLabel(winning)).toBe("Correct");
+    const over = reduce(winning, { type: "advance" });
+    expect(over.end).toBe("won");
+    expect(verdictLabel(over)).toBeNull();
   });
 });
 

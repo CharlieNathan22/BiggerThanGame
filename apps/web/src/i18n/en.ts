@@ -117,6 +117,9 @@ export const en = {
   "pick.group": "Is {name}'s number higher or lower?",
   "pick.higher": "Higher",
   "pick.lower": "Lower",
+  // On the challenger's half when the verdict lands; the live region says it too
+  "verdict.correct": "Correct",
+  "verdict.incorrect": "Incorrect",
   "qual.fee": "{year}",
   "qual.ig": "as of {date}",
 

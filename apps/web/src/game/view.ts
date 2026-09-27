@@ -150,6 +150,16 @@ export function challengeNotice(state: GameState): string {
   return challenge.reason === "expired" ? t("challenge.expired") : t("challenge.invalid");
 }
 
+/**
+ * The label on the challenger's half while the verdict shows: "Correct" or
+ * "Incorrect", from the verdict colour landing until the next pair is dealt
+ * or the game-over panel takes over. Null the rest of the time.
+ */
+export function verdictLabel(state: GameState): string | null {
+  if (state.phase !== "verdict" || state.reveal === null) return null;
+  return state.reveal.correct ? t("verdict.correct") : t("verdict.incorrect");
+}
+
 /** The note under the challenger while a request waits to go again. */
 export function hitchText(hitch: Hitch | null): string {
   if (hitch === null) return "";
