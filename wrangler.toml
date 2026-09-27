@@ -12,10 +12,19 @@ binding = "ASSETS"
 not_found_handling = "404-page"
 run_worker_first = ["/api/*"]
 
-# Workers Logs: errors and warnings from the Worker, kept for a few days.
+# Workers Logs: one structured line per refusal or failure, and per run start
+# and end (worker/src/log.ts, ARCHITECTURE.md §19). Kept for a few days.
 [observability]
 enabled = true
 head_sampling_rate = 1
+
+# Gameplay events (start, answer, end) for Workers Analytics Engine
+# (worker/src/analytics.ts, ARCHITECTURE.md §19). The dataset is created on the
+# first write; query it with `pnpm stats`. The name is mirrored as DATASET in
+# analytics.ts, and a test fails if the two drift.
+[[analytics_engine_datasets]]
+binding = "GAME_EVENTS"
+dataset = "biggerthan_game_events"
 
 # Feedback forms (POST /api/feedback) are emailed through Email Routing. The
 # destination is the FEEDBACK_TO secret, deliberately not a destination_address

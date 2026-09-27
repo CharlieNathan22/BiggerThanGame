@@ -19,3 +19,5 @@ import type { ImageLookup } from "./payload.js";
 // deck build validated every record against the schema before writing it.
 export const DECK = full.players as unknown as readonly Player[];
 export const IMAGES = images as ImageLookup;
+/** `legends-107-3f9c21e0`: which deck dealt a run, for analytics (analytics.ts). */
+export const DECK_VERSION: string = full.version;

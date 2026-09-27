@@ -301,23 +301,25 @@ describe("problem reports", () => {
 });
 
 describe("Turnstile", () => {
-  it.each<[TurnstileOutcome, number, unknown]>([
-    ["pass", 200, { ok: true }],
-    ["fail", 403, { error: "verification_failed" }],
-    ["error", 502, { error: "unavailable" }],
-  ])("on %s answers %i", async (outcome, status, body) => {
+  it.each<[TurnstileOutcome, FeedbackResult]>([
+    ["pass", { status: 200, body: { ok: true } }],
+    ["fail", { status: 403, body: { error: "verification_failed" } }],
+    ["error", { status: 502, body: { error: "unavailable" }, reason: "turnstile" }],
+  ])("on %s answers %j", async (outcome, expected) => {
     const verifyTurnstile = vi.fn(async () => outcome);
     const ctx = feedbackContext({ verifyTurnstile });
     const result = await handleFeedback(suggest(), ctx);
-    expect(result).toEqual({ status, body });
+    expect(result).toEqual(expected);
     expect(verifyTurnstile).toHaveBeenCalledWith(TOKEN);
     expect(ctx.sent).toHaveLength(outcome === "pass" ? 1 : 0);
   });
 });
 
 describe("a failed send", () => {
-  it("is a calm 502, logging only the error's code", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("is a calm 502 carrying only the error's code, and logs nothing itself", async () => {
+    const spies = (["log", "warn", "error"] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation(() => {}),
+    );
     const failure = Object.assign(new Error("Gianfranco Zola: not delivered"), {
       code: "E_SENDER_NOT_VERIFIED",
     });
@@ -327,10 +329,16 @@ describe("a failed send", () => {
       },
     });
     const result = await handleFeedback(suggest(), ctx);
-    expect(result).toEqual({ status: 502, body: { error: "send_failed" } });
-    expect(log).toHaveBeenCalledWith("feedback send failed", "E_SENDER_NOT_VERIFIED");
-    expect(JSON.stringify(log.mock.calls)).not.toContain("Zola");
-    log.mockRestore();
+    expect(result).toEqual({
+      status: 502,
+      body: { error: "send_failed" },
+      reason: "E_SENDER_NOT_VERIFIED",
+    });
+    expect(JSON.stringify(result)).not.toContain("Zola");
+    for (const spy of spies) {
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    }
   });
 });
 

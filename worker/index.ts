@@ -6,10 +6,11 @@
 import { EmailMessage } from "cloudflare:email";
 import { createApp } from "./src/app.js";
 import type { Env } from "./src/app.js";
-import { DECK, IMAGES } from "./src/deck.js";
+import { DECK, DECK_VERSION, IMAGES } from "./src/deck.js";
 
 export default createApp({
   deck: DECK,
   images: IMAGES,
+  deckVersion: DECK_VERSION,
   emailMessage: (from, to, raw) => new EmailMessage(from, to, raw),
 }) satisfies ExportedHandler<Env>;

@@ -13,13 +13,14 @@
     "build:prod": "pnpm --filter @bt/deck build --no-sim --require-private && pnpm --filter web build && pnpm scan:dist",
     "scan:dist": "pnpm --filter @bt/deck exec tsx src/scan-dist-cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/core && tsc -p packages/deck && tsc -p worker && tsc -p worker/tsconfig.test.json && tsc -p tsconfig.json && pnpm --filter web typecheck",
+    "typecheck": "tsc -p packages/core && tsc -p packages/deck && tsc -p worker && tsc -p worker/tsconfig.test.json && tsc -p tsconfig.json && tsc -p scripts && pnpm --filter web typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "simulate": "pnpm --filter @bt/deck build",
     "images:sync": "pnpm --filter @bt/deck exec tsx src/sync-cli.ts",
     "deck:import": "pnpm --filter @bt/deck exec tsx src/import-cli.ts",
+    "stats": "tsx scripts/stats.ts",
     "deploy": "pnpm build:prod && wrangler deploy"
   },
   "devDependencies": {

@@ -338,7 +338,12 @@ describe("rate limits in the handler", () => {
       limits: { start: async () => ({ ok: false, retryAfter: 60 }), answer: allow },
     });
     const result = await call({ mode: "friendly" }, ctx);
-    expect(result).toEqual({ status: 429, body: { error: "rate_limited" }, retryAfter: 60 });
+    expect(result).toEqual({
+      status: 429,
+      body: { error: "rate_limited" },
+      retryAfter: 60,
+      limit: "starts",
+    });
     expect(minted).toBe(0);
   });
 
@@ -355,7 +360,12 @@ describe("rate limits in the handler", () => {
     });
     const runId = await signedRunId("2026-09-19", uuidFrom(3));
     const result = await call({ mode: "friendly", runId, round: 1, guess: "lower" }, ctx);
-    expect(result).toEqual({ status: 429, body: { error: "rate_limited" }, retryAfter: 10 });
+    expect(result).toEqual({
+      status: 429,
+      body: { error: "rate_limited" },
+      retryAfter: 10,
+      limit: "answers",
+    });
     expect(seen).toEqual([`20260919-${uuidFrom(3)}`]);
   });
 

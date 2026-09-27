@@ -4,6 +4,7 @@ import {
   buildFullDeck,
   buildImages,
   buildIndexes,
+  deckVersion,
   scanForLeakedValues,
 } from "../artifacts.js";
 import type { Manifest } from "../manifest.js";
@@ -52,6 +53,20 @@ describe("buildFullDeck", () => {
     const full = buildFullDeck(players, NOW);
     expect(full.players).toHaveLength(3);
     expect(full.eligibility.one).toContain("club_goals");
+  });
+
+  it("names its content with a version that ignores the build date", () => {
+    const full = buildFullDeck(players, NOW);
+    expect(full.version).toMatch(/^legends-3-[0-9a-f]{8}$/);
+    expect(full.version).toBe(deckVersion(players));
+    expect(buildFullDeck(players, new Date("2027-01-01T00:00:00Z")).version).toBe(full.version);
+  });
+
+  it("changes the version when any figure changes", () => {
+    const [first, ...rest] = players;
+    const edited = { ...first!, stats: { ...first!.stats, caps: 101 } };
+    expect(deckVersion([edited, ...rest])).not.toBe(deckVersion(players));
+    expect(deckVersion(players.slice(1))).toMatch(/^legends-2-/);
   });
 
   it("carries the themed-mode fields through to the JSON", () => {

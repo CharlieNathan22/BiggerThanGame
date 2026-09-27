@@ -49,6 +49,7 @@ pnpm dev:api      # builds the deck, then the Worker on :8787 (wrangler dev, sec
 pnpm test         # unit tests (vitest) — core, deck and Worker
 pnpm simulate     # 10k-run difficulty simulation → simulation.md
 pnpm deck:import  # players.csv (+ image-log.csv, focus.csv) → players/*.yaml; --dry-run, --prune
+pnpm stats        # gameplay analytics from Analytics Engine; needs .env (see "Logs and analytics")
 pnpm build        # validates deck, emits artifacts, builds site, leak-scans it (sample deck allowed)
 pnpm build:prod   # same, but refuses the sample deck — production and deploy only
 pnpm scan:dist    # the leak scan alone: player ids, or values beside names, in apps/web/dist
@@ -69,6 +70,32 @@ always-pass test site key `1x00000000000000000000AA` that `apps/web/src/config.t
 `pnpm build` fails on invalid deck data by design. A failing build usually means a data problem,
 not a code problem — read the error before changing code.
 
+### Logs and analytics
+
+ARCHITECTURE.md §19 has the schema, the log events and the SQL. Nothing personal is recorded
+anywhere: no IP, user agent or cookie, country only. Never log a secret, seed, signature, full run
+id (the run key — the body before the "." — is fine), feedback text or stat value; use `log()` from
+`worker/src/log.ts`, never a bare `console.*` string.
+
+**Watching runs live** — every run writes a `run_start` and a `run_end` line (`info`); refusals
+are `warn` and failures `error`.
+
+- Dashboard: **Workers & Pages → biggerthangame → Observability → Logs** (switch on live to
+  stream). Filter on the logged fields: `event` equals `run_end` for finished runs, and add
+  `reason` equals `won` for wins only; `level` equals `error` for failures. Kept 3 days.
+- Terminal: `npx wrangler tail biggerthangame --format pretty` streams everything live;
+  `--search run_end` narrows it to finished runs, `--search won` to wins. Tail shows only what
+  happens while it runs.
+
+**Gameplay analytics** — `pnpm stats` prints the start/end summary (runs started, finished,
+abandoned, score spread, win rate) for the last 7 days. Name queries to see more:
+`pnpm stats streaks friendly stats distance bands dropoff replays latest`, or `pnpm stats all`;
+`--days 30` (up to 92), `--deck legends-107-e68a4e1b` for one deck version, `--list` for the
+names. It reads `CF_ACCOUNT_ID` and `CF_ANALYTICS_TOKEN` from `.env` at the repo root (gitignored):
+the token is a Cloudflare API token with **read-only Account › Account Analytics › Read**
+permission and nothing else. Keep it in `.env` only; never commit, print or paste it. Don't read
+`.env` yourself — run `pnpm stats` and read its output.
+
 ---
 
 ## Layout and boundaries
@@ -78,6 +105,7 @@ packages/core/    framework-free TypeScript. The game.
 packages/deck/    schema, validation, build pipeline. Data is a private submodule.
 apps/web/         Astro + Svelte
 worker/           fetch handler, /api/round/next and /api/feedback; DO and tokens arrive in Phase 5
+scripts/          pnpm stats (Node, no dependencies)
 ```
 
 **The Worker bundles the deck from `packages/deck/dist` via `worker/src/deck.ts` and nothing else.**

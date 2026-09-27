@@ -78,6 +78,7 @@ export {
   buildImages,
   buildFullDeck,
   buildIndexes,
+  deckVersion,
   scanForLeakedValues,
 } from "./artifacts.js";
 export type { Credit, FullDeck, ImageMap, Indexes } from "./artifacts.js";

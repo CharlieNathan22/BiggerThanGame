@@ -107,9 +107,13 @@ bucket — see section 9.
 │   │   ├── feedback.ts    # /api/feedback as a pure function; feedback-validate.ts parses
 │   │   ├── turnstile.ts   # Siteverify
 │   │   ├── mail.ts        # the plain-text MIME message for send_email
+│   │   ├── analytics.ts   # game events → Analytics Engine data points (§19)
+│   │   ├── log.ts         # the structured log() helper for Workers Logs (§19)
 │   │   └── deck.ts        # the only import of packages/deck/dist
 │   ├── run-do.ts          # Durable Object (Phase 5)
 │   └── token.ts           # sign / verify progress tokens (Phase 5)
+├── scripts/
+│   └── stats.ts           # pnpm stats — the saved Analytics Engine queries (§19)
 ├── wrangler.toml
 └── docs/
     ├── DESIGN.md
@@ -291,13 +295,19 @@ image blocks the import wrote.
 
 | Artifact                   | Destination                 | Contents                                                                                                      |
 | -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `deck.full.json`           | bundled into Worker         | ids, all stat values, eligibility                                                                             |
+| `deck.full.json`           | bundled into Worker         | ids, all stat values, eligibility, the deck version                                                           |
 | `dist/images.json`         | bundled into Worker         | id → `{ key, width, height }` for deck players; no source hash                                                |
 | `indexes.json`             | Worker                      | per stat: players sorted by value, tie groups                                                                 |
 | `credits.json`             | read by `/credits` at build | player name, author, licence, licence URL (absent for PD) and source per image; read with `fs`, never bundled |
 | `data/legends/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                                                          |
 | `viability.md`             | repo, committed             | per stat and gap band, how many valid pairs exist                                                             |
 | `simulation.md`            | repo, committed             | per mode: streak distribution, stat firing rates and iconic-preference fallback over 10k runs                 |
+
+**The deck version** (`deckVersion`, in `deck.full.json` as `version`) names the deck's content:
+`<deck>-<players>-<hash>`, e.g. `legends-107-e68a4e1b`, the hash being the first 8 hex characters
+of the SHA-256 of the players as bundled. Any changed figure, flag or player changes it; rebuilding
+an unchanged deck does not. The Worker tags every analytics event with it (§19), so real play can
+be split by the deck that dealt it.
 
 **Which deck.** The private deck is used once it holds `MIN_PRIVATE_DECK` (30) schema-valid
 players. Below that the build falls back to the public sample of invented players and logs why
@@ -889,10 +899,10 @@ path entirely — the board is the same for everyone, so it should be served fro
 
 ### Telemetry signals
 
-**Workers Logs** is switched on (M5b); M5c adds structured error and warning logs to it, and
-**Workers Analytics Engine** for one data
-point per answered round (mode, round, stat, band, correct, streak, country; no IP, user agent or
-hidden values). The full schema arrives with M5c's Observability section.
+**Workers Logs** carries a structured line for every refusal (400s, 429s) and failure, and
+**Workers Analytics Engine** a data point per run start, judged answer and run end — mode, round,
+stat, band, correct, streak, country; no IP, user agent or hidden values. §19 has the schema and
+the queries. A burst of `rate_limited` warnings from one route is what a scraper looks like there.
 
 **Phase 5 note — bot timing.** Bot detection is **behavioural, not structural**: the stats are
 public facts, so a script with its own copy of the data can always answer correctly. What it cannot
@@ -1282,6 +1292,315 @@ are complete.
 - **Multiplayer.** A Durable Object per lobby is the canonical pattern when it arrives; the DO
   namespace introduced here is a useful precedent.
 - **Weekly and all-time boards**, Ranked only.
+
+---
+
+## 19. Observability
+
+Two instruments, both on the Worker and both configured in `wrangler.toml`. Neither can change a
+response or its timing.
+
+- **Workers Logs** — one structured line for every request the API refuses or fails, and one for
+  each run's start and end (`worker/src/log.ts`). Free plan: 200,000 events a day, kept 3 days.
+- **Workers Analytics Engine** — one data point for each run start, each judged answer and each
+  run end (`worker/src/analytics.ts`), in the dataset `biggerthan_game_events` through the
+  `GAME_EVENTS` binding. The dataset is created by the first write after a deploy and keeps three
+  months. Queried with SQL through Cloudflare's API: `pnpm stats` (CLAUDE.md) runs the saved
+  queries below.
+
+### Never recorded
+
+Nothing personal and nothing hidden, in either instrument:
+
+- no IP address, not even hashed — it is a rate-limit key (§12) and nothing else
+- no user agent, no cookie, and nothing kept in the browser for analytics
+- no `RUN_SECRET` or other secret, no seed, no HMAC or signature, no full run id — the **run key**
+  (the run id's body, before the ".") stands in for it
+- no feedback text, name or address
+- no stat value, the player's own score apart. The **rank distance** is a position in the deck,
+  written only after the answer, when both figures have been shown, and never sent to the client.
+
+Country is the only thing about the player: Cloudflare's `request.cf.country`, `XX` when unknown.
+Tests hold all of this: `worker/src/__tests__/observability.test.ts` walks complete runs and checks
+every data point and log line for IPs, user agents, secrets, seeds, signed ids, player ids and names,
+and runs the deck's leak scanner over them.
+
+### Log lines
+
+One object per line, written with the console method that matches its level, so Workers Logs
+indexes every field (a string would only be searchable as text). Every line has `level`, `event`
+and `route`; most have a `reason`.
+
+| Level   | `event`               | When                                           | `reason`                                                                                            |
+| ------- | --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `info`  | `run_start`           | a run starts (fresh or replay)                 | —                                                                                                   |
+| `info`  | `run_end`             | an answer ends a run                           | the end: `wrong`, `won` or `deck-exhausted`                                                         |
+| `warn`  | `bad_request`         | a 400 from either endpoint                     | the response's `detail`                                                                             |
+| `warn`  | `rate_limited`        | a 429                                          | the limit: `flood`, `starts`, `answers` or `feedback`                                               |
+| `warn`  | `method_not_allowed`  | anything but POST                              | —                                                                                                   |
+| `warn`  | `verification_failed` | Turnstile said no (403)                        | —                                                                                                   |
+| `error` | `internal`            | a 500                                          | `not_configured` (`message` names the missing secrets), or the exception's name, with its `message` |
+| `error` | `unavailable`         | 503, the deck can't deal; 502, Siteverify down | the 503's `detail`, or `turnstile`                                                                  |
+| `error` | `send_failed`         | a feedback email couldn't be sent              | the send error's code, e.g. `E_SENDER_NOT_VERIFIED`                                                 |
+| `error` | `analytics_failed`    | a data point write threw — once per isolate    | the exception's name, with its `message`                                                            |
+
+Refusals and failures also carry `status`. Nothing else is logged: no successful request, no
+answer (the dataset has those), and no 404 under `/api/`, which scanners probe all day. The start
+and end lines, which exist so runs can be watched live:
+
+```jsonc
+{ "level": "info", "event": "run_start", "route": "/api/round/next", "mode": "friendly",
+  "run": "20260928-<uuid>", "runKind": "fresh", "deckVersion": "legends-107-e68a4e1b", "country": "GB" }
+{ "level": "info", "event": "run_end", "route": "/api/round/next", "mode": "friendly",
+  "run": "20260928-<uuid>", "runKind": "fresh", "deckVersion": "legends-107-e68a4e1b", "country": "GB",
+  "reason": "won", "score": 20 }
+```
+
+`run` is the run key, so a start and its end can be paired; for a replay it is the replay's own
+key, `YYYYMMDD-<uuid>~<uuid>`.
+
+**Quota.** Each 429 is a line, so a scraper hammering past the limits can spend the day's 200,000
+log events, and lines past the allowance may not be kept. The game is unaffected. If that starts
+happening, sample the `rate_limited` lines rather than dropping them.
+
+### Event schema
+
+One layout for every event, so a column means the same thing everywhere. Blobs are strings,
+doubles numbers; unused columns are empty.
+
+| Column    | `start`      | `answer`                          | `end`                                        |
+| --------- | ------------ | --------------------------------- | -------------------------------------------- |
+| `index1`  | run key      | run key                           | run key                                      |
+| `blob1`   | `start`      | `answer`                          | `end`                                        |
+| `blob2`   | mode         | mode                              | mode                                         |
+| `blob3`   | run kind     | run kind                          | run kind                                     |
+| `blob4`   | deck version | deck version                      | deck version                                 |
+| `blob5`   | country      | country                           | country                                      |
+| `blob6`   |              | stat id (`caps`)                  | end reason: `wrong`, `won`, `deck-exhausted` |
+| `blob7`   |              | tier: `basic`, `uncommon`, `rare` |                                              |
+| `blob8`   |              | band: `0.45+`, `0.30-0.80`, …     |                                              |
+| `blob9`   |              | final question: `1` or `0`        |                                              |
+| `double1` |              | round, 1–20                       | final score                                  |
+| `double2` |              | correct: 1 or 0                   |                                              |
+| `double3` |              | streak after the answer           |                                              |
+| `double4` |              | relaxation step, 0–3              |                                              |
+| `double5` |              | rank distance of the pair, 0–1    |                                              |
+
+- **When.** `start` once a run's first round is dealt. `answer` once the server has judged the
+  guess and built the response — a request that fails after the judgement records nothing. `end`
+  straight after the answer that ends the run. A run with a start and no end was **abandoned**.
+- **Run key** (`index1`): the run id's body, `YYYYMMDD-<uuid>` or a replay's
+  `YYYYMMDD-<uuid>~<uuid>`. The longest is a replay's, 82 bytes, inside Analytics Engine's 96; the
+  run id grammar (§7) allows nothing longer, and a test holds it.
+- **Run kind**: `fresh`, or `replay` for a run started from a challenge link (§7). A link that
+  fails its check starts a fresh run, and is recorded as one.
+- **Deck version**: `deckVersion` (§6), e.g. `legends-107-e68a4e1b`.
+- **Streak after the answer**: the run's score once this answer is counted — the round if right,
+  one less if wrong. One life, so a wrong answer's streak is also the run's final score.
+- **Band**: the band the round was **scheduled** for in its mode (§8, DESIGN.md §8), as floor and
+  ceiling: `0.45+` is uncapped, `0.30-0.80` capped. Labels sort by difficulty. Relaxation can
+  deal a round outside it; `double4` says whether it did, and `double5` where the pair really sat.
+- **Relaxation step**: 0 dealt as scheduled, 1 the iconic preference gave, 2 the band gave, 3 the
+  recently-seen queue was shortened — the ladder in DESIGN.md §8, from `Round.relaxation`.
+- **Rank distance**: how far apart the two figures sit in the deck for the stat, 0 to 1, computed
+  by the engine's own `percentiles` and `rankDistance` on the tables it dealt from.
+- **Final question**: round 20 of Friendly (`isFinalRound`).
+
+**What the numbers can and can't say.** Friendly is stateless (§7): a resent answer is judged and
+recorded again, and a technical caller can answer rounds out of order or without ever starting.
+So these are counts of answers the server judged, not of verified runs — near enough for tuning,
+not for a leaderboard. A run that started before the query's window but ended inside it counts as
+an end without a start, so `abandoned` can dip below zero on a short window. Local `wrangler dev`
+simulates the binding and writes nothing to the real dataset.
+
+**Limits.** Up to 20 blobs, 20 doubles and one index of at most 96 bytes per point; 250 points per
+request (these write at most three). Workers Free includes 100,000 points written and 10,000 read
+queries a day; Workers Paid, 10 million written and 1 million read a month. A Friendly run writes
+its rounds answered plus two, about a dozen for a typical run, so the free allowance covers several
+thousand runs a day. Analytics Engine isn't billed yet; check the pricing page before relying on
+that.
+
+### Queries
+
+Analytics Engine's SQL reads one table at a time — no joins, no subqueries — so each query is a
+single `SELECT`. Counts are `SUM(_sample_interval)`, never `count()`, which stays right if
+Analytics Engine samples at high volume. Here each covers the last 7 days and every deck;
+`pnpm stats` takes `--days` and `--deck`, and computes the extra columns noted. A test holds these
+blocks to the queries the script runs (`scripts/stats-queries.ts`).
+
+**Runs** (`summary`, shown by default): started, finished and abandoned, and win rate, per mode.
+
+```sql
+SELECT
+  blob2 AS mode,
+  sumIf(_sample_interval, blob1 = 'start') AS started,
+  sumIf(_sample_interval, blob1 = 'end') AS finished,
+  sumIf(_sample_interval, blob1 = 'start') - sumIf(_sample_interval, blob1 = 'end') AS abandoned,
+  sumIf(_sample_interval, blob1 = 'end' AND blob6 = 'won') AS won,
+  round(100 * sumIf(_sample_interval, blob1 = 'end' AND blob6 = 'won')
+    / sumIf(_sample_interval, blob1 = 'end'), 1) AS win_pct
+FROM biggerthan_game_events
+WHERE timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode
+ORDER BY mode
+```
+
+**Final scores** (`scores`, shown by default): the spread of finished runs' scores.
+
+```sql
+SELECT
+  blob2 AS mode,
+  SUM(_sample_interval) AS runs,
+  round(SUM(_sample_interval * double1) / SUM(_sample_interval), 1) AS mean,
+  min(double1) AS min,
+  quantileExactWeighted(0.25)(double1, _sample_interval) AS p25,
+  quantileExactWeighted(0.5)(double1, _sample_interval) AS median,
+  quantileExactWeighted(0.75)(double1, _sample_interval) AS p75,
+  max(double1) AS max
+FROM biggerthan_game_events
+WHERE blob1 = 'end'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode
+ORDER BY mode
+```
+
+**Streak histogram** (`streaks`): finished runs by final score, per mode.
+
+```sql
+SELECT
+  blob2 AS mode,
+  double1 AS score,
+  SUM(_sample_interval) AS runs
+FROM biggerthan_game_events
+WHERE blob1 = 'end'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode, score
+ORDER BY mode, score
+```
+
+**Friendly win rate and the final question** (`friendly`): win rate of finished runs, the share of
+started runs that reached question 20, and how many of those answered it right — the three figures
+`simulation.md` models.
+
+```sql
+SELECT
+  sumIf(_sample_interval, blob1 = 'start') AS started,
+  sumIf(_sample_interval, blob1 = 'end') AS finished,
+  sumIf(_sample_interval, blob1 = 'end' AND blob6 = 'won') AS won,
+  round(100 * sumIf(_sample_interval, blob1 = 'end' AND blob6 = 'won')
+    / sumIf(_sample_interval, blob1 = 'end'), 1) AS win_pct,
+  sumIf(_sample_interval, blob1 = 'answer' AND blob9 = '1') AS reached_final,
+  round(100 * sumIf(_sample_interval, blob1 = 'answer' AND blob9 = '1')
+    / sumIf(_sample_interval, blob1 = 'start'), 1) AS reached_final_pct,
+  round(100 * sumIf(_sample_interval, blob1 = 'answer' AND blob9 = '1' AND double2 = 1)
+    / sumIf(_sample_interval, blob1 = 'answer' AND blob9 = '1'), 1) AS final_pass_pct
+FROM biggerthan_game_events
+WHERE blob2 = 'friendly'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+```
+
+**Correct rate per stat** (`stats`): answers and correct rate per stat. The script adds `share_pct`,
+the stat's share of its mode's answers — its firing rate, to set against `TIER_TARGET`.
+
+```sql
+SELECT
+  blob2 AS mode,
+  blob6 AS stat,
+  blob7 AS tier,
+  SUM(_sample_interval) AS answers,
+  round(100 * SUM(_sample_interval * double2) / SUM(_sample_interval), 1) AS correct_pct
+FROM biggerthan_game_events
+WHERE blob1 = 'answer'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode, stat, tier
+ORDER BY mode, answers DESC
+```
+
+**Correct rate by rank distance** (`distance`): in buckets 0.1 wide. This is the real player
+behind the modelled one in `simulation.md` (`pCorrect`, from 0.5 at a distance of 0 to 0.95 at 1):
+refit the model to it once there are a few thousand answers.
+
+```sql
+SELECT
+  blob2 AS mode,
+  floor(double5, 1) AS distance,
+  SUM(_sample_interval) AS answers,
+  round(100 * SUM(_sample_interval * double2) / SUM(_sample_interval), 1) AS correct_pct
+FROM biggerthan_game_events
+WHERE blob1 = 'answer'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode, distance
+ORDER BY mode, distance
+```
+
+**Correct rate by band** (`bands`): per scheduled band, with how often it had to relax.
+
+```sql
+SELECT
+  blob2 AS mode,
+  blob8 AS band,
+  SUM(_sample_interval) AS answers,
+  round(100 * SUM(_sample_interval * double2) / SUM(_sample_interval), 1) AS correct_pct,
+  round(100 * sumIf(_sample_interval, double4 > 0) / SUM(_sample_interval), 1) AS relaxed_pct
+FROM biggerthan_game_events
+WHERE blob1 = 'answer'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode, band
+ORDER BY mode, band DESC
+```
+
+**Drop-off by round** (`dropoff`): how many answers each round got and how many were right. The
+script adds `left`: runs that got round _n_ right and never answered _n_ + 1, which is where
+players walk away rather than lose.
+
+```sql
+SELECT
+  blob2 AS mode,
+  double1 AS round,
+  SUM(_sample_interval) AS reached,
+  SUM(_sample_interval * double2) AS correct,
+  round(100 * SUM(_sample_interval * double2) / SUM(_sample_interval), 1) AS correct_pct
+FROM biggerthan_game_events
+WHERE blob1 = 'answer'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode, round
+ORDER BY mode, round
+```
+
+**Challenge replays** (`replays`): the share of runs started from a challenge link.
+
+```sql
+SELECT
+  blob2 AS mode,
+  SUM(_sample_interval) AS started,
+  sumIf(_sample_interval, blob3 = 'replay') AS replays,
+  round(100 * sumIf(_sample_interval, blob3 = 'replay') / SUM(_sample_interval), 1) AS replay_pct
+FROM biggerthan_game_events
+WHERE blob1 = 'start'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode
+ORDER BY mode
+```
+
+**Latest 50 starts and ends** (`latest`): newest first, for a look at what's happening now. The
+script blanks the end columns on a start.
+
+```sql
+SELECT
+  timestamp,
+  blob1 AS event,
+  blob2 AS mode,
+  blob3 AS run_kind,
+  blob5 AS country,
+  blob6 AS end_reason,
+  double1 AS score,
+  index1 AS run
+FROM biggerthan_game_events
+WHERE (blob1 = 'start' OR blob1 = 'end')
+  AND timestamp > NOW() - INTERVAL '7' DAY
+ORDER BY timestamp DESC
+LIMIT 50
+```
 
 ---
 

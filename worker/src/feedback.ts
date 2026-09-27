@@ -5,7 +5,9 @@
  *
  * Privacy: nothing personal is asked for, stored or logged. There is no email
  * field; the IP is used only as a rate-limit key (app.ts) and never reaches
- * Turnstile, the email or a log. The destination address is a secret.
+ * Turnstile, the email or a log. The destination address is a secret. This
+ * module logs nothing itself: a failure comes back as a `reason` code, which
+ * app.ts logs.
  *
  * A correction names a run and a round, nothing more. The server verifies the
  * run id's signature, rebuilds that round from the seed exactly as the round
@@ -62,7 +64,17 @@ export interface FeedbackContext {
 
 export type FeedbackResult =
   | { readonly status: 200; readonly body: FeedbackResponse }
-  | { readonly status: 400 | 403 | 502; readonly body: ApiError };
+  | { readonly status: 400 | 403; readonly body: ApiError }
+  | {
+      readonly status: 502;
+      readonly body: ApiError;
+      /**
+       * For app.ts's error log, never the response: `turnstile`, or the failed
+       * send's error code (e.g. `E_SENDER_NOT_VERIFIED`), never its message,
+       * which may quote the user's text.
+       */
+      readonly reason: string;
+    };
 
 export async function handleFeedback(body: unknown, ctx: FeedbackContext): Promise<FeedbackResult> {
   const parsed = parseFeedbackRequest(body);
@@ -82,7 +94,9 @@ export async function handleFeedback(body: unknown, ctx: FeedbackContext): Promi
 
   const verdict = await ctx.verifyTurnstile(req.turnstileToken);
   if (verdict === "fail") return { status: 403, body: { error: "verification_failed" } };
-  if (verdict === "error") return { status: 502, body: { error: "unavailable" } };
+  if (verdict === "error") {
+    return { status: 502, body: { error: "unavailable" }, reason: "turnstile" };
+  }
 
   try {
     await ctx.send({
@@ -95,8 +109,7 @@ export async function handleFeedback(body: unknown, ctx: FeedbackContext): Promi
     });
   } catch (err) {
     // The error's code only (e.g. E_SENDER_NOT_VERIFIED): never the message, which is user text.
-    console.error("feedback send failed", errorCode(err));
-    return { status: 502, body: { error: "send_failed" } };
+    return { status: 502, body: { error: "send_failed" }, reason: errorCode(err) };
   }
   return { status: 200, body: { ok: true } };
 }

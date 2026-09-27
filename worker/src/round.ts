@@ -15,7 +15,9 @@
  * score reached (challenge.ts).
  *
  * Deck, images, secret, clock, uuid and the rate limits are all injected, so
- * tests drive this directly in Node with no Worker runtime.
+ * tests drive this directly in Node with no Worker runtime. So is `record`,
+ * which receives a `GameEvent` for each run start, each judged answer and each
+ * run end (analytics.ts); app.ts writes them to Analytics Engine and Workers Logs.
  */
 
 import { WIN_ROUNDS, buildRun, roundCap } from "@bt/core";
@@ -32,6 +34,8 @@ import type {
   StartRequest,
   StartResponse,
 } from "@bt/core";
+import { pairRankDistance } from "./analytics.js";
+import type { GameEvent, RunKind } from "./analytics.js";
 import { challengeLink, checkChallenge } from "./challenge.js";
 import type { ChallengeCheck } from "./challenge.js";
 import { isCorrect, toReveal, toRoundPayload } from "./payload.js";
@@ -50,6 +54,12 @@ export interface RoundContext {
   readonly uuid: () => string;
   /** Rate limits that depend on what the request is. Absent: nothing is limited. */
   readonly limits?: RoundLimits;
+  /**
+   * Told what happened, once the response is settled: a run began, an answer
+   * was judged, a run ended. Must not throw; app.ts's recorder swallows its
+   * own failures. Absent: nothing is recorded.
+   */
+  readonly record?: (event: GameEvent) => void;
 }
 
 /**
@@ -65,7 +75,13 @@ export interface RoundLimits {
 export type RoundResult =
   | { readonly status: 200; readonly body: StartResponse | AnswerResponse }
   | { readonly status: 400 | 503; readonly body: ApiError }
-  | { readonly status: 429; readonly body: ApiError; readonly retryAfter: number };
+  | {
+      readonly status: 429;
+      readonly body: ApiError;
+      readonly retryAfter: number;
+      /** Which limit said no, for the log line. Never in the response. */
+      readonly limit: "starts" | "answers";
+    };
 
 export async function handleNextRound(body: unknown, ctx: RoundContext): Promise<RoundResult> {
   const parsed = parseNextRoundRequest(body);
@@ -78,7 +94,7 @@ async function start(
   ctx: RoundContext,
 ): Promise<RoundResult> {
   const limited = await ctx.limits?.start();
-  if (limited?.ok === false) return rateLimited(limited.retryAfter);
+  if (limited?.ok === false) return rateLimited(limited.retryAfter, "starts");
 
   const challenge = isChallengeStart(req)
     ? await checkChallenge(ctx.secret, req, ctx.clock())
@@ -87,7 +103,8 @@ async function start(
     ? await mintReplayId(challenge.run, ctx.uuid(), ctx.secret)
     : await mintRunId(ctx.clock(), ctx.uuid(), ctx.secret);
   const run = parseRunId(runId);
-  if (run === undefined) throw new Error(`minted a malformed run id: ${runId}`);
+  // Never the id itself in the message: it reaches the logs.
+  if (run === undefined) throw new Error("minted a malformed run id");
   const now = run.date;
 
   const seed = await friendlySeed(ctx.secret, run.origin);
@@ -103,7 +120,12 @@ async function start(
     round: toRoundPayload(first, now, ctx.images, second),
     ...(status !== undefined ? { challenge: status } : {}),
   };
+  ctx.record?.({ type: "start", mode: "friendly", run: run.body, runKind: runKind(run.replay) });
   return { status: 200, body: response };
+}
+
+function runKind(replay: boolean): RunKind {
+  return replay ? "replay" : "fresh";
 }
 
 function challengeStatus(req: ChallengeStartRequest, check: ChallengeCheck): ChallengeStatus {
@@ -120,7 +142,7 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
   if (!isRunAnswerable(run, ctx.clock())) return badRequest("runId is out of date");
 
   const limited = await ctx.limits?.answer(run.body);
-  if (limited?.ok === false) return rateLimited(limited.retryAfter);
+  if (limited?.ok === false) return rateLimited(limited.retryAfter, "answers");
 
   const seed = await friendlySeed(ctx.secret, run.origin);
   // Two past the answered round: the next question, and the round after it,
@@ -134,12 +156,29 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
   const correct = isCorrect(round, now, req.guess);
   const reveal = toReveal(round, now, correct);
 
+  // Recorded once the response is built, so a failure after the judgement
+  // can't record an answer the player never saw.
+  const facts = { mode: "friendly", run: run.body, runKind: runKind(run.replay) } as const;
+  const recordAnswer = (): void =>
+    ctx.record?.({
+      type: "answer",
+      ...facts,
+      round: req.round,
+      stat: round.stat,
+      correct,
+      streak: correct ? req.round : req.round - 1,
+      relaxation: round.relaxation,
+      rankDistance: pairRankDistance(ctx.deck, round, now),
+    });
+
   const ended = async (end: RunEnd, score: number): Promise<RoundResult> => {
     const response: EndResponse = {
       reveal,
       end,
       challenge: await challengeLink(ctx.secret, run.origin, score),
     };
+    recordAnswer();
+    ctx.record?.({ type: "end", ...facts, end, score });
     return { status: 200, body: response };
   };
 
@@ -155,6 +194,7 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
     reveal,
     next: toRoundPayload(next, now, ctx.images, rounds[req.round + 1]),
   };
+  recordAnswer();
   return { status: 200, body: response };
 }
 
@@ -162,6 +202,6 @@ function badRequest(detail: string): RoundResult {
   return { status: 400, body: { error: "bad_request", detail } };
 }
 
-function rateLimited(retryAfter: number): RoundResult {
-  return { status: 429, body: { error: "rate_limited" }, retryAfter };
+function rateLimited(retryAfter: number, limit: "starts" | "answers"): RoundResult {
+  return { status: 429, body: { error: "rate_limited" }, retryAfter, limit };
 }

@@ -6,15 +6,19 @@
  * mechanical enforcement of that sentence, and it runs on every build.
  */
 
+import { createHash } from "node:crypto";
 import { STATS, STAT_KEYS, eligibleStats } from "@bt/core";
 import type { Player, PlayerImage, StatKey } from "@bt/core";
 import { licenceUrl } from "./licences.js";
+import { DECK } from "./load.js";
 import type { Manifest } from "./manifest.js";
 import type { RawPlayer } from "./schema.js";
 
 /** Bundled into the Worker. Everything. */
 export interface FullDeck {
   readonly generatedAt: string;
+  /** Names the deck's content (`deckVersion`). The Worker tags analytics events with it. */
+  readonly version: string;
   readonly players: readonly Player[];
   readonly eligibility: Readonly<Record<string, readonly StatKey[]>>;
 }
@@ -44,7 +48,20 @@ export interface Credit {
 export function buildFullDeck(players: readonly Player[], now: Date): FullDeck {
   const eligibility: Record<string, readonly StatKey[]> = {};
   for (const p of players) eligibility[p.id] = eligibleStats(p, now);
-  return { generatedAt: now.toISOString(), players, eligibility };
+  return { generatedAt: now.toISOString(), version: deckVersion(players), players, eligibility };
+}
+
+/**
+ * The deck's content version, `<deck>-<players>-<hash>` (`legends-107-3f9c21e0`):
+ * the first 8 hex characters of the SHA-256 of the players as bundled. It
+ * changes with any figure, flag or player, and never with the build date, so
+ * rebuilding an unchanged deck keeps its version. The Worker writes it into
+ * every analytics event (ARCHITECTURE.md §19), so real play can be split by the
+ * deck it was dealt from. No value can be read back from it.
+ */
+export function deckVersion(players: readonly Player[]): string {
+  const hash = createHash("sha256").update(JSON.stringify(players)).digest("hex").slice(0, 8);
+  return `${DECK}-${players.length}-${hash}`;
 }
 
 export function buildIndexes(players: readonly Player[], now: Date): Indexes {

@@ -9,10 +9,19 @@
  * Built by `createApp` with the deck injected, so tests exercise the real
  * routing, rate limiting and error mapping against a fixture deck and mocked
  * bindings. `worker/index.ts` wires in the bundled deck and nothing else.
+ *
+ * Observability (ARCHITECTURE.md §19): every refusal and failure is one
+ * structured log line (log.ts) — `warn` for a 4xx or 429, `error` for ours —
+ * and the round handler's game events go to Analytics Engine, with a log line
+ * for each run's start and end (analytics.ts). Neither can change a response.
  */
 
 import type { ApiError, Player } from "@bt/core";
+import { countryOf, toDataPoint, toLogLine } from "./analytics.js";
+import type { AnalyticsDataset, EventContext, GameEvent } from "./analytics.js";
 import { handleFeedback } from "./feedback.js";
+import { describeError, log } from "./log.js";
+import type { Logger } from "./log.js";
 import { buildPlainTextMime, isPlainAddress } from "./mail.js";
 import type { ImageLookup } from "./payload.js";
 import { checkRateLimit, rateLimitKey } from "./rate-limit.js";
@@ -49,11 +58,18 @@ export interface Env {
   readonly FEEDBACK_TO?: string;
   /** The `send_email` binding (Email Routing). Takes what `emailMessage` builds. */
   readonly FEEDBACK_EMAIL: { send(message: OutgoingEmail): Promise<unknown> };
+  /**
+   * The Analytics Engine dataset for gameplay events. Optional: without it
+   * (some tests, a misconfigured deploy) the game plays exactly the same.
+   */
+  readonly GAME_EVENTS?: AnalyticsDataset;
 }
 
 export interface AppDeps {
   readonly deck: readonly Player[];
   readonly images: ImageLookup;
+  /** The bundled deck's version (`deckVersion` in @bt/deck), for analytics. */
+  readonly deckVersion?: string;
   readonly clock?: () => Date;
   readonly uuid?: () => string;
   /**
@@ -64,6 +80,8 @@ export interface AppDeps {
   readonly emailMessage?: (from: string, to: string, raw: string) => OutgoingEmail;
   /** For Turnstile's Siteverify. The global `fetch` by default. */
   readonly fetch?: FetchLike;
+  /** Where log lines go. The console (Workers Logs) by default. */
+  readonly log?: Logger;
 }
 
 export const ROUND_PATH = "/api/round/next";
@@ -79,11 +97,24 @@ const MAX_BODY_BYTES = 1024;
  */
 export const MAX_FEEDBACK_BYTES = 16 * 1024;
 
+type Route = typeof ROUND_PATH | typeof FEEDBACK_PATH;
+
+interface Refusal {
+  /** In the response body. */
+  readonly detail?: string;
+  /** In the log line only; defaults to `detail`. */
+  readonly reason?: string;
+  readonly message?: string;
+  readonly headers?: Record<string, string>;
+}
+
 export function createApp(deps: AppDeps): {
   fetch(request: Request, env: Env): Promise<Response>;
 } {
   const clock = deps.clock ?? (() => new Date());
   const uuid = deps.uuid ?? (() => crypto.randomUUID());
+  const logger = deps.log ?? log;
+  const deckVersion = deps.deckVersion ?? "unknown";
 
   const fetchFn: FetchLike = deps.fetch ?? ((input, init) => fetch(input, init));
   const emailMessage =
@@ -92,16 +123,80 @@ export function createApp(deps: AppDeps): {
       throw new Error("no EmailMessage constructor outside workerd");
     });
 
+  /** Logged once per isolate, so a broken binding can't flood the logs. */
+  let analyticsFailureLogged = false;
+
+  /**
+   * The round handler's `record`: the event to Analytics Engine, and a log
+   * line for a run's start or end. Fire-and-forget — `writeDataPoint` doesn't
+   * block, and nothing here can throw into the handler.
+   */
+  function recorder(request: Request, env: Env): (event: GameEvent) => void {
+    const ctx: EventContext = { country: countryOf(request), deckVersion };
+    return (event) => {
+      try {
+        const line = toLogLine(event, ctx, ROUND_PATH);
+        if (line !== undefined) logger(line);
+      } catch {
+        // A log line is never worth a failed answer.
+      }
+      const dataset = env.GAME_EVENTS;
+      if (dataset === undefined) return;
+      try {
+        dataset.writeDataPoint(toDataPoint(event, ctx));
+      } catch (err) {
+        if (analyticsFailureLogged) return;
+        analyticsFailureLogged = true;
+        try {
+          logger({
+            level: "error",
+            event: "analytics_failed",
+            route: ROUND_PATH,
+            ...describeError(err),
+          });
+        } catch {
+          // As above.
+        }
+      }
+    };
+  }
+
+  /** An error response, and its log line: `warn` for a 4xx, `error` for ours. */
+  function refuse(
+    route: Route,
+    status: number,
+    code: ApiError["error"],
+    { detail, reason = detail, message, headers = {} }: Refusal = {},
+  ): Response {
+    logger({
+      level: status >= 500 ? "error" : "warn",
+      event: code,
+      route,
+      status,
+      ...(reason !== undefined ? { reason } : {}),
+      ...(message !== undefined ? { message } : {}),
+    });
+    return error(status, code, detail, headers);
+  }
+
+  function rateLimited(route: Route, retryAfter: number, limit: string): Response {
+    return refuse(route, 429, "rate_limited", {
+      reason: limit,
+      headers: { "retry-after": String(retryAfter) },
+    });
+  }
+
   async function feedback(request: Request, env: Env): Promise<Response> {
+    const route = FEEDBACK_PATH;
     const limiters = limitersOf(env);
     const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
 
     // Before any work: every message costs a Turnstile check and an email.
     const limited = await checkRateLimit(limiters, "feedback", ip);
-    if (!limited.ok) return rateLimited(limited.retryAfter);
+    if (!limited.ok) return rateLimited(route, limited.retryAfter, "feedback");
 
     if (request.method !== "POST") {
-      return error(405, "method_not_allowed", undefined, { allow: "POST" });
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "POST" } });
     }
 
     const { RUN_SECRET: secret, TURNSTILE_SECRET: turnstileSecret, FEEDBACK_TO: to } = env;
@@ -112,21 +207,25 @@ export function createApp(deps: AppDeps): {
         to && isPlainAddress(to) ? "" : "FEEDBACK_TO",
       ].filter((name) => name !== "");
       // Names only, never values.
-      console.error(`feedback is not configured: ${missing.join(", ")} missing or invalid`);
-      return error(500, "internal");
+      return refuse(route, 500, "internal", {
+        reason: "not_configured",
+        message: `${missing.join(", ")} missing or invalid`,
+      });
     }
 
     const declared = Number(request.headers.get("content-length"));
-    if (declared > MAX_FEEDBACK_BYTES) return error(400, "bad_request", "body_too_large");
+    if (declared > MAX_FEEDBACK_BYTES) {
+      return refuse(route, 400, "bad_request", { detail: "body_too_large" });
+    }
     const text = await request.text();
     if (new TextEncoder().encode(text).length > MAX_FEEDBACK_BYTES) {
-      return error(400, "bad_request", "body_too_large");
+      return refuse(route, 400, "bad_request", { detail: "body_too_large" });
     }
     let body: unknown;
     try {
       body = JSON.parse(text);
     } catch {
-      return error(400, "bad_request", "invalid_json");
+      return refuse(route, 400, "bad_request", { detail: "invalid_json" });
     }
 
     try {
@@ -142,11 +241,73 @@ export function createApp(deps: AppDeps): {
           await env.FEEDBACK_EMAIL.send(message);
         },
       });
-      return json(result.status, result.body);
+      if (result.status === 200) return json(200, result.body);
+      return refuse(route, result.status, result.body.error, {
+        ...(result.body.detail !== undefined ? { detail: result.body.detail } : {}),
+        ...(result.status === 502 ? { reason: result.reason } : {}),
+      });
     } catch (err) {
       // Errors from the engine or config, never user text: sends are caught in feedback.ts.
-      console.error("feedback handler failed", err);
-      return error(500, "internal");
+      return refuse(route, 500, "internal", describeError(err));
+    }
+  }
+
+  async function round(request: Request, env: Env): Promise<Response> {
+    const route = ROUND_PATH;
+    const limiters = limitersOf(env);
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+
+    // The backstop comes before any work, so a flood stays cheap. The run
+    // start and answer limits need the parsed request, so round.ts applies them.
+    const flood = await checkRateLimit(limiters, "flood", ip);
+    if (!flood.ok) return rateLimited(route, flood.retryAfter, "flood");
+
+    if (request.method !== "POST") {
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "POST" } });
+    }
+
+    const secret = env.RUN_SECRET;
+    if (secret === undefined || secret === "") {
+      return refuse(route, 500, "internal", {
+        reason: "not_configured",
+        message: "RUN_SECRET missing",
+      });
+    }
+
+    const text = await request.text();
+    if (text.length > MAX_BODY_BYTES) {
+      return refuse(route, 400, "bad_request", { detail: "body too large" });
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return refuse(route, 400, "bad_request", { detail: "body must be JSON" });
+    }
+
+    try {
+      const result = await handleNextRound(body, {
+        deck: deps.deck,
+        images: deps.images,
+        secret,
+        clock,
+        uuid,
+        limits: {
+          start: () => checkRateLimit(limiters, "starts", ip),
+          answer: (run) => checkRateLimit(limiters, "answers", run),
+        },
+        record: recorder(request, env),
+      });
+      if (result.status === 200) return json(200, result.body);
+      if (result.status === 429) return rateLimited(route, result.retryAfter, result.limit);
+      return refuse(
+        route,
+        result.status,
+        result.body.error,
+        result.body.detail !== undefined ? { detail: result.body.detail } : {},
+      );
+    } catch (err) {
+      return refuse(route, 500, "internal", describeError(err));
     }
   }
 
@@ -155,53 +316,9 @@ export function createApp(deps: AppDeps): {
       const { pathname } = new URL(request.url);
       if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
       if (pathname === FEEDBACK_PATH) return feedback(request, env);
-      if (pathname !== ROUND_PATH) return error(404, "not_found");
-
-      const limiters = limitersOf(env);
-      const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
-
-      // The backstop comes before any work, so a flood stays cheap. The run
-      // start and answer limits need the parsed request, so round.ts applies them.
-      const flood = await checkRateLimit(limiters, "flood", ip);
-      if (!flood.ok) return rateLimited(flood.retryAfter);
-
-      if (request.method !== "POST") {
-        return error(405, "method_not_allowed", undefined, { allow: "POST" });
-      }
-
-      const secret = env.RUN_SECRET;
-      if (secret === undefined || secret === "") {
-        console.error("RUN_SECRET is not set");
-        return error(500, "internal");
-      }
-
-      const text = await request.text();
-      if (text.length > MAX_BODY_BYTES) return error(400, "bad_request", "body too large");
-      let body: unknown;
-      try {
-        body = JSON.parse(text);
-      } catch {
-        return error(400, "bad_request", "body must be JSON");
-      }
-
-      try {
-        const result = await handleNextRound(body, {
-          deck: deps.deck,
-          images: deps.images,
-          secret,
-          clock,
-          uuid,
-          limits: {
-            start: () => checkRateLimit(limiters, "starts", ip),
-            answer: (run) => checkRateLimit(limiters, "answers", run),
-          },
-        });
-        if (result.status === 429) return rateLimited(result.retryAfter);
-        return json(result.status, result.body);
-      } catch (err) {
-        console.error("round handler failed", err);
-        return error(500, "internal");
-      }
+      if (pathname === ROUND_PATH) return round(request, env);
+      // Not logged: scanners probe paths all day, and the log quota is daily.
+      return error(404, "not_found");
     },
   };
 }
@@ -213,10 +330,6 @@ function limitersOf(env: Env): RateLimiters {
     flood: env.ROUND_FLOOD,
     feedback: env.FEEDBACK_SENDS,
   };
-}
-
-function rateLimited(retryAfter: number): Response {
-  return error(429, "rate_limited", undefined, { "retry-after": String(retryAfter) });
 }
 
 function error(
