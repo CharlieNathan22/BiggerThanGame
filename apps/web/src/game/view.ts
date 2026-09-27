@@ -134,6 +134,9 @@ export function announcement(state: GameState, mode: Mode): string {
     });
     return target === null ? question : `${progressText(state, mode)}. ${question}`;
   }
+  // Once, as the game-over panel comes up; the verdict was said a moment ago.
+  const best = bestOutcome(state);
+  if (best !== null) return best === "new" ? t("live.newHighScore") : t("live.matchedBest");
   if ((state.phase === "verdict" || state.phase === "over") && reveal !== null) {
     const params = { challenger: round.challenger.name, value: reveal.display };
     if (!reveal.correct) return t("live.wrong", params);
@@ -329,6 +332,29 @@ export function plaqueLead(state: GameState, mode: Mode): string | null {
 export function hitchText(hitch: Hitch | null): string {
   if (hitch === null) return "";
   return hitch.kind === "slowDown" ? t("hitch.slowDown") : t("hitch.reconnecting");
+}
+
+/**
+ * How a finished run compares with the best this deck and mode had before it
+ * (`bestBefore`, from the device, or from earlier runs this visit when storage
+ * is blocked). Only when there was a best to beat: a device's first run has
+ * none. A win that equals the best (20/20 again) is just "You won".
+ */
+export type BestOutcome = "new" | "matched";
+
+export function bestOutcome(state: GameState): BestOutcome | null {
+  if (state.phase !== "over" || state.bestBefore <= 0) return null;
+  if (state.streak > state.bestBefore) return "new";
+  if (state.streak === state.bestBefore && state.end !== "won") return "matched";
+  return null;
+}
+
+/**
+ * The run in progress is past the previous best: the title bar's Best counts
+ * with the streak and glows gold. Not on a device's first run.
+ */
+export function onNewBest(state: GameState): boolean {
+  return state.phase !== "idle" && state.bestBefore > 0 && state.streak > state.bestBefore;
 }
 
 /** "in a row", "correct, then out" for a streak of one, or "a perfect run" for a win. */

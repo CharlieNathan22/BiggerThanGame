@@ -141,6 +141,8 @@ export const en = {
   "live.correctOf": "{challenger}: {value}. Correct. {score} of {target}.",
   "live.won": "{challenger}: {value}. Correct — that's all {score}. You won!",
   "live.wrong": "{challenger}: {value}. Wrong. The run is over.",
+  "live.newHighScore": "New high score!",
+  "live.matchedBest": "You matched your best.",
 
   // Game over
   "over.caption.one": "correct, then out",
@@ -148,7 +150,8 @@ export const en = {
   "over.caption.won": "a perfect run",
   "over.won": "You won",
   "over.best": "Best {best}",
-  "over.newBest": "New best",
+  "over.newHighScore": "New high score",
+  "over.matchedBest": "Matched your best",
   "over.separator": "·",
   "over.exhausted": "You've been through every pairing this run could deal. That's the whole deck.",
   "over.network": "The connection dropped. Your streak of {streak} stands.",

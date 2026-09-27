@@ -57,12 +57,14 @@
     anchorFading,
     anchorFigure,
     announcement,
+    bestOutcome,
     canSkipTitle,
     challengeNotice,
     hitchText,
     overCaption,
     isFinalQuestion,
     isIntro,
+    onNewBest,
     pitchCards,
     plaqueLead,
     plaqueStage,
@@ -256,7 +258,8 @@
   // A slow-down is a pause, not a wait on the network: the number rests at "?"
   // rather than scrambling until it's over.
   const resting = $derived(game.hitch?.kind === "slowDown");
-  const newBest = $derived(game.streak > 0 && game.streak > game.bestBefore);
+  /** Against the previous best: a new high score, a match, or neither. */
+  const best = $derived(bestOutcome(game));
   const offered = $derived(game.challenge?.status === "offered" ? game.challenge.link : null);
   const notice = $derived(challengeNotice(game));
   const won = $derived(game.end === "won");
@@ -409,7 +412,7 @@
 
 <div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null}>
   <TitleBar
-    scores={{ streak: game.streak, best: game.best, target }}
+    scores={{ streak: game.streak, best: game.best, target, rising: onNewBest(game) }}
     legends={isLegendsPath(path)}
     current={path}
   />
@@ -604,9 +607,14 @@
             {#if title}
               <div class="sublegend title">{title}</div>
             {/if}
-            <div class="best">
-              {newBest ? t("over.newBest") : t("over.best", { best: scoreFigure(game.best, mode) })}
-            </div>
+            <!-- In the best line's place, so the panel is no taller. -->
+            {#if best === "new"}
+              <div class="highscore">{t("over.newHighScore")}</div>
+            {:else if best === "matched"}
+              <div class="best matched">{t("over.matchedBest")}</div>
+            {:else}
+              <div class="best">{t("over.best", { best: scoreFigure(game.best, mode) })}</div>
+            {/if}
             {#if result}
               <p class="outcome">{outcomeText(result.outcome, result.target, mode)}</p>
             {/if}
@@ -1329,6 +1337,37 @@
     font-size: var(--fs-caption);
     color: var(--dim);
     font-variation-settings: var(--fv-caption);
+  }
+  /* A new high score: gold, glowing, popping in once the panel is up (after
+     the win's own entrance on a win), then one brighter pulse of glow. With
+     reduced motion it is simply there. */
+  .highscore {
+    margin-top: var(--over-cap-top);
+    font-size: var(--fs-highscore);
+    font-variation-settings: var(--fv-caps);
+    letter-spacing: var(--tracking-highscore);
+    text-transform: uppercase;
+    color: var(--gold);
+    text-shadow: var(--glow-hover);
+    animation:
+      highscore-in var(--dur-highscore-in) var(--ease-win) var(--highscore-delay) both,
+      highscore-pulse var(--dur-highscore-pulse) var(--ease)
+        calc(var(--highscore-delay) + var(--dur-highscore-in)) 1;
+  }
+  @keyframes highscore-in {
+    from {
+      opacity: 0;
+      transform: scale(var(--highscore-from-scale));
+    }
+  }
+  @keyframes highscore-pulse {
+    50% {
+      text-shadow: var(--highscore-pulse-glow);
+    }
+  }
+  /* Matching the best is quieter: the caption's size, in chalk. */
+  .best.matched {
+    color: var(--chalk);
   }
   .reason {
     margin-top: var(--reason-top);

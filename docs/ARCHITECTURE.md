@@ -1006,7 +1006,12 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   so it can't enter the module graph.
 - **Local best** is one number per deck and mode in `localStorage`, `bt:best:<deck>:<mode>`
   (`bt:best:legends:friendly`; `game/best.ts`), shown only on the game pages — as "Best 12/20" in
-  Friendly. The game page passes
+  Friendly. It is saved as soon as the streak passes it. The run compares itself with the best it
+  started from (`bestBefore`; `bestOutcome` and `onNewBest` in `game/view.ts`): the game-over
+  panel's best line becomes "New high score" (gold caps, the gold glow, popping in after
+  `--highscore-delay` with one brighter pulse; none with reduced motion) or a quieter "Matched your
+  best", announced once by the live region, and only when there was a best to beat. Mid-run the
+  title bar's Best glows gold (`--best-rising-*`) once the streak is past it. The game page passes
   its deck and mode to the island. Every read and write is wrapped: with storage blocked, full or
   throwing, the best lasts as long as the page and the game plays normally. The local
   leaderboard, when it comes, lives there the same way.

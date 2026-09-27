@@ -366,6 +366,20 @@
     rgba(255, 255, 255, 0.85) 50%,
     transparent 62%
   );
+  /* "New high score" on the game-over panel, in the best line's place: gold
+     caps with the gold glow, popping in from --highscore-from-scale after
+     --highscore-delay (after the win's own entrance), then one brighter pulse
+     of glow. "Matched your best" is the caption in chalk. */
+  --fs-highscore: 14px;
+  --tracking-highscore: 0.08em;
+  --dur-highscore-in: 450ms;
+  --highscore-delay: 450ms;
+  --highscore-from-scale: 0.6;
+  --dur-highscore-pulse: 800ms;
+  --highscore-pulse-glow: 0 0 6px rgba(var(--glow-rgb), 1), 0 0 26px rgba(var(--glow-rgb), 0.95);
+  /* The title bar's Best while a run is past the previous best. */
+  --best-rising-colour: var(--gold);
+  --best-rising-glow: var(--glow-hover);
   /* "/20" after the score, smaller and dimmer than the number. */
   --final-of-size: 0.42em;
 
@@ -713,6 +727,7 @@ body:not(.game) {
     --track-h: 4px;
     --fs-won: 28px;
     --won-trophy: 28px;
+    --fs-highscore: 12.5px;
   }
 }
 

@@ -25,8 +25,10 @@
     /**
      * Streak and best. Shown on the game only; other pages have no run.
      * `target` is the mode's win target (Friendly's 20), or null for none.
+     * `rising`: the run is past the previous best, so Best is counting with
+     * the streak, and glows gold.
      */
-    scores?: { streak: number; best: number; target: number | null };
+    scores?: { streak: number; best: number; target: number | null; rising?: boolean };
     /** Add "— Football Legends": /football-higher-or-lower/legends and the pages under it. */
     legends?: boolean;
     /** The page being shown, as served (`/about`), for `aria-current`. */
@@ -76,7 +78,7 @@
           <div class="score">
             <span>{t("scores.streak")}</span><strong class="num">{scores.streak}</strong>
           </div>
-          <div class="score">
+          <div class="score" class:rising={scores.rising}>
             <span>{t("scores.best")}</span><strong class="num">{scores.best}</strong>
           </div>
         {:else}
@@ -85,7 +87,7 @@
               >{t("scores.of", { score: scores.streak, target: scores.target })}</strong
             >
           </div>
-          <div class="score">
+          <div class="score" class:rising={scores.rising}>
             <span>{t("scores.best")}</span><strong class="num"
               >{t("score.of", { score: scores.best, target: scores.target })}</strong
             >
@@ -242,6 +244,14 @@
   }
   .score strong {
     font-size: var(--fs-score);
+    transition:
+      color var(--dur-tint) var(--ease),
+      text-shadow var(--dur-tint) var(--ease);
+  }
+  /* On a new best, mid-run: Best turns gold and glows as it counts. */
+  .score.rising strong {
+    color: var(--best-rising-colour);
+    text-shadow: var(--best-rising-glow);
   }
 
   ul {

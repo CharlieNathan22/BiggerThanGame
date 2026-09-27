@@ -7,11 +7,13 @@ import {
   anchorFading,
   anchorFigure,
   announcement,
+  bestOutcome,
   canSkipTitle,
   hitchText,
   initial,
   isFinalQuestion,
   isIntro,
+  onNewBest,
   overCaption,
   pitchCards,
   plaqueLead,
@@ -347,6 +349,60 @@ describe("verdictLabel", () => {
     const over = reduce(winning, { type: "advance" });
     expect(over.end).toBe("won");
     expect(verdictLabel(over)).toBeNull();
+  });
+});
+
+describe("a new high score", () => {
+  const over = (
+    streak: number,
+    bestBefore: number,
+    end: GameState["end"] = "wrong",
+  ): GameState => ({
+    ...initialState(bestBefore),
+    phase: "over",
+    streak,
+    best: Math.max(streak, bestBefore),
+    end,
+    round: round(streak + 1),
+  });
+
+  it("is a new high score only when it beats a previous best", () => {
+    expect(bestOutcome(over(8, 5))).toBe("new");
+    expect(bestOutcome(over(3, 5))).toBeNull();
+    // A device's first run has no best to beat.
+    expect(bestOutcome(over(8, 0))).toBeNull();
+  });
+
+  it("is a quieter match when it equals the previous best", () => {
+    expect(bestOutcome(over(5, 5))).toBe("matched");
+  });
+
+  it("goes with You won on a first win, and a later win is You won only", () => {
+    expect(bestOutcome(over(20, 12, "won"))).toBe("new");
+    expect(bestOutcome(over(20, 20, "won"))).toBeNull();
+    expect(bestOutcome(over(20, 0, "won"))).toBeNull();
+  });
+
+  it("isn't judged before the run is over", () => {
+    expect(bestOutcome({ ...over(8, 5), phase: "verdict" })).toBeNull();
+  });
+
+  it("is announced once, as the panel comes up", () => {
+    expect(announcement(over(8, 5), "friendly")).toBe("New high score!");
+    expect(announcement(over(5, 5), "friendly")).toBe("You matched your best.");
+  });
+
+  it("lights the title bar's Best mid-run once the streak is past the previous best", () => {
+    const playing = (streak: number, bestBefore: number): GameState => ({
+      ...initialState(bestBefore),
+      phase: "awaiting",
+      streak,
+      best: Math.max(streak, bestBefore),
+    });
+    expect(onNewBest(playing(5, 5))).toBe(false);
+    expect(onNewBest(playing(6, 5))).toBe(true);
+    expect(onNewBest(playing(6, 0))).toBe(false);
+    expect(playing(6, 5).best).toBe(6);
   });
 });
 

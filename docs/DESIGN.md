@@ -671,7 +671,11 @@ a number.
   or is more than 10 days old, opens a normal run with a short note. Friendly only for now.
   ARCHITECTURE.md §7 has the mechanics and the limits.
 - **Local best** is kept on the device, one per deck and mode (§17), and works with storage blocked
-  (it then lasts the visit). Friendly shows it as "Best 12/20".
+  (it then lasts the visit). Friendly shows it as "Best 12/20". Beating it shows "New high score"
+  in gold on the game-over panel, in the best line's place (with "You won" on a first win); equalling
+  it, a quieter "Matched your best" (a win that equals it is just "You won"). Neither shows without a
+  best to beat, so not on a device's first run. Mid-run, once the streak passes it, the title bar's
+  Best counts with the streak and glows gold.
 
 ### Daily Ranked board
 
