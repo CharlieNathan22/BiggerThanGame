@@ -1,0 +1,85 @@
+---
+// Where a page sits: "Football › Legends" (DESIGN.md §17). The last item is the
+// page being shown, marked `aria-current`. The separators are hidden from
+// screen readers, which announce the list and its position instead.
+import { t } from "../i18n";
+
+interface Props {
+  /** From the top down, the page being shown last. */
+  items: readonly { label: string; href: string }[];
+}
+
+const { items } = Astro.props;
+---
+
+<nav class="crumbs" aria-label={t("breadcrumb.label")}>
+  <ol class="trail">
+    {items.map((item, i) => {
+      const last = i === items.length - 1;
+      return (
+        <li class="crumb">
+          {i > 0 && (
+            <span class="sep" aria-hidden="true">
+              {t("breadcrumb.separator")}
+            </span>
+          )}
+          <a href={item.href} aria-current={last ? "page" : undefined}>
+            {item.label}
+          </a>
+        </li>
+      );
+    })}
+  </ol>
+</nav>
+
+<style>
+  /* Two classes deep, so the prose column's list styles don't reach in. */
+  .crumbs {
+    margin-bottom: var(--crumbs-bottom);
+  }
+  .crumbs .trail {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    margin: 0;
+    padding: 0;
+    font-size: var(--fs-crumbs);
+    font-variation-settings: var(--fv-caption);
+  }
+  .crumbs .crumb {
+    display: flex;
+    align-items: baseline;
+    margin: 0;
+    font-size: inherit;
+    line-height: var(--lh-tight);
+    color: var(--dim);
+  }
+  .sep {
+    padding: 0 var(--crumbs-gap);
+  }
+  a {
+    position: relative;
+    color: var(--dim);
+    text-decoration: underline;
+    text-decoration-color: var(--faint);
+    text-underline-offset: var(--nav-underline-offset);
+  }
+  a:hover {
+    color: var(--chalk);
+  }
+  a[aria-current="page"] {
+    color: var(--chalk);
+    text-decoration: none;
+  }
+  /* A 44px touch target however small the type. */
+  a::after {
+    content: "";
+    position: absolute;
+    left: -4px;
+    right: -4px;
+    top: 50%;
+    height: var(--target-min);
+    transform: translateY(-50%);
+  }
+</style>

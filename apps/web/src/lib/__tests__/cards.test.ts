@@ -1,6 +1,7 @@
 /**
- * The homepage's and the hub's cards: every piece of text on them, the dimmed
- * "Coming soon" cards included, meets WCAG AA (4.5:1) on its background.
+ * The homepage's, the football hub's and the Legends page's cards: every piece
+ * of text on them, the dimmed "Coming soon" cards included, meets WCAG AA
+ * (4.5:1) on its background.
  * Read from tokens.css, so a restyle that dims a card too far fails here.
  */
 

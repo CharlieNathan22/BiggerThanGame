@@ -1,10 +1,20 @@
 ---
-// The football hub: the modes (DESIGN.md §17). Static, no JS.
+// The football page: football higher or lower in general, and a card per deck
+// (DESIGN.md §17). Static, no JS. Nothing here is specific to one deck.
 import Page from "../layouts/Page.astro";
-import FootballHub from "../components/FootballHub.astro";
+import Card from "../components/Card.astro";
+import Cards from "../components/Cards.astro";
 import { t } from "../i18n";
+import { LEGENDS_PATH } from "../lib/paths";
 ---
 
 <Page title={t("hub.title")} description={t("hub.description")}>
-  <FootballHub />
+  <h1>
+    {t("hub.heading")} <em>{t("hub.headingEm")}</em>
+  </h1>
+  <p>{t("hub.intro")}</p>
+
+  <Cards label={t("hub.decks")}>
+    <Card name={t("deck.legends.name")} body={t("deck.legends.body")} href={LEGENDS_PATH} />
+  </Cards>
 </Page>

@@ -764,27 +764,34 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
 
 ```
 /                                  homepage: the brand, one line on the idea, a card per game
-│                                  (one today). Static, no JS.
-└── /football-higher-or-lower      football hub: a short intro and the three modes. Static,
-    │                              no JS. The page search traffic lands on.
-    └── /legends                   the Legends deck. For now the hub's content, canonical to
-        │                          the hub, and linked from nowhere.
+│                                  (Football Legends today, straight to its deck). Static, no JS.
+└── /football-higher-or-lower      football hub: football higher or lower in general, and a
+    │                              card per deck (Legends today). Static, no JS.
+    └── /legends                   the Legends deck: its intro and the three modes. Static,
+        │                          no JS. Where "Play" goes.
         └── /friendly              the game: Friendly Mode. Fixed-height, no scroll.
 ```
 
-- **Modes on the hub.** Friendly links to its game page. Endless and Daily Ranked are shown as
-  "Coming soon" cards until they ship: not links, not focusable, visibly dimmed, with "Coming
+- **The football hub is general.** It says what football higher or lower is — two footballers,
+  one stat, and the stat keeps changing — and nothing specific to one deck. Each deck is a card
+  linking to its page; more decks become more cards.
+- **Modes on a deck's page.** Friendly links to its game page. Endless and Daily Ranked are shown
+  as "Coming soon" cards until they ship: not links, not focusable, visibly dimmed, with "Coming
   soon" written out rather than carried by tint alone, and every piece of text still at WCAG AA.
-  They are cards on the hub, not pages of their own.
-- **Canonical rule.** `/football-higher-or-lower/legends` repeats the hub for now, so its canonical
-  link points to `/football-higher-or-lower`. Every other page is canonical to itself; the 404 has
-  none.
+  They are cards on the Legends page, not pages of their own.
+- **Canonical rule.** Every page is canonical to itself, with its own title and meta description;
+  the 404 has none.
+- **Breadcrumb.** The Legends page shows "Football › Legends" above its heading, in a `nav`
+  labelled "Breadcrumb" with `aria-current` on the last item. The game page has none: its
+  fixed-height screen has no row to spare on a phone, and its title bar already says "Football
+  _Legends_".
 - **Title bar.** The word _Legends_ (Cinzel, gold) appears only on
   `/football-higher-or-lower/legends` and the pages under it, as "Bigger Than Game — Football
   _Legends_". Everywhere else the bar shows the brand alone. One component; the page decides.
-- **Navigation** is in the title bar on every page: the brand to `/`, then Play (the football
-  hub), How to play and About, with the current page marked. Inline on desktop; a "Menu" on
-  phones and short landscape screens, which opens over the page rather than pushing it down.
+- **Navigation** is in the title bar on every page: the brand to `/`, then Play (the Legends
+  page), How to play and About, with the current page marked. Play is marked current on the
+  football hub and every page under it. Inline on desktop; a "Menu" on phones and short
+  landscape screens, which opens over the page rather than pushing it down.
   The footer keeps Credits, GitHub, "Suggest a legend" and "Report a problem".
 - **Local best** is kept per deck and mode — `bt:best:<deck>:<mode>`, `bt:best:legends:friendly`
   today — and shown only on the game pages under `/legends`.

@@ -901,16 +901,16 @@ anti-cheat work, under the same no-personal-data rule.
 
 ## 14. Frontend
 
-**Astro** prerenders the shell, the homepage, the football hub, the about page and the board
-pages. **Svelte** hydrates one island: the game, on its own page. The URL tree is in `DESIGN.md`
+**Astro** prerenders the shell, the homepage, the football hub, the deck pages, the about page
+and the board pages. **Svelte** hydrates one island: the game, on its own page. The URL tree is in `DESIGN.md`
 §17; the paths live in `apps/web/src/lib/paths.ts`.
 
-| Path                                         | Page                                         | JS         |
-| -------------------------------------------- | -------------------------------------------- | ---------- |
-| `/`                                          | homepage: brand, one line, a card per game   | none       |
-| `/football-higher-or-lower`                  | the football hub: intro and three mode cards | none       |
-| `/football-higher-or-lower/legends`          | the hub's content, canonical to the hub      | none       |
-| `/football-higher-or-lower/legends/friendly` | the game (Friendly, Legends deck)            | the island |
+| Path                                         | Page                                                | JS         |
+| -------------------------------------------- | --------------------------------------------------- | ---------- |
+| `/`                                          | homepage: brand, one line, a card per game          | none       |
+| `/football-higher-or-lower`                  | the football hub: general intro, a card per deck    | none       |
+| `/football-higher-or-lower/legends`          | the Legends deck: breadcrumb, intro, the mode cards | none       |
+| `/football-higher-or-lower/legends/friendly` | the game (Friendly, Legends deck)                   | the island |
 
 - The game island is `client:load`, not `client:visible` — it is above the fold and the first
   interaction must not wait on an intersection observer.
@@ -929,7 +929,10 @@ pages. **Svelte** hydrates one island: the game, on its own page. The URL tree i
   Its `legends` prop adds "— Football Legends", set on `/football-higher-or-lower/legends` and
   every page under it (`isLegendsPath`); elsewhere the bar is the brand alone, at the same height.
 - **Site navigation** is in the title bar on every page (`lib/nav.ts`): the brand links to `/`,
-  then Play (`/football-higher-or-lower`), How to play (`/about#how-to-play`) and About. The current page's link carries `aria-current="page"`; a link to a section never does.
+  then Play (`/football-higher-or-lower/legends`), How to play (`/about#how-to-play`) and About.
+  The current page's link carries `aria-current="page"`; a link to a section never does. Play
+  also stands for its `section`, the football pages: on `/football-higher-or-lower` and the game
+  page it carries `aria-current="true"`, styled the same.
   From 780px the links sit inline. Below that, and on short landscape screens, a "Menu" built on
   `<details>`/`<summary>` opens them with no JS and from the keyboard. Esc (returning focus to
   "Menu" when it was inside) and a click outside close it: on the game page through the island,
@@ -945,12 +948,17 @@ pages. **Svelte** hydrates one island: the game, on its own page. The URL tree i
   other page scrolls.
 - Pages build to files (`about.html`, `football-higher-or-lower/legends/friendly.html`) and are
   served without the extension and with no trailing slash — `/about` — which is also the
-  canonical URL. `Base.astro` takes a `canonical` path to point a duplicate elsewhere:
-  `/football-higher-or-lower/legends` is canonical to `/football-higher-or-lower`.
-- **Cards** (`Card.astro`, `Cards.astro`) list the games on `/` and the modes on the hub. An open
-  one is a single link, named by its heading. A mode that isn't open yet is not a link and not
-  focusable, says "Coming soon" in text, and is dimmed without dropping below AA — a test checks
-  the card tokens' contrast.
+  canonical URL. Every page is canonical to itself; `Base.astro` can take another `canonical`
+  path for a duplicate (there are none) or `false` (the 404).
+- **Cards** (`Card.astro`, `Cards.astro`) list the games on `/`, the decks on the football hub
+  (a grid, with room for more) and the modes on the Legends page. An open one is a single link,
+  named by its heading. A mode that isn't open yet is not a link and not focusable, says "Coming
+  soon" in text, and is dimmed without dropping below AA — a test checks the card tokens'
+  contrast.
+- **Breadcrumb** (`Breadcrumb.astro`): "Football › Legends" above the Legends page's heading, a
+  `<nav aria-label="Breadcrumb">` around an ordered list, the last item a link with
+  `aria-current="page"` and the separators `aria-hidden`. Not on the game page, which has no
+  height to spare on a phone (`DESIGN.md` §17).
 - `/credits` reads `packages/deck/dist/credits.json` with `fs` at build time. It is never imported,
   so it can't enter the module graph.
 - **Local best** is one number per deck and mode in `localStorage`, `bt:best:<deck>:<mode>`

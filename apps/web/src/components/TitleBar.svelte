@@ -4,7 +4,8 @@
   shows only on the Legends pages (`legends`); elsewhere it is the brand alone
   (DESIGN.md §17).
 
-  Site navigation: the brand links home, then Play, How to play and About.
+  Site navigation: the brand links home, then Play (the Legends page, marked
+  current across the football pages), How to play and About.
   Desktop shows them inline. Phones and short landscape screens get a "Menu"
   built on <details>/<summary>, so it opens with no JS and from the keyboard.
   Esc and a click outside close it: here on the game page, where the island
@@ -15,7 +16,7 @@
 -->
 <script lang="ts">
   import { t } from "../i18n";
-  import { NAV_LINKS, currentPage } from "../lib/nav";
+  import { NAV_LINKS, currentPage, type NavLink } from "../lib/nav";
   import { HOME_PATH } from "../lib/paths";
 
   interface Props {
@@ -28,6 +29,11 @@
   }
 
   let { scores, legends = false, current }: Props = $props();
+
+  /** A nav link's `aria-current` on this page. */
+  function marked(link: NavLink): "page" | "true" | undefined {
+    return currentPage(link.href, current, link.section);
+  }
 
   // The element's own `open` is the state, never a binding: hydration would
   // otherwise close a menu opened before the island loaded.
@@ -73,7 +79,7 @@
       <ul>
         {#each NAV_LINKS as link (link.href)}
           <li>
-            <a href={link.href} aria-current={currentPage(link.href, current)}>{t(link.label)}</a>
+            <a href={link.href} aria-current={marked(link)}>{t(link.label)}</a>
           </li>
         {/each}
       </ul>
@@ -84,7 +90,7 @@
         <ul>
           {#each NAV_LINKS as link (link.href)}
             <li>
-              <a href={link.href} aria-current={currentPage(link.href, current)}>{t(link.label)}</a>
+              <a href={link.href} aria-current={marked(link)}>{t(link.label)}</a>
             </li>
           {/each}
         </ul>
@@ -206,7 +212,7 @@
     color: var(--chalk);
     text-decoration: underline;
   }
-  nav a[aria-current="page"] {
+  nav a[aria-current] {
     color: var(--chalk);
     text-decoration: underline;
     text-decoration-color: var(--gold);

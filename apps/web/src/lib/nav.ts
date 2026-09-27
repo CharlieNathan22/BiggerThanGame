@@ -5,24 +5,34 @@
  */
 
 import type { MessageKey } from "../i18n";
-import { ABOUT_PATH, FOOTBALL_PATH, HOW_TO_PLAY_PATH } from "./paths";
+import { ABOUT_PATH, FOOTBALL_PATH, HOW_TO_PLAY_PATH, LEGENDS_PATH, isWithin } from "./paths";
 
 export interface NavLink {
   readonly href: string;
   readonly label: MessageKey;
+  /** The part of the site the link stands for, when that's more than its own page. */
+  readonly section?: string;
 }
 
 export const NAV_LINKS: readonly NavLink[] = [
-  { href: FOOTBALL_PATH, label: "nav.play" },
+  { href: LEGENDS_PATH, label: "nav.play", section: FOOTBALL_PATH },
   { href: HOW_TO_PLAY_PATH, label: "nav.howToPlay" },
   { href: ABOUT_PATH, label: "nav.about" },
 ];
 
 /**
- * `"page"` when `href` is the page being shown, for `aria-current`. A link to a
- * section of a page (`/about#how-to-play`) is never the page itself, so on
- * /about only "About" is current.
+ * The link's `aria-current`: `"page"` when `href` is the page being shown;
+ * `"true"` when the page is elsewhere in the link's `section`, so Play is
+ * current across the football pages; otherwise none. A link to a section of a
+ * page (`/about#how-to-play`) is never the page itself, so on /about only
+ * "About" is current.
  */
-export function currentPage(href: string, current: string | undefined): "page" | undefined {
-  return current !== undefined && !href.includes("#") && href === current ? "page" : undefined;
+export function currentPage(
+  href: string,
+  current: string | undefined,
+  section?: string,
+): "page" | "true" | undefined {
+  if (current === undefined || href.includes("#")) return undefined;
+  if (href === current) return "page";
+  return section !== undefined && isWithin(current, section) ? "true" : undefined;
 }

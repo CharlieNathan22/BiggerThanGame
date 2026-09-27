@@ -1,12 +1,29 @@
 ---
-// The Legends deck. For now the hub's content, canonical to the hub, and
-// linked from nowhere (DESIGN.md §17).
+// The Legends deck: its intro and the three modes (DESIGN.md §17). Static, no
+// JS. Where "Play" goes.
 import Page from "../../layouts/Page.astro";
-import FootballHub from "../../components/FootballHub.astro";
+import Breadcrumb from "../../components/Breadcrumb.astro";
+import Card from "../../components/Card.astro";
+import Cards from "../../components/Cards.astro";
 import { t } from "../../i18n";
-import { FOOTBALL_PATH } from "../../lib/paths";
+import { FOOTBALL_PATH, FRIENDLY_PATH, LEGENDS_PATH } from "../../lib/paths";
 ---
 
-<Page title={t("legends.title")} description={t("legends.description")} canonical={FOOTBALL_PATH}>
-  <FootballHub />
+<Page title={t("legends.title")} description={t("legends.description")}>
+  <Breadcrumb
+    items={[
+      { label: t("breadcrumb.football"), href: FOOTBALL_PATH },
+      { label: t("breadcrumb.legends"), href: LEGENDS_PATH },
+    ]}
+  />
+  <h1>
+    {t("legends.heading")} <em>{t("legends.headingEm")}</em>
+  </h1>
+  <p>{t("legends.intro")}</p>
+
+  <Cards label={t("legends.modes")} stack>
+    <Card name={t("mode.friendly.name")} body={t("mode.friendly.body")} href={FRIENDLY_PATH} />
+    <Card name={t("mode.endless.name")} body={t("mode.endless.body")} />
+    <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} />
+  </Cards>
 </Page>

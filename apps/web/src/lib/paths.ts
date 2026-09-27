@@ -6,10 +6,10 @@
 /** The Bigger Than homepage. */
 export const HOME_PATH = "/";
 
-/** The football hub: the modes, and the page search traffic lands on. */
+/** The football page: football higher or lower in general, and a card per deck. */
 export const FOOTBALL_PATH = "/football-higher-or-lower";
 
-/** The Legends deck. For now the hub's content, canonical to FOOTBALL_PATH. */
+/** The Legends deck: its intro and the three modes. Where "Play" goes. */
 export const LEGENDS_PATH = "/football-higher-or-lower/legends";
 
 /** The game: Friendly Mode on the Legends deck. */
@@ -29,7 +29,12 @@ export function servedPath(pathname: string): string {
   return pathname.replace(/(\/index)?\.html$/, "") || HOME_PATH;
 }
 
+/** Whether `path` is `root` or a page under it. */
+export function isWithin(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
+}
+
 /** Whether a page is the Legends deck or under it, where the title bar says "Legends". */
 export function isLegendsPath(path: string): boolean {
-  return path === LEGENDS_PATH || path.startsWith(`${LEGENDS_PATH}/`);
+  return isWithin(path, LEGENDS_PATH);
 }

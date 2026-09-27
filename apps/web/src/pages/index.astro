@@ -1,11 +1,11 @@
 ---
-// The Bigger Than homepage: the brand, the idea, and a card per game
-// (DESIGN.md §17). Static, no JS.
+// The Bigger Than homepage: the brand, the idea, and a card per game —
+// Football Legends today, straight to its deck (DESIGN.md §17). Static, no JS.
 import Page from "../layouts/Page.astro";
 import Card from "../components/Card.astro";
 import Cards from "../components/Cards.astro";
 import { t } from "../i18n";
-import { FOOTBALL_PATH } from "../lib/paths";
+import { LEGENDS_PATH } from "../lib/paths";
 ---
 
 <Page title={t("home.title")} description={t("home.description")}>
@@ -16,12 +16,7 @@ import { FOOTBALL_PATH } from "../lib/paths";
   <p class="tagline">{t("home.tagline")}</p>
 
   <Cards label={t("home.games")}>
-    <Card
-      large
-      name={t("home.football.name")}
-      body={t("home.football.body")}
-      href={FOOTBALL_PATH}
-    />
+    <Card large name={t("home.legends.name")} body={t("home.legends.body")} href={LEGENDS_PATH} />
   </Cards>
 </Page>
 

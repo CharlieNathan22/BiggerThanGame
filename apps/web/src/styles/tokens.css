@@ -221,8 +221,15 @@
   --menu-link-pad: 0 20px;
   --shadow-menu: 0 14px 32px rgba(0, 0, 0, 0.45);
 
+  /* The breadcrumb above a Legends page's heading: --dim links, the current
+     page in chalk, on --night (AA). */
+  --fs-crumbs: 13px;
+  --crumbs-gap: 8px;
+  --crumbs-bottom: 18px;
+
   /*
-   * Cards: the homepage's games and the football hub's modes. A mode that isn't
+   * Cards: the homepage's games, the football page's decks and the Legends
+   * page's modes. A mode that isn't
    * open yet is dimmed — no fill, a dashed faint edge, --dim text — but never
    * below AA: a test holds every card's text to 4.5:1 on its background.
    */

@@ -6,6 +6,7 @@ import {
   HOME_PATH,
   LEGENDS_PATH,
   isLegendsPath,
+  isWithin,
   servedPath,
 } from "../paths";
 
@@ -34,6 +35,20 @@ describe("servedPath", () => {
     expect(servedPath("/")).toBe("/");
     expect(servedPath("")).toBe("/");
     expect(servedPath(FOOTBALL_PATH)).toBe(FOOTBALL_PATH);
+  });
+});
+
+describe("isWithin", () => {
+  it("is the root and every page under it", () => {
+    expect(isWithin(FOOTBALL_PATH, FOOTBALL_PATH)).toBe(true);
+    expect(isWithin(LEGENDS_PATH, FOOTBALL_PATH)).toBe(true);
+    expect(isWithin(FRIENDLY_PATH, FOOTBALL_PATH)).toBe(true);
+  });
+
+  it("is not a page that only starts with the same letters, or a parent", () => {
+    expect(isWithin(`${FOOTBALL_PATH}-extra`, FOOTBALL_PATH)).toBe(false);
+    expect(isWithin(FOOTBALL_PATH, LEGENDS_PATH)).toBe(false);
+    expect(isWithin(HOME_PATH, FOOTBALL_PATH)).toBe(false);
   });
 });
 
