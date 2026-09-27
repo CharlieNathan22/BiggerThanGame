@@ -274,6 +274,60 @@
   --grid-cell: 14px;
   --grid-gap: 4px;
   --grid-radius: 3px;
+  /* A round of the challenge the run didn't reach: an empty square with an edge. */
+  --grid-empty-edge: rgba(238, 243, 241, 0.28);
+
+  /* The progress track under the title bar, in a mode with a win target
+     (Friendly's twenty): one segment per round, thin enough to cost the game
+     almost no height on a phone. */
+  --track-h: 6px;
+  --track-gap: 2px;
+  --track-pad-x: 0px;
+  --track-radius: 1px;
+  --track-bg: var(--ink);
+  --track-todo: rgba(238, 243, 241, 0.16);
+  /* An answered round: gold, whatever its stat's tier. */
+  --track-hit: var(--gold);
+  --track-current: var(--chalk);
+  --track-current-glow: 0 0 6px rgba(var(--glow-rgb), 0.9);
+  --track-pulse-low: 0.45;
+  /* The final question's segment: gold-tinted before it is reached, gold while asked. */
+  --track-final: rgba(var(--glow-rgb), 0.55);
+  --track-final-glow: 0 0 8px rgba(var(--glow-rgb), 1);
+
+  /* The final question: a gold "Final question" tag on the plaque's top edge
+     and under the track's end, and a gold ring round the plaque. */
+  --final-tag-bg: var(--legends-gradient);
+  --final-tag-text: var(--ink);
+  --fs-final-tag: 10.5px;
+  --final-tag-pad: 3px 10px;
+  --final-tag-tracking: 0.12em;
+  --final-tag-halo: 3px;
+  --final-tag-gap: 6px;
+  --final-tag-inset: 10px;
+  --shadow-plaque-final:
+    0 0 0 var(--plaque-halo) var(--night), 0 0 0 calc(var(--plaque-halo) + 2px) var(--gold),
+    0 6px 24px rgba(0, 0, 0, 0.35), var(--glow-hover);
+
+  /* The win on the game-over panel: a trophy, "You won" in gold leaf, the
+     score out of the target, and a burst of gold behind them. */
+  --fs-won: clamp(30px, 8.4vw, 46px);
+  --won-trophy: 40px;
+  --won-gap: 6px;
+  --won-burst: radial-gradient(
+    closest-side,
+    rgba(var(--glow-rgb), 0.55),
+    rgba(var(--glow-rgb), 0.18) 55%,
+    transparent
+  );
+  --won-shine: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.85) 50%,
+    transparent 62%
+  );
+  /* "/20" after the score, smaller and dimmer than the number. */
+  --final-of-size: 0.42em;
 
   /* The feedback modal and its fields. The field edge holds 3:1 on --modal-bg. */
   --modal-w: 30rem;
@@ -335,6 +389,8 @@
   --glow: 0 0 var(--glow-blur) rgba(var(--glow-rgb), var(--glow-opacity));
   --glow-hover: 0 0 var(--glow-hover-blur) rgba(var(--glow-rgb), var(--glow-hover-opacity));
   --glow-filter: drop-shadow(0 0 var(--glow-blur) rgba(var(--glow-rgb), var(--glow-opacity)));
+  /* The title bar's links on hover, press and focus: a tight core and a wide bloom. */
+  --glow-strong: 0 0 6px rgba(var(--glow-rgb), 0.95), 0 0 22px rgba(var(--glow-rgb), 0.9);
   --glow-hover-filter: drop-shadow(
     0 0 var(--glow-hover-blur) rgba(var(--glow-rgb), var(--glow-hover-opacity))
   );
@@ -453,6 +509,17 @@
      out over --dur-notice-fade and cleared. A test keeps it within 2–8 s. */
   --dur-notice: 5000ms;
   --dur-notice-fade: 300ms;
+  /* The progress track's current round, pulsing. Off with reduced motion. */
+  --dur-track-pulse: 900ms;
+  /* The win: the trophy and "You won" rising in, the gold burst behind them
+     and one shine across the words. All off with reduced motion, which shows
+     the finished panel at once. */
+  --dur-win: 700ms;
+  --dur-win-burst: 1300ms;
+  --dur-win-shine: 1400ms;
+  --win-stagger: 140ms;
+  --ease-win: cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  --win-from-scale: 0.6;
 }
 
 /*
@@ -483,6 +550,7 @@
   --share-cell-gap: 12px;
   --share-cell-radius: 12px;
   --share-columns: 10;
+  --share-trophy: 132px;
 }
 
 @media (min-width: 560px) {
@@ -496,6 +564,8 @@
 @media (min-width: 780px) {
   :root {
     --fs-plaque: 23px;
+    --track-h: 8px;
+    --track-gap: 3px;
   }
 }
 
@@ -546,6 +616,9 @@ body:not(.game) {
     --fs-sublegend: 18px;
     --grid-cell: 11px;
     --grid-gap: 3px;
+    --track-h: 4px;
+    --fs-won: 28px;
+    --won-trophy: 28px;
   }
 }
 

@@ -4,6 +4,7 @@
   from ../../i18n.
 -->
 <script lang="ts">
+  import { WIN_ROUNDS } from "@bt/core";
   import type { Guess, SitePage } from "@bt/core";
   import { onMount, tick } from "svelte";
   import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
@@ -30,6 +31,8 @@
   import type { Challenge, GameState } from "../../game/machine";
   import { createPreloader } from "../../game/photos";
   import {
+    challengeHeading,
+    challengeIntro,
     challengeResult,
     gridCells,
     gridLabel,
@@ -54,7 +57,11 @@
     challengeNotice,
     hitchText,
     overCaption,
+    isFinalQuestion,
+    progressText,
     qualifierText,
+    scoreFigure,
+    trackSteps,
   } from "../../game/view";
   import TitleBar from "../TitleBar.svelte";
   import Counter from "./Counter.svelte";
@@ -62,9 +69,14 @@
   import Figure from "./Figure.svelte";
   import Plaque from "./Plaque.svelte";
   import Side from "./Side.svelte";
+  import Track from "./Track.svelte";
 
   interface Props {
-    /** The deck and mode being played, which name the local best (`bt:best:legends:friendly`). */
+    /**
+     * The deck and mode being played, which name the local best
+     * (`bt:best:legends:friendly`). The mode also sets how a score reads: out
+     * of its win target, with the progress track, where it has one (`WIN_ROUNDS`).
+     */
     deck: BestDeck;
     mode: "friendly";
     /** The game page's path, for the title bar: "Legends" under /legends, and the current page. */
@@ -154,7 +166,7 @@
 
     // A challenge link in the URL frames the first run; a plainly broken one
     // starts a fresh run with a note, as a forged one would.
-    const param = readChallenge(location.search);
+    const param = readChallenge(location.search, mode);
     const challenge: Challenge | null =
       param.kind === "link"
         ? { status: "offered", link: param.link }
@@ -202,6 +214,8 @@
     };
   });
 
+  /** The mode's win target — Friendly's 20 — or null for a mode without one. */
+  const target = $derived(WIN_ROUNDS[mode]);
   const phase = $derived(game.phase);
   const round = $derived(game.round);
   const reveal = $derived(game.reveal);
@@ -221,9 +235,12 @@
   const newBest = $derived(game.streak > 0 && game.streak > game.bestBefore);
   const offered = $derived(game.challenge?.status === "offered" ? game.challenge.link : null);
   const notice = $derived(challengeNotice(game));
-  const title = $derived(titleText(game.streak));
+  const won = $derived(game.end === "won");
+  const title = $derived(titleText(game.streak, mode));
   const result = $derived(challengeResult(game));
-  const cells = $derived(gridCells(game.history));
+  const cells = $derived(gridCells(game.history, mode));
+  const steps = $derived(trackSteps(game, mode));
+  const finalQuestion = $derived(isFinalQuestion(game, mode));
   const report = $derived(reportedRound(game));
 
   function start(): void {
@@ -244,7 +261,7 @@
 
   async function onShareText(): Promise<void> {
     if (platform === null) return;
-    const text = shareText(game.streak, game.history, game.end, game.link, site());
+    const text = shareText(game.streak, game.history, game.end, game.link, site(), mode);
     const show = shareNotes.begin();
     const outcome = await shareResultText(text, platform);
     copyByHand = outcome === "failed" ? text : null;
@@ -258,7 +275,7 @@
     drawing = true;
     const show = shareNotes.begin();
     try {
-      const blob = await renderShareImage(shareCard(game, SITE_LABEL));
+      const blob = await renderShareImage(shareCard(game, SITE_LABEL, mode));
       const name = t("share.fileName", { score: game.streak });
       const outcome = await shareResultImage(blob, name, platform);
       show(
@@ -336,10 +353,18 @@
 
 <div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null}>
   <TitleBar
-    scores={{ streak: game.streak, best: game.best }}
+    scores={{ streak: game.streak, best: game.best, target }}
     legends={isLegendsPath(path)}
     current={path}
   />
+  {#if target !== null}
+    <Track
+      {steps}
+      answered={game.history.length}
+      label={progressText(game, mode)}
+      final={finalQuestion}
+    />
+  {/if}
 
   <main class="pitch" aria-label={t("pitch.label")}>
     <Side
@@ -406,9 +431,16 @@
       {/if}
     </Side>
 
-    <Plaque stat={game.plaque} {spinIndex} spinTo={round?.stat ?? null} {timings} {reducedMotion} />
+    <Plaque
+      stat={game.plaque}
+      {spinIndex}
+      spinTo={round?.stat ?? null}
+      {timings}
+      {reducedMotion}
+      final={finalQuestion}
+    />
 
-    <p class="sr" aria-live="polite">{announcement(game)}</p>
+    <p class="sr" aria-live="polite">{announcement(game, mode)}</p>
     {#if phase !== "idle" && phase !== "starting"}
       <!-- The start panel's heading goes with it; the page keeps one. -->
       <h1 class="sr">{t("brand.heading")}</h1>
@@ -424,8 +456,10 @@
           <h1>{t("brand.bigger")}<em>{t("brand.than")}</em></h1>
           <div class="sublegend">{t("brand.footballLegends")}</div>
           {#if offered}
-            <p class="beat">{t("challenge.heading", { score: offered.score })}</p>
-            <p>{t("challenge.intro", { score: offered.score })}</p>
+            <p class="beat">{challengeHeading(offered.score, mode)}</p>
+            <p>{challengeIntro(offered.score, mode)}</p>
+          {:else if target !== null}
+            <p>{t("start.introTarget", { target })}</p>
           {:else}
             <p>{t("start.intro")}</p>
           {/if}
@@ -454,24 +488,38 @@
       <div class="veil">
         <!-- Stacked; on a short landscape screen, the score beside the actions. -->
         <div class="panel over">
-          <div class="scoreboard">
-            <div class="final num">{game.streak}</div>
-            <div class="finalcap">{overCaption(game.streak)}</div>
+          <div class="scoreboard" class:won>
+            {#if won}
+              <!-- The win: a trophy and "You won" in gold leaf, rising in over
+                   a burst of gold. Still, and all there, with reduced motion. -->
+              <div class="burst" aria-hidden="true"></div>
+              <svg class="trophy" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path
+                  d="M7 3h10v5a5 5 0 0 1-10 0V3zM7 5H4v1.5A3.5 3.5 0 0 0 7.5 10M17 5h3v1.5A3.5 3.5 0 0 1 16.5 10M12 13v4M8.5 21h7M9.5 17h5l.5 4h-6z"
+                />
+              </svg>
+              <p class="wontitle">{t("over.won")}</p>
+            {/if}
+            <div class="final num">
+              {game.streak}{#if target !== null}<span class="of">/{target}</span>{/if}
+            </div>
+            <div class="finalcap">{overCaption(game)}</div>
             {#if title}
               <div class="sublegend title">{title}</div>
             {/if}
             <div class="best">
-              {newBest ? t("over.newBest") : t("over.best", { best: game.best })}
+              {newBest ? t("over.newBest") : t("over.best", { best: scoreFigure(game.best, mode) })}
             </div>
             {#if result}
-              <p class="outcome">{outcomeText(result.outcome, result.target)}</p>
+              <p class="outcome">{outcomeText(result.outcome, result.target, mode)}</p>
             {/if}
             {#if cells.length > 0}
-              <div class="grid" role="img" aria-label={gridLabel(game.history)}>
+              <div class="grid" role="img" aria-label={gridLabel(game.history, mode)}>
                 {#each cells as cell, i (i)}
                   <span
                     class="cell"
                     class:miss={cell.kind === "miss"}
+                    class:empty={cell.kind === "empty"}
                     style:--cell={cell.kind === "hit" ? TIER_COLOUR[cell.tier] : undefined}
                     aria-hidden="true"
                   ></span>
@@ -944,6 +992,11 @@
     border-radius: var(--grid-radius);
     background: var(--cell);
   }
+  /* A round of the challenge the run didn't reach. */
+  .cell.empty {
+    background: none;
+    box-shadow: inset 0 0 0 var(--border) var(--grid-empty-edge);
+  }
   /* The miss is a cross as well as a colour. */
   .cell.miss {
     background:
@@ -955,6 +1008,104 @@
     font-size: var(--fs-final);
     line-height: var(--lh-final);
     color: var(--gold);
+  }
+  /* "/20" after the score: the same gold, smaller. */
+  .final .of {
+    font-size: var(--final-of-size);
+    color: var(--dim);
+  }
+
+  /* The win. Everything animates from a hidden start to its natural state, so
+     with reduced motion (base.css stops every animation) the panel is simply
+     all there; the burst's natural state is spent. */
+  .scoreboard.won {
+    position: relative;
+    isolation: isolate;
+  }
+  .burst {
+    position: absolute;
+    z-index: -1;
+    left: 50%;
+    top: 0;
+    width: 150%;
+    aspect-ratio: 1;
+    transform: translate(-50%, -30%);
+    background: var(--won-burst);
+    opacity: 0;
+    pointer-events: none;
+    animation: burst var(--dur-win-burst) var(--ease) both;
+  }
+  .trophy {
+    display: block;
+    margin: 0 auto;
+    width: var(--won-trophy);
+    height: var(--won-trophy);
+    fill: none;
+    stroke: var(--gold);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: var(--glow-filter);
+    animation: win-in var(--dur-win) var(--ease-win) both;
+  }
+  .panel .wontitle {
+    /* .panel p sets these for body text. */
+    margin-top: var(--won-gap);
+    font-family: var(--font-display);
+    font-weight: var(--fw-sublegend);
+    font-size: var(--fs-won);
+    line-height: var(--lh-tight);
+    letter-spacing: var(--tracking-sublegend);
+    background: var(--won-shine), var(--legends-gradient);
+    background-size:
+      250% 100%,
+      100% 100%;
+    background-position:
+      150% 0,
+      0 0;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: var(--legends-shadow) var(--glow-filter);
+    animation:
+      win-in var(--dur-win) var(--ease-win) var(--win-stagger) both,
+      shine var(--dur-win-shine) var(--ease) calc(var(--dur-win) + var(--win-stagger)) both;
+  }
+  .won .final {
+    margin-top: var(--won-gap);
+    animation: win-in var(--dur-win) var(--ease-win) calc(var(--win-stagger) * 2) both;
+  }
+  @keyframes win-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(var(--win-from-scale));
+    }
+  }
+  @keyframes burst {
+    from {
+      opacity: 1;
+      transform: translate(-50%, -30%) scale(0.2);
+    }
+    40% {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+      transform: translate(-50%, -30%) scale(1);
+    }
+  }
+  @keyframes shine {
+    from {
+      background-position:
+        150% 0,
+        0 0;
+    }
+    to {
+      background-position:
+        -50% 0,
+        0 0;
+    }
   }
   .finalcap,
   .best {

@@ -51,7 +51,7 @@ describe("golden fingerprints", () => {
 
   it("a friendly run is stable", () => {
     expect(fingerprint("friendly:1", "friendly")).toMatchInlineSnapshot(
-      `"1:igoals:hotel>lima|2:igoals:lima>alpha|3:age:alpha>foxtrot|4:age:foxtrot>charlie|5:age:charlie>bravo|6:apps:bravo>echo|7:apps:echo>juliet|8:apps:juliet>delta|9:apps:delta>kilo|10:ig:kilo>india|11:ig:india>alpha|12:ig:alpha>charlie|13:ct:charlie>golf|14:ct:golf>echo|15:ct:echo>golf|16:ct:golf>echo|17:ct:echo>bravo|18:ct:bravo>foxtrot|19:ct:foxtrot>bravo|20:ct:bravo>foxtrot|21:ct:foxtrot>golf|22:ct:golf>india|23:ct:india>golf|24:ct:golf>bravo|25:ct:bravo>foxtrot"`,
+      `"1:igoals:hotel>lima|2:igoals:lima>alpha|3:age:alpha>foxtrot|4:age:foxtrot>charlie|5:age:charlie>bravo|6:apps:bravo>echo|7:apps:echo>juliet|8:apps:juliet>delta|9:apps:delta>kilo|10:igoals:kilo>golf|11:igoals:golf>india|12:igoals:india>alpha|13:igoals:alpha>india|14:igoals:india>bravo|15:igoals:bravo>foxtrot|16:igoals:foxtrot>golf|17:igoals:golf>foxtrot|18:igoals:foxtrot>golf|19:igoals:golf>alpha|20:igoals:alpha>hotel"`,
     );
   });
 

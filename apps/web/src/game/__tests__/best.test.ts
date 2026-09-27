@@ -78,15 +78,15 @@ describe("challenge links", () => {
   const search = `?challenge=${RUN_ID}&score=12&sig=${SIG}`;
 
   it("reads a well-formed link", () => {
-    expect(readChallenge(search)).toEqual({
+    expect(readChallenge(search, "friendly")).toEqual({
       kind: "link",
       link: { runId: RUN_ID, score: 12, sig: SIG },
     });
   });
 
   it("reads nothing from a page without one", () => {
-    expect(readChallenge("")).toEqual({ kind: "none" });
-    expect(readChallenge("?delay=800")).toEqual({ kind: "none" });
+    expect(readChallenge("", "friendly")).toEqual({ kind: "none" });
+    expect(readChallenge("?delay=800", "friendly")).toEqual({ kind: "none" });
   });
 
   it.each([
@@ -94,10 +94,17 @@ describe("challenge links", () => {
     ["a missing score", `?challenge=${RUN_ID}&sig=${SIG}`],
     ["a truncated run id", `?challenge=${RUN_ID.slice(0, -3)}&score=12&sig=${SIG}`],
     ["a word for a score", `?challenge=${RUN_ID}&score=twelve&sig=${SIG}`],
-    ["a score past the cap", `?challenge=${RUN_ID}&score=61&sig=${SIG}`],
+    ["a score past Friendly's twenty", `?challenge=${RUN_ID}&score=21&sig=${SIG}`],
     ["a padded sig", `?challenge=${RUN_ID}&score=12&sig=${SIG}=`],
   ])("calls a link with %s broken", (_, s) => {
-    expect(readChallenge(s)).toEqual({ kind: "broken" });
+    expect(readChallenge(s, "friendly")).toEqual({ kind: "broken" });
+  });
+
+  it("reads a link to a won run, at twenty", () => {
+    expect(readChallenge(`?challenge=${RUN_ID}&score=20&sig=${SIG}`, "friendly")).toMatchObject({
+      kind: "link",
+      link: { score: 20 },
+    });
   });
 
   it("round-trips through the URL it builds, on the game page", () => {
@@ -107,7 +114,7 @@ describe("challenge links", () => {
         "https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=",
       ),
     ).toBe(true);
-    expect(readChallenge(new URL(url).search)).toEqual({
+    expect(readChallenge(new URL(url).search, "friendly")).toEqual({
       kind: "link",
       link: { runId: RUN_ID, score: 7, sig: SIG },
     });

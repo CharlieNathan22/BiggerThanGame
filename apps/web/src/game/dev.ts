@@ -14,6 +14,13 @@
  * stands, from the panel's "a11y" button or `window.__btAxe()` in a headless
  * browser. Violations are logged to the console. axe-core is a root
  * devDependency and, like the rest of this module, never ships.
+ *
+ * And an **autopilot**, to reach the end of Friendly's twenty questions — the
+ * win screen — without knowing the answers: the panel's "auto" button, or
+ * `?auto=1`. For each question it asks the server about the round on screen
+ * first (Friendly is stateless, so asking is harmless), then presses the right
+ * button. Turn it off mid-run and answer wrong to see a loss at n/20. It only
+ * clicks the page's own buttons; the game itself is untouched.
  */
 
 import { mount, unmount } from "svelte";
@@ -24,8 +31,23 @@ export const DEV_DELAYS = [0, 200, 800, 3000] as const;
 export type DevDelay = (typeof DEV_DELAYS)[number];
 
 const STORAGE_KEY = "bt:dev:delay";
+const ROUND_ENDPOINT = "/api/round/next";
 
 let delay: DevDelay = initialDelay();
+
+/** The run in play and the round on screen, as seen passing through `withDevDelay`. */
+let inPlay: { runId: string; round: number } | null = null;
+let autopilot = new URLSearchParams(location.search).get("auto") === "1";
+/** The round the autopilot last answered, so it answers each once. */
+let piloted: string | null = null;
+
+export function devAutopilot(): boolean {
+  return autopilot;
+}
+
+export function setDevAutopilot(on: boolean): void {
+  autopilot = on;
+}
 
 export function devDelay(): DevDelay {
   return delay;
@@ -40,13 +62,62 @@ export function setDevDelay(ms: DevDelay): void {
   }
 }
 
-/** `fetchFn`, but each request waits the current delay before it goes. */
+/**
+ * `fetchFn`, but each request waits the current delay before it goes. It also
+ * notes the run id and the round each response deals, for the autopilot.
+ */
 export function withDevDelay(fetchFn: Fetch): Fetch {
   return async (input, init) => {
     const ms = delay;
     if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
-    return fetchFn(input, init);
+    const res = await fetchFn(input, init);
+    void res
+      .clone()
+      .json()
+      .then(track, () => {});
+    return res;
   };
+}
+
+function track(body: unknown): void {
+  if (typeof body !== "object" || body === null) return;
+  const b = body as { runId?: unknown; round?: { index?: unknown }; next?: { index?: unknown } };
+  if (typeof b.runId === "string" && typeof b.round?.index === "number") {
+    inPlay = { runId: b.runId, round: b.round.index };
+  } else if (inPlay !== null && typeof b.next?.index === "number") {
+    inPlay = { ...inPlay, round: b.next.index };
+  }
+}
+
+/**
+ * Which answer is right for the round on screen: asks the server with
+ * "higher" and reads its verdict. Dev only — it spends an answer of the run's
+ * rate limit, which twenty rounds stay well inside.
+ */
+async function rightAnswer(runId: string, round: number): Promise<"higher" | "lower"> {
+  const res = await fetch(ROUND_ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mode: "friendly", runId, round, guess: "higher" }),
+  });
+  const body = (await res.json()) as { reveal?: { correct?: boolean } };
+  return body.reveal?.correct === true ? "higher" : "lower";
+}
+
+/** One autopilot step: when Higher / Lower are showing for a round not yet answered, answer it. */
+async function pilot(): Promise<void> {
+  if (!autopilot || inPlay === null) return;
+  const key = `${inPlay.runId}#${inPlay.round}`;
+  const picks = document.querySelectorAll<HTMLButtonElement>(".picks:not([hidden]) .pick");
+  if (piloted === key || picks.length !== 2) return;
+  piloted = key;
+  try {
+    const answer = await rightAnswer(inPlay.runId, inPlay.round);
+    picks[answer === "higher" ? 0 : 1]?.click();
+  } catch (err) {
+    piloted = null;
+    console.warn("autopilot: couldn't ask the server", err);
+  }
 }
 
 /** One axe finding, trimmed to what's worth reading in a console. */
@@ -83,7 +154,9 @@ declare global {
 export function mountDevPanel(): () => void {
   window.__btAxe = runAxe;
   const panel = mount(DevPanel, { target: document.body });
+  const timer = setInterval(() => void pilot(), 250);
   return () => {
+    clearInterval(timer);
     delete window.__btAxe;
     void unmount(panel);
   };

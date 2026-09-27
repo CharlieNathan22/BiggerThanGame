@@ -150,8 +150,9 @@ These four are what make the leaderboard defensible. Everything else is negotiab
    only — and do prefetch it: images especially must be loaded ahead of the round they appear in
    (section 9).
 3. **The round sequence is a pure function of the seed and mode** and does not depend on player
-   answers. The mode only sets how many early rounds prefer iconic challengers (`ICONIC_ROUNDS`,
-   DESIGN.md §10).
+   answers. The mode sets how many early rounds prefer iconic challengers (`ICONIC_ROUNDS`,
+   DESIGN.md §10), which band schedule applies (`BAND_SCHEDULES`, §8) and how many rounds a run
+   can have (`WIN_ROUNDS`: Friendly's twenty).
    This is what lets the server recompute any round statelessly, and what makes Daily Ranked
    identical for everyone. It holds naturally because the challenger becomes the anchor whether
    the guess was right or wrong, and a wrong guess ends the run.
@@ -352,14 +353,18 @@ ranks them only moderately together (see `DESIGN.md` §10).
 
 `viability.md` reports per stat **and per band** — not per floor — since a band can be empty even
 when a floor is well populated. It counts pairs with the engine's own test, `pairFits` on
-`bandFor(stat, round)`, so Instagram's volatility floor is included and the report can't promise a
-pair the engine won't deal. Read it after every deck change.
+`bandFor(stat, round, mode)`, so Instagram's volatility floor is included and the report can't
+promise a pair the engine won't deal. It counts the long schedule's bands and then any band only
+Friendly uses, and lists where each falls in both schedules; a test holds it to every band of
+every mode. Read it after every deck change.
 
 `simulation.md` runs the real engine 10,000 times per mode over the compiled deck, on the same
 seeds for every mode, and reports the streak histogram, each stat's share of rounds played against
 its `TIER_TARGET`, the opening stat's share, the same mix by round range for Friendly (rounds 1–5,
 6–10, 11–20, 21+, with the rare tier's total — overall rates hide how concentrated later rounds
-are), and how often the early-round iconic preference had to fall back to the whole deck. This is
+are), how often the early-round iconic preference had to fall back to the whole deck, and for
+Friendly its **win rate** — the share of runs reaching twenty — with the streaks bucketed at its
+titles. Each mode is simulated to its own cap (`roundCap`: 20 for Friendly, 60 otherwise). This is
 how the ramp and tier weights get tuned — not by guessing.
 Its streaks come from a **modelled player** whose accuracy rises with rank distance; that model is
 an assumption until real play data replaces it (M5c). `viability.md` adds the static side: per
@@ -427,7 +432,9 @@ the score that run reached.
 
 `sequence.ts` takes a seed, a mode and a round number and replays the engine deterministically
 from round one. The mode is part of the input because it sets how many early rounds prefer iconic
-challengers (`ICONIC_ROUNDS`); the same seed under a different mode is a different run. Twenty rounds is well under a millisecond, so the server recomputes rather than storing.
+challengers (`ICONIC_ROUNDS`), the band schedule (`BAND_SCHEDULES`) and the cap on its length
+(`roundCap`: Friendly's twenty, `WIN_ROUNDS`, else `MAX_ROUNDS`); the same seed under a different
+mode is a different run. Twenty rounds is well under a millisecond, so the server recomputes rather than storing.
 
 **Game numbering.** `gameNo = floor((now - EPOCH) / 86400000) + 1`, `EPOCH` being launch day at
 00:00 UTC. **Game 1 is launch day and the epoch is never moved** — game numbers become permanent
@@ -511,13 +518,13 @@ timer. Types live in `packages/core/src/api.ts`, shared by the Worker and the we
 → { "mode": "friendly", "runId": "…", "round": 7, "guess": "higher" | "lower" }
 ← { "reveal": { "round": 7, "value": 88, "display": "88m", "qualifier"?: "…", "correct": true },
     "next": RoundPayload }                                          // correct, run continues
-← { "reveal": { … }, "end": "wrong" | "deck-exhausted",
+← { "reveal": { … }, "end": "wrong" | "deck-exhausted" | "won",
     "challenge": { "runId": "…", "score": 6, "sig": "…" } }         // run over
 ```
 
 A run's `challenge` is the signed link for the score it reached: the correct answers before the
-wrong one, or every round for `deck-exhausted`. A challenge start is held to its types (`score` an
-integer in 0–60, the strings of bounded length) — anything else is `400` — but not its contents: a
+wrong one, or every round for `deck-exhausted` and `won`. A challenge start is held to its types
+(`score` an integer in 0–20, Friendly's cap; the strings of bounded length) — anything else is `400` — but not its contents: a
 link mangled on its way through a chat app still starts a run, a fresh one, with the reason.
 
 `RoundPayload` is `{ index, stat: { key, label, tier, statChanged }, anchor, challenger,
@@ -532,11 +539,14 @@ is absent on the last round the run can deal and when that player has no photo.
 
 Each request derives the seed from `runId` (§7), replays the run in mode `friendly` to one round
 past the one answered,
-and **decides correctness server-side**. A run that reaches `MAX_ROUNDS` (60) — or can deal no next
-round — ends with `deck-exhausted`. Every response is an explicitly declared DTO built field by field
+and **decides correctness server-side**. **Friendly is a 20-question challenge** (`WIN_ROUNDS`):
+a correct answer to round 20 ends the run with `won`, and no round past 20 is ever dealt, so round
+20 carries no `upcoming`. A run that can deal no next round before then ends with
+`deck-exhausted`; a wrong answer, at any round, with `wrong`. (Endless and Ranked have no win
+target; they will cap at `MAX_ROUNDS`, 60.) Every response is an explicitly declared DTO built field by field
 in `worker/src/payload.ts`; a `Round` is never returned. Requests are validated strictly — unknown
 mode, extra keys, a malformed, unsigned, tampered or out-of-range `runId`, a `round` that isn't an
-integer in 1–60, or a bad guess are all `400` — and every `/api/*` response is `cache-control: no-store`.
+integer in 1–20, or a bad guess are all `400` — and every `/api/*` response is `cache-control: no-store`.
 
 Because it is stateless, anyone can mint run ids or ask any round of a run. Each request still
 reveals at most one hidden value, so the **rate limit** does the real work (DESIGN.md §3): it is the
@@ -930,7 +940,24 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   `legends` prop adds "— Football Legends", set on `/football-higher-or-lower/legends` and every
   page under it (`isLegendsPath`); elsewhere the bar is the brand alone, at the same height. On
   short landscape screens (at most 500px tall) it drops "— Football Legends" as well, so the bar is
-  one row and the game fits down to 568 × 320.
+  one row and the game fits down to 568 × 320. On the game it shows the scores: "Streak n" and
+  "Best n", or in a mode with a win target (`WIN_ROUNDS`, Friendly's 20) "n / 20" (with a hidden
+  "Score" label) and "Best n/20".
+- **Progress track** (`Track.svelte`, steps from `trackSteps` in `game/view.ts`): in a mode with a
+  win target, a thin row of segments directly under the title bar, one per round — `--track-h`,
+  6px on phones, 4px on short landscape screens, 8px from 780px, so it costs the fixed-height game
+  almost nothing. Built from the round history: an answered round fills in gold (`--track-hit`), the
+  miss in `--miss`, a round to come is faint, and the round on screen is lit with a gold glow and
+  pulses while it waits (no pulse with reduced motion). It is a `progressbar` whose value text is
+  "Question 7 of 20"; the live region starts each question with the same words, and the title bar
+  has the score in text, so colour is never the only signal. Other modes have no track. The last
+  segment is the **final question** (`isFinalRound` in `@bt/core`, `isFinalQuestion` in
+  `game/view.ts`): tinted gold (`--track-final`) before it is reached, gold while asked. On the
+  final question a gold "Final question" tag (`--final-tag-*`, text `final.tag`) hangs under the
+  track's right end, over the pitch so it costs no height, and another sits on the plaque's top
+  edge, which gains a gold ring (`--shadow-plaque-final`). Both tags drop in (`--dur-pop`; none with
+  reduced motion) and are `aria-hidden`: the live region and the progressbar's value text say
+  "Final question — question 20 of 20".
 - **Site navigation** is in the title bar on every page (`lib/nav.ts`): the brand links to `/`,
   then Play (`/football-higher-or-lower/legends`), How to play (`/about#how-to-play`) and About.
   The current page's link carries `aria-current="page"`; a link to a section never does. Play
@@ -954,9 +981,11 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   `--glow-hover`, and `--glow-filter` for the gradient "Legends" and the clipped names) sits on the
   brand, the title bar's and footer's links, the Menu button, the names, figures, "?" and plaque,
   and the game's buttons; clickable things grow it on hover, press and `:focus-visible`, which keeps
-  its gold outline too. On the card text it sits outside the dark halo. The chrome and the whole
-  game UI are `user-select: none` with no tap highlight, except the copy-by-hand share box; content
-  pages and the feedback form select as usual. There is no visible page scrollbar (`scrollbar-width:
+  its gold outline too. The title bar's links have no underline: the current page's is gold, and
+  hover, press and focus turn a link gold with a stronger glow (`--glow-strong`). On the card text it sits outside the dark halo. The chrome and the whole
+  game UI are `user-select: none` with no tap highlight, except the copy-by-hand share box. So is
+  the content of the homepage, the football hub, the Legends page and the 404 (`Page.astro`'s
+  default); About and Credits pass `selectable` and select as usual, as does the feedback form. There is no visible page scrollbar (`scrollbar-width:
 none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and keyboard.
 - Only the game page gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag); every
   other page scrolls.
@@ -976,7 +1005,8 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
 - `/credits` reads `packages/deck/dist/credits.json` with `fs` at build time. It is never imported,
   so it can't enter the module graph.
 - **Local best** is one number per deck and mode in `localStorage`, `bt:best:<deck>:<mode>`
-  (`bt:best:legends:friendly`; `game/best.ts`), shown only on the game pages. The game page passes
+  (`bt:best:legends:friendly`; `game/best.ts`), shown only on the game pages — as "Best 12/20" in
+  Friendly. The game page passes
   its deck and mode to the island. Every read and write is wrapped: with storage blocked, full or
   throwing, the best lasts as long as the page and the game plays normally. The local
   leaderboard, when it comes, lives there the same way.
@@ -987,7 +1017,10 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   are `--share-*`): score, title, grid, ending stat, and the final round's two players with their
   revealed figures. **No photos**: their licences need attribution a shared image can't carry. It
   waits for `document.fonts` and uses only fonts and data already on the page, so it works offline
-  once the run has ended. On touch devices both go to the share sheet (the image as a file);
+  once the run has ended. Everything takes the mode: in Friendly the score is "7/20", the grid is
+  always two rows of ten (⬛ in the text and empty outlines in the image and on the panel for the
+  rounds not reached), and a won run's score line is "🏆 20/20" with a drawn gold trophy in the
+  image and a challenge to match rather than beat. On touch devices both go to the share sheet (the image as a file);
   elsewhere the text is copied, with a visible "Copied", and the image downloads. Each result note —
   "Copied", "Image saved" or a failure — is announced once and shows for `--dur-notice` (5 s), then
   fades over `--dur-notice-fade` and clears (no fade with reduced motion; `game/notice.ts`). Another
@@ -997,9 +1030,14 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   type, with a gold outline and gold text, a share or download icon (`aria-hidden`), and the gold
   glow (`--btn2-*`, `--cta-*`). The two feedback links stay text links. On short screens the panel's
   spacing tightens and, on a short landscape screen, it lays out in two columns (the score beside
-  the actions), so it fits without scrolling down to 320 × 568 and 568 × 320.
+  the actions), so it fits without scrolling down to 320 × 568 and 568 × 320. In Friendly the
+  score carries a smaller, dimmer "/20". A **won** run opens the panel with a gold trophy and "You
+  won" in the gold-leaf gradient, rising in over a burst of gold with one shine across the words
+  (`--won-*`, `--dur-win*`); every part animates from hidden to its natural state, so with reduced
+  motion the finished panel is simply there.
 - **Challenge links** are read from the game page's URL on load (`game/challenge.ts`) and sent
-  with the first start; the start panel says "Beat n". The parameters are removed from the
+  with the first start; a score above the mode's cap (20 in Friendly) is a broken link. The start
+  panel says "Beat n" ("Beat 7/20", or "Match 20/20" for a won run). The parameters are removed from the
   address bar once the run starts, and "Play again" is a fresh run. See §7.
 - The reveal count-up (~2500ms) is what masks the round trip — see section 9 for the full budget,
   the hold-don't-snap rule, and the image prefetch requirement. The challenger's number shows 0 from
@@ -1055,7 +1093,10 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   a card.
 - **Dev-only delay switch** (`pnpm dev`): 0, 200, 800ms or 3s before every round request, from a
   small panel or `?delay=800`. The same panel runs **axe-core** over the page (the "a11y" button,
-  or `window.__btAxe()` in a headless browser) and logs the violations. It lives in `game/dev.ts`, loaded by a dynamic import behind
+  or `window.__btAxe()` in a headless browser) and logs the violations. Its "auto" button (or
+  `?auto=1`) is an autopilot that answers every question right, to reach Friendly's win screen: it
+  asks the server about the round on screen first — possible only because Friendly is stateless
+  (§7) — then presses the right button. It lives in `game/dev.ts`, loaded by a dynamic import behind
   `import.meta.env.DEV`, so production builds don't contain it.
 - The island's flow is a plain-TS state machine in `apps/web/src/game/` (`machine.ts`, a pure
   reducer: idle → starting → dealing → spinning → awaiting → revealing → verdict → over), run by

@@ -6,12 +6,16 @@
   the target, with the tier colour changing part-way through and a pop as it
   settles. All of that is decoration; which stat, and whether to spin at all,
   come from the state machine.
+
+  On the final question (`final`) the plaque wears a gold ring and a gold
+  "Final question" tab sits on its top edge. The tab is hidden from screen
+  readers, which hear "Final question" in the live region.
 -->
 <script lang="ts">
   import { STAT_KEYS } from "@bt/core";
   import type { StatKey, StatPayload, Tier } from "@bt/core";
   import { untrack } from "svelte";
-  import { statLabel } from "../../i18n";
+  import { statLabel, t } from "../../i18n";
   import { TIER_COLOUR } from "../../lib/tiers";
   import type { Timings } from "../../game/timing";
   import { reelStrip } from "../../game/view";
@@ -23,9 +27,11 @@
     spinTo: StatPayload | null;
     timings: Timings;
     reducedMotion: boolean;
+    /** The final question is on screen. */
+    final?: boolean;
   }
 
-  let { stat, spinIndex, spinTo, timings, reducedMotion }: Props = $props();
+  let { stat, spinIndex, spinTo, timings, reducedMotion, final = false }: Props = $props();
 
   let strip: StatKey[] = $state([]);
   let offset = $state(0);
@@ -78,8 +84,12 @@
   const rows = $derived(strip.length > 0 ? strip : stat ? [stat.key] : []);
 </script>
 
+{#if final}
+  <span class="finaltag" aria-hidden="true">{t("final.tag")}</span>
+{/if}
 <div
   class="plaque"
+  class:final
   class:pop
   style:--tier={tint ? TIER_COLOUR[tint] : undefined}
   onanimationend={() => (pop = false)}
@@ -105,7 +115,40 @@
     color: var(--ink);
     overflow: hidden;
     box-shadow: var(--shadow-plaque);
-    transition: background-color var(--dur-tint) var(--ease);
+    transition:
+      background-color var(--dur-tint) var(--ease),
+      box-shadow var(--dur-tint) var(--ease);
+  }
+  .plaque.final {
+    box-shadow: var(--shadow-plaque-final);
+  }
+  /* Centred on the plaque's top edge, over its halo, above the reel. */
+  .finaltag {
+    position: absolute;
+    left: 50%;
+    top: calc(50% - var(--plaque-h) / 2);
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    padding: var(--final-tag-pad);
+    border-radius: var(--radius-pill);
+    background: var(--final-tag-bg);
+    color: var(--final-tag-text);
+    font-size: var(--fs-final-tag);
+    font-variation-settings: var(--fv-caps);
+    letter-spacing: var(--final-tag-tracking);
+    text-transform: uppercase;
+    white-space: nowrap;
+    box-shadow:
+      0 0 0 var(--final-tag-halo) var(--night),
+      var(--glow-hover);
+    pointer-events: none;
+    animation: finaltag-in var(--dur-pop) var(--ease) both;
+  }
+  @keyframes finaltag-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(var(--win-from-scale));
+    }
   }
   .plaque::after {
     content: "";
@@ -120,6 +163,9 @@
   @media (orientation: landscape) and (max-height: 500px) {
     .plaque {
       top: calc(var(--plaque-h) / 2 + var(--plaque-top-gap));
+    }
+    .finaltag {
+      top: var(--plaque-top-gap);
     }
   }
   .plaque.pop {

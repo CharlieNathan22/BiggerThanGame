@@ -108,6 +108,21 @@ game. Because it can never be ranked, there is no incentive to abuse it.
 
 One life still applies.
 
+**Friendly is a 20-question challenge.** Answer all twenty correctly and the run ends, won — there
+is no "keep going". A miss ends it as before. The score reads out of twenty everywhere it appears:
+"7 / 20" in the title bar instead of "Streak 7", "7/20" on the game-over panel, in both shares, in
+challenge links ("Beat 7/20") and in the local best ("Best 12/20"). A win gets its own moment on
+the game-over panel — a trophy, "You won" in gold, 20/20 — which is still, with the same content,
+under reduced motion. A thin **progress track** under the title bar has one segment per question:
+each answered round fills in gold, a miss in red, and the current round is lit.
+It is never the only signal: the live region starts each question with "Question 7 of 20", and the
+title bar carries the score in text. Round 20 is the **final question**: its segment is gold, and
+while it is asked the plaque and the track carry a gold "Final question" tag, announced as "Final
+question — question 20 of 20". Friendly has its own, compressed difficulty ramp (§8), its
+own streak titles (§13) and holds the iconic preference for eight rounds (§10). Endless and Ranked
+keep the plain streak, no cap, no track and the long ramp; all of it is driven from per-mode
+settings in `@bt/core` (`WIN_ROUNDS`, `BAND_SCHEDULES`, `STREAK_TITLES`, `ICONIC_ROUNDS`).
+
 **Friendly is served per question, like the other modes.** It calls the same endpoint with the same
 payloads; what it skips is the enforcement — no progress tokens, no replay check, no timer, no
 Turnstile. The challenger's value is still withheld until the guess, purely so there is one code
@@ -403,6 +418,29 @@ The first band keeps no ceiling deliberately — early rounds should actively fa
 available pair (a squad player against someone with sixty million followers), not merely any pair
 clearing the floor.
 
+That table is Endless and Ranked's. **Friendly's twenty questions** have their own ramp. It opens
+on the same uncapped band for the eight rounds that prefer iconic names, then climbs gently and
+**never gets easier**: from round 9 each band is at least as hard as the one before — its floor and
+ceiling never rise — and round 20, the **final question**, is the hardest band in the run:
+
+| Rounds | Band (rank distance)  | Feel                                                       |
+| ------ | --------------------- | ---------------------------------------------------------- |
+| 1–8    | ≥0.45, **no ceiling** | Nearly free — the rounds that prefer iconic names.         |
+| 9–13   | ≥0.40, **no ceiling** | Still generous; blowouts still allowed.                    |
+| 14–17  | 0.30–0.80             | Capped: the easiest gifts are gone.                        |
+| 18–19  | 0.25–0.70             | Generous, no longer absurd.                                |
+| 20     | 0.15–0.50             | The final question: the hardest in the run, no knife edge. |
+
+The final question is marked in the game: the track's last segment is gold, and on round 20 the
+plaque and the track carry a gold "Final question" tag, which the live region also announces
+("Final question — question 20 of 20").
+
+`simulation.md` reports Friendly's win rate, how many runs reach the final question and how many of
+those win it. On the 107-player deck the modelled player wins about 10% of runs (9.6%); about 12%
+reach round 20 and roughly four in five of those win it. The modelled player's accuracy runs from
+0.5 for two players at the same point in the deck to 0.95 at opposite ends; it is an assumption —
+re-tune against real play (M5c) and the finished deck.
+
 ### Every stat is banded
 
 Small-integer stats — clubs played for, international trophies, age — used to be matched on tie
@@ -430,10 +468,11 @@ did with floors, because bands and the queue shrink the pool at the same time.
 
 ### Run length
 
-A 0.45 floor through round 10 pushes the knife-edge band out to roughly round 43, so a strong run is
-40-plus questions at 10 seconds each — six to eight minutes. Acceptable for a once-a-day puzzle,
+In Endless and Ranked, a 0.45 floor through round 10 pushes the knife-edge band out to roughly
+round 43, so a strong run is 40-plus questions at 10 seconds each — six to eight minutes. Acceptable for a once-a-day puzzle,
 long by the genre's norms. Sustaining it also needs the full 300-player deck; a 50-player test deck
-will exhaust the pool long before then and sit permanently in relaxation.
+will exhaust the pool long before then and sit permanently in relaxation. Friendly is capped at
+twenty questions, so it never gets there.
 
 **These numbers are a considered guess, not a finding.** `simulation.md` settles them.
 
@@ -495,8 +534,9 @@ Rules the pair-selection logic must enforce:
   drawn from iconic players whenever one is valid: eligible, not tied, within the round's band and
   not in the recently-seen queue. When none is, the whole deck is used at the same band — the
   preference is the first thing to give and never costs a wider band or a repeated player (§8).
-  N is set per mode in `ICONIC_ROUNDS` in `packages/core`: **Friendly 10, Endless 5, Ranked 5.**
-  Friendly holds it longest because it is the mode a newcomer meets through a shared link. The run
+  N is set per mode in `ICONIC_ROUNDS` in `packages/core`: **Friendly 8, Endless 5, Ranked 5.**
+  Friendly holds it longest because it is the mode a newcomer meets through a shared link; eight
+  is its opening band's length (§8), so the preference and the uncapped band end together. The run
   is a pure function of seed and mode; `simulation.md` reports how often each mode fell back.
 - **Seeded PRNG, never `Math.random`.** Runs must be reproducible for testing, for the daily
   sequence, and for server-side verification.
@@ -608,22 +648,30 @@ a number.
 
 ### What a finished run shares
 
-- **Streak titles** mark milestones: 5 Squad player, 10 Starter, 20 Captain, 30 Legend, 45+ GOAT;
-  below 5 there is none. One table in `@bt/core` (`STREAK_TITLES`). Shown on the game-over panel
-  and in both shares.
+- **Streak titles** mark milestones, one table per mode in `@bt/core` (`STREAK_TITLES`):
+  - Endless and Ranked: 5 Squad player, 10 Starter, 20 Captain, 30 Legend, 45+ GOAT.
+  - Friendly: 5 Squad player, 10 Starter, 15 Captain, 20 Legend — the win.
+
+  Below 5 there is none. Shown on the game-over panel and in both shares.
+
 - **Share text**, Wordle-style: score and title, one square per answered round in its tier colour
   (🟨 basic, 🟦 uncommon, 🟪 rare, ten to a line), ❌ for the round that ended the run, "Ended on:
-  <stat>", and a challenge link. No player names, no values, no answers — it spoils nothing.
+  <stat>", and a challenge link. No player names, no values, no answers — it spoils nothing. In
+  Friendly the score is "7/20" and the grid is always two rows of ten, ⬛ for the questions the run
+  didn't reach; a won run reads "🏆 20/20 · Legend", with no "Ended on", and challenges a friend
+  to match it rather than beat it.
 - **Share image**: the same, plus the final round's two players and the figures the player has just
-  seen, in the game's type and colours. **No player photos** — their CC licences require
-  attribution that can't travel with a shared image.
-- **Challenge links** replay exactly that run for a friend, framed as "Beat <score>": the same
-  pairs, stats and order. At the end the friend sees whether they beat it, matched it or fell
-  short. The number is signed with the run, so it can't be edited; a link that fails the check,
+  seen, in the game's type and colours; in Friendly the score out of twenty, the twenty-cell grid
+  (unreached rounds as empty outlines) and a gold trophy for a win. **No player photos** — their
+  CC licences require attribution that can't travel with a shared image.
+- **Challenge links** replay exactly that run for a friend, framed as "Beat <score>" ("Beat 7/20"
+  in Friendly, "Match 20/20" for a won run): the same pairs, stats and order. At the end the friend
+  sees whether they beat it, matched it or fell short; a replay can be won too. A Friendly link's
+  score is at most 20. The number is signed with the run, so it can't be edited; a link that fails the check,
   or is more than 10 days old, opens a normal run with a short note. Friendly only for now.
   ARCHITECTURE.md §7 has the mechanics and the limits.
 - **Local best** is kept on the device, one per deck and mode (§17), and works with storage blocked
-  (it then lasts the visit).
+  (it then lasts the visit). Friendly shows it as "Best 12/20".
 
 ### Daily Ranked board
 

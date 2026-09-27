@@ -40,6 +40,7 @@ export { isEligible, eligibleStats, buildEligibilityMap } from "./eligibility.js
 export type { EligibilityMap } from "./eligibility.js";
 
 export {
+  BAND_SCHEDULES,
   VOLATILE_FLOOR,
   bandFor,
   bandForRound,
@@ -50,7 +51,7 @@ export {
   relaxations,
   withinBand,
 } from "./ramp.js";
-export type { Percentiles } from "./ramp.js";
+export type { BandRow, Percentiles } from "./ramp.js";
 
 export { SEEN_DEPTH, candidates, remember, selectChallenger, valueOf } from "./engine.js";
 export type { Match, MatchContext } from "./engine.js";
@@ -62,9 +63,12 @@ export {
   ICONIC_ROUNDS,
   MAX_ROUNDS,
   OPENING_DWELL,
+  WIN_ROUNDS,
   buildRun,
+  isFinalRound,
   labelFor,
   roundAt,
+  roundCap,
 } from "./sequence.js";
 export type { RunOptions } from "./sequence.js";
 

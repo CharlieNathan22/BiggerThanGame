@@ -102,8 +102,8 @@ describe("candidates", () => {
 
 describe("selectChallenger", () => {
   it("is deterministic for a given seed", () => {
-    const a = selectChallenger(byId("alpha"), "caps", 1, ctx(), createRng("x"));
-    const b = selectChallenger(byId("alpha"), "caps", 1, ctx(), createRng("x"));
+    const a = selectChallenger(byId("alpha"), "caps", 1, "ranked", ctx(), createRng("x"));
+    const b = selectChallenger(byId("alpha"), "caps", 1, "ranked", ctx(), createRng("x"));
     expect(a?.challenger.id).toBe(b?.challenger.id);
   });
 
@@ -131,6 +131,7 @@ describe("selectChallenger", () => {
       near,
       "caps",
       43,
+      "ranked",
       { deck: [near, far], now: NOW, seen: [] },
       createRng("relax"),
     );
@@ -140,7 +141,7 @@ describe("selectChallenger", () => {
   });
 
   it("does not flag relaxation when the band was met", () => {
-    const match = selectChallenger(byId("alpha"), "caps", 1, ctx(), createRng("ok"));
+    const match = selectChallenger(byId("alpha"), "caps", 1, "ranked", ctx(), createRng("ok"));
     expect(match).toBeDefined();
     expect(match!.relaxation).toBe("none");
   });
@@ -151,6 +152,7 @@ describe("selectChallenger", () => {
       byId("alpha"),
       "caps",
       1,
+      "ranked",
       { deck: fixtureDeck, now: NOW, seen },
       createRng("all-seen"),
     );
@@ -170,6 +172,7 @@ describe("selectChallenger", () => {
       lonely,
       "caps",
       1,
+      "ranked",
       { deck: [lonely], now: NOW, seen: [] },
       createRng("lonely"),
     );
@@ -211,6 +214,7 @@ describe("selectChallenger with the iconic preference", () => {
       deck[0]!,
       "caps",
       round,
+      "ranked",
       { deck, now: NOW, seen },
       createRng(seed),
       preferIconic,
@@ -240,7 +244,7 @@ describe("selectChallenger with the iconic preference", () => {
       const match = pick(deck, true, seed);
       expect(inBand(match?.challenger.id)).toBe(true);
       expect(match?.relaxation).toBe("iconic");
-      expect(match?.band).toEqual(bandFor("caps", 1));
+      expect(match?.band).toEqual(bandFor("caps", 1, "ranked"));
     }
   });
 

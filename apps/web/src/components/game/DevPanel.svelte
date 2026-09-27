@@ -1,15 +1,29 @@
 <!--
-  `pnpm dev` only: the artificial round-trip delay switch. Loaded by
+  `pnpm dev` only: the artificial round-trip delay switch, the a11y check and
+  the autopilot that answers every question right (to see the win). Loaded by
   game/dev.ts behind import.meta.env.DEV, so production builds never contain
   it. Developer-facing, so its labels aren't in i18n/en.ts.
 -->
 <script lang="ts">
-  import { DEV_DELAYS, devDelay, runAxe, setDevDelay } from "../../game/dev";
+  import {
+    DEV_DELAYS,
+    devAutopilot,
+    devDelay,
+    runAxe,
+    setDevAutopilot,
+    setDevDelay,
+  } from "../../game/dev";
   import type { DevDelay } from "../../game/dev";
 
   let current: DevDelay = $state(devDelay());
 
   let axe = $state("a11y");
+  let auto = $state(devAutopilot());
+
+  function toggleAuto(): void {
+    auto = !auto;
+    setDevAutopilot(auto);
+  }
 
   function choose(ms: DevDelay): void {
     current = ms;
@@ -23,7 +37,7 @@
   }
 </script>
 
-<aside class="dev" aria-label="Dev: round-trip delay and a11y check">
+<aside class="dev" aria-label="Dev: round-trip delay, a11y check and autopilot">
   <span>delay</span>
   {#each DEV_DELAYS as ms (ms)}
     <button aria-pressed={current === ms} onclick={() => choose(ms)}>
@@ -31,6 +45,7 @@
     </button>
   {/each}
   <button onclick={check} title="Run axe-core; results in the console">{axe}</button>
+  <button aria-pressed={auto} onclick={toggleAuto} title="Answer every question right">auto</button>
 </aside>
 
 <style>

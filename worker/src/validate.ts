@@ -13,7 +13,7 @@
  * fresh one, with a note saying the link didn't check out (challenge.ts).
  */
 
-import { MAX_ROUNDS } from "@bt/core";
+import { roundCap } from "@bt/core";
 import type { AnswerRequest, ChallengeStartRequest, Guess, NextRoundRequest } from "@bt/core";
 import { parseRunId } from "./run-id.js";
 
@@ -24,6 +24,9 @@ const GUESSES: readonly Guess[] = ["higher", "lower"];
 const START_KEYS = ["mode"];
 const CHALLENGE_KEYS = ["challenge", "mode", "score", "sig"];
 const ANSWER_KEYS = ["guess", "mode", "round", "runId"];
+
+/** Friendly's last round, and the highest score a Friendly run can reach. */
+const FRIENDLY_CAP = roundCap("friendly");
 
 /** Far past a real run id (84 characters) or signature (22): anything longer is not a link. */
 const MAX_CHALLENGE_FIELD = 128;
@@ -49,8 +52,8 @@ export function parseNextRoundRequest(body: unknown): Parsed<NextRoundRequest> {
   if (typeof runId !== "string" || parseRunId(runId) === undefined) {
     return fail("runId is malformed");
   }
-  if (typeof round !== "number" || !Number.isInteger(round) || round < 1 || round > MAX_ROUNDS) {
-    return fail(`round must be an integer from 1 to ${MAX_ROUNDS}`);
+  if (typeof round !== "number" || !Number.isInteger(round) || round < 1 || round > FRIENDLY_CAP) {
+    return fail(`round must be an integer from 1 to ${FRIENDLY_CAP}`);
   }
   if (typeof guess !== "string" || !(GUESSES as readonly string[]).includes(guess)) {
     return fail('guess must be "higher" or "lower"');
@@ -65,8 +68,8 @@ function parseChallengeStart(record: Record<string, unknown>): Parsed<ChallengeS
   if (typeof challenge !== "string" || challenge.length > MAX_CHALLENGE_FIELD) {
     return fail("challenge must be a run id");
   }
-  if (typeof score !== "number" || !Number.isInteger(score) || score < 0 || score > MAX_ROUNDS) {
-    return fail(`score must be an integer from 0 to ${MAX_ROUNDS}`);
+  if (typeof score !== "number" || !Number.isInteger(score) || score < 0 || score > FRIENDLY_CAP) {
+    return fail(`score must be an integer from 0 to ${FRIENDLY_CAP}`);
   }
   if (typeof sig !== "string" || sig.length > MAX_CHALLENGE_FIELD) {
     return fail("sig must be a signature");

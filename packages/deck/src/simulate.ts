@@ -6,8 +6,9 @@
  * considered guess into a measurement.
  *
  * Every mode is simulated over the same seeds, so the modes differ only by what
- * the mode itself changes — today, how many opening rounds prefer iconic
- * challengers (`ICONIC_ROUNDS`).
+ * the mode itself changes: how many opening rounds prefer iconic challengers
+ * (`ICONIC_ROUNDS`), the band schedule (`BAND_SCHEDULES`) and, for Friendly,
+ * the twenty rounds that win the run (`WIN_ROUNDS`).
  *
  * **The streak distribution rests on a model of player skill**, and that model
  * is an assumption, not data. See `pCorrect` below. Treat the shape of the
@@ -18,12 +19,15 @@
 import {
   ICONIC_ROUNDS,
   STATS,
+  STREAK_TITLES,
   STAT_KEYS,
   TIER_TARGET,
+  WIN_ROUNDS,
   buildRun,
   createRng,
   percentiles,
   rankDistance,
+  roundCap,
   valueOf,
 } from "@bt/core";
 import type { Mode, Player, Relaxation, Round } from "@bt/core";
@@ -57,10 +61,13 @@ function emptyRelaxationCounts(): Record<Relaxation, number> {
  * Modelled probability that a player answers a round correctly.
  *
  * Measured in **rank distance** (ramp.ts), the same scale the bands use: two
- * players at the same point in the deck's spread are a coin flip; opposite ends
- * are near-certain. Between those, skill rises with the distance. `HALF_GAP`
- * is the distance at which the player is halfway between guessing and their
- * ceiling — a fifth of the deck apart.
+ * players at the same point in the deck's spread are a coin flip (0.5);
+ * opposite ends of the deck, a distance of 1, reach `SKILL_CEILING` (0.95).
+ * Between those, skill rises with the distance along `d / (d + HALF_GAP)`,
+ * scaled so that it reaches the ceiling at 1 rather than only approaching it.
+ * `HALF_GAP` sets how fast it rises: at a fifth of the deck apart the player is
+ * 60% of the way from guessing to the ceiling (0.77), and halfway at about a
+ * seventh.
  *
  * The model, and both constants, are an **assumption**, not data. The earlier
  * model measured a ratio, which scored every club-appearances pair as a near
@@ -73,8 +80,10 @@ export const HALF_GAP = 0.2;
 
 export function pCorrect(distance: number): number {
   if (!(distance > 0)) return 0.5;
-  const share = distance / (distance + HALF_GAP);
-  return 0.5 + (SKILL_CEILING - 0.5) * share;
+  // The unscaled curve only reaches 1 / (1 + HALF_GAP) at opposite ends; divide
+  // by that so a distance of 1 is exactly the ceiling.
+  const share = Math.min(distance, 1) / (Math.min(distance, 1) + HALF_GAP);
+  return 0.5 + (SKILL_CEILING - 0.5) * share * (1 + HALF_GAP);
 }
 
 export interface SimOptions {
@@ -82,6 +91,7 @@ export interface SimOptions {
   readonly now: Date;
   readonly mode: Mode;
   readonly runs?: number;
+  /** Defaults to the mode's own cap (`roundCap`): 20 for Friendly. */
   readonly maxRounds?: number;
   readonly seedPrefix?: string;
 }
@@ -91,6 +101,8 @@ export interface SimResult {
   readonly runs: number;
   /** Streak lengths, ascending. */
   readonly streaks: readonly number[];
+  /** Runs that reached the mode's win target (`WIN_ROUNDS`); 0 for a mode without one. */
+  readonly wins: number;
   readonly statCounts: Readonly<Record<string, number>>;
   readonly relaxationCounts: Readonly<Record<Relaxation, number>>;
   /**
@@ -132,7 +144,8 @@ function distanceOf(round: Round, deck: readonly Player[], now: Date): number {
 
 export function simulate(opts: SimOptions): SimResult {
   const runs = opts.runs ?? 10_000;
-  const maxRounds = opts.maxRounds ?? 60;
+  const maxRounds = opts.maxRounds ?? roundCap(opts.mode);
+  const target = WIN_ROUNDS[opts.mode];
   const prefix = opts.seedPrefix ?? "sim";
 
   const streaks: number[] = [];
@@ -151,6 +164,7 @@ export function simulate(opts: SimOptions): SimResult {
     for (const key of STAT_KEYS) statCountsByRange[label]![key] = 0;
   }
   let exhausted = 0;
+  let wins = 0;
   let maxConstructible = 0;
 
   for (let i = 0; i < runs; i++) {
@@ -186,9 +200,11 @@ export function simulate(opts: SimOptions): SimResult {
       }
     }
 
+    const won = target !== null && streak >= target;
+    if (won) wins += 1;
     // The run used every round the engine could build, so the engine ran out
-    // rather than the player failing.
-    if (streak === rounds.length && rounds.length < maxRounds) exhausted += 1;
+    // rather than the player failing — or winning.
+    if (!won && streak === rounds.length && rounds.length < maxRounds) exhausted += 1;
 
     streaks.push(streak);
   }
@@ -202,6 +218,7 @@ export function simulate(opts: SimOptions): SimResult {
     mode: opts.mode,
     runs,
     streaks: streaks.slice().sort((a, b) => a - b),
+    wins,
     statCounts,
     relaxationCounts,
     iconicWindow,
@@ -220,6 +237,50 @@ function pct(n: number, d: number): string {
 
 function mean(values: readonly number[]): number {
   return values.reduce((a, b) => a + b, 0) / Math.max(values.length, 1);
+}
+
+/**
+ * A mode with a finish line: how many runs win, and where the rest stop,
+ * bucketed at the mode's streak titles.
+ */
+function challengeSection(r: SimResult, goal: number): string[] {
+  const lines: string[] = [];
+  const name = r.mode.charAt(0).toUpperCase() + r.mode.slice(1);
+  lines.push(`## ${name}: the ${goal}-question challenge`);
+  lines.push("");
+  lines.push(`A run that answers all ${goal} rounds correctly is won. Share of runs:`);
+  lines.push("");
+  const cuts = [0, 1, ...STREAK_TITLES[r.mode].map((t) => t.min).filter((m) => m < goal), goal];
+  const rows: Array<[string, (n: number) => boolean]> = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const from = cuts[i]!;
+    const to = cuts[i + 1]! - 1;
+    rows.push([from === to ? String(from) : `${from}–${to}`, (n) => n >= from && n <= to]);
+  }
+  rows.push([`**${goal} (won)**`, (n) => n >= goal]);
+  lines.push("| Streak | Runs |", "|---|---|");
+  for (const [label, test] of rows) {
+    lines.push(`| ${label} | ${pct(r.streaks.filter(test).length, r.streaks.length)} |`);
+  }
+  lines.push("");
+  lines.push("Reached at least:");
+  lines.push("");
+  const marks = [...new Set([5, 10, 15, 18, goal].filter((m) => m <= goal))];
+  lines.push(`| ${["Streak", ...marks.map(String)].join(" | ")} |`);
+  lines.push(`|${["", ...marks].map(() => "---").join("|")}|`);
+  lines.push(
+    `| Runs | ${marks.map((m) => pct(r.streaks.filter((n) => n >= m).length, r.runs)).join(" | ")} |`,
+  );
+  lines.push("");
+  lines.push(`**Win rate: ${pct(r.wins, r.runs)}.**`);
+  lines.push("");
+  const reachedFinal = r.streaks.filter((n) => n >= goal - 1).length;
+  lines.push(
+    `Reached the final question (round ${goal}): ${pct(reachedFinal, r.runs)} of runs, ` +
+      `and ${pct(r.wins, reachedFinal)} of those won.`,
+  );
+  lines.push("");
+  return lines;
 }
 
 function windowTotal(r: SimResult): number {
@@ -282,6 +343,11 @@ export function simulationReport(
     lines.push(perMode(label, (r) => pct(r.streaks.filter(test).length, r.streaks.length)));
   }
   lines.push("");
+
+  for (const r of results) {
+    const goal = WIN_ROUNDS[r.mode];
+    if (goal !== null) lines.push(...challengeSection(r, goal));
+  }
 
   lines.push("## Stat firing rates");
   lines.push("");

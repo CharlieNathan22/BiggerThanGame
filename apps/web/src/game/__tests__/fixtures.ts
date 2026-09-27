@@ -67,3 +67,11 @@ export function exhausted(index: number, value = 80): EndResponse {
     challenge: link(index),
   };
 }
+
+export function won(index: number, value = 80): EndResponse {
+  return {
+    reveal: { round: index, value, display: String(value), correct: true },
+    end: "won",
+    challenge: link(index),
+  };
+}

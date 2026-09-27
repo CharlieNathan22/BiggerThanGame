@@ -21,6 +21,10 @@ export const en = {
   "brand.heading": "Bigger Than — Football Legends",
   "scores.streak": "Streak",
   "scores.best": "Best",
+  // A mode with a win target (Friendly's twenty) shows the score out of it
+  "scores.score": "Score",
+  "scores.of": "{score} / {target}",
+  "score.of": "{score}/{target}",
 
   // Site navigation in the title bar: inline on desktop, a menu on phones
   "nav.label": "Main",
@@ -78,7 +82,8 @@ export const en = {
     "Two retired legends, one stat. Guess whether the hidden number is higher or lower, and keep the run going. Read the plaque before you pick: every few rounds the stat changes.",
   "legends.modes": "Modes",
   "mode.friendly.name": "Friendly",
-  "mode.friendly.body": "No clock — play at your own pace, with every player and every stat.",
+  "mode.friendly.body":
+    "Twenty questions, no clock — get them all right to win, at your own pace, with every player and every stat.",
   "mode.endless.name": "Endless",
   "mode.endless.body":
     "Unlimited runs against a 10-second clock, with a daily board for your best of the day.",
@@ -94,6 +99,8 @@ export const en = {
   // Start panel
   "start.intro":
     "Two legends, one stat. Guess whether the hidden number is higher or lower. The stat changes as you go — watch the plaque before you pick.",
+  "start.introTarget":
+    "Two legends, one stat. Guess whether the hidden number is higher or lower — and watch the plaque, because the stat changes as you go. Get all {target} right to win.",
   "start.cta": "Start the run",
   "start.starting": "Dealing…",
   "start.failed": "Couldn't reach the server. Check your connection and try again.",
@@ -113,16 +120,27 @@ export const en = {
   "qual.fee": "{year}",
   "qual.ig": "as of {date}",
 
+  // The progress track, in a mode with a win target
+  "progress.label": "Progress",
+  "progress.question": "Question {round} of {target}",
+  "progress.final": "Final question — question {round} of {target}",
+  // On the plaque and under the track while the last question is on screen
+  "final.tag": "Final question",
+
   // Screen reader announcements
   "live.question": "{stat}. {anchor}: {value}. Is {challenger} higher or lower?",
   "live.statChanged":
     "The stat changes to {stat}. {anchor}: {value}. Is {challenger} higher or lower?",
   "live.correct": "{challenger}: {value}. Correct. Streak {streak}.",
+  "live.correctOf": "{challenger}: {value}. Correct. {score} of {target}.",
+  "live.won": "{challenger}: {value}. Correct — that's all {score}. You won!",
   "live.wrong": "{challenger}: {value}. Wrong. The run is over.",
 
   // Game over
   "over.caption.one": "correct, then out",
   "over.caption.other": "in a row",
+  "over.caption.won": "a perfect run",
+  "over.won": "You won",
   "over.best": "Best {best}",
   "over.newBest": "New best",
   "over.separator": "·",
@@ -173,7 +191,7 @@ export const en = {
   "feedback.cancel": "Cancel",
   "feedback.close": "Close",
 
-  // Streak titles, by StreakTitleId (@bt/core STREAK_TITLES)
+  // Streak titles, by StreakTitleId (@bt/core STREAK_TITLES, one table per mode)
   "title.squad": "Squad player",
   "title.starter": "Starter",
   "title.captain": "Captain",
@@ -183,17 +201,23 @@ export const en = {
   // Challenge links
   "challenge.heading": "Beat {score}",
   "challenge.intro":
-    "A friend got {score} in a row on this run. Same players, same stats, same order. Can you beat it?",
+    "A friend scored {score} on this run. Same players, same stats, same order. Can you beat it?",
+  "challenge.headingPerfect": "Match {score}",
+  "challenge.introPerfect":
+    "A friend won this run, {score}. Same players, same stats, same order. Can you match it?",
   "challenge.cta": "Take the challenge",
   "challenge.invalid": "That challenge link didn't check out, so here's a fresh run instead.",
   "challenge.expired": "That challenge has expired — links last 10 days — so here's a fresh run.",
   "challenge.beat": "You beat {score}.",
   "challenge.matched": "You matched {score}. So close.",
   "challenge.short": "{score} to beat. Not this time.",
+  "challenge.matchedPerfect": "You matched {score}. Perfect.",
+  "challenge.shortPerfect": "{score} to match. Not this time.",
 
   // The run's grid, for screen readers
   "grid.label": "Your run: {basic} basic, {uncommon} uncommon and {rare} rare stats right.",
   "grid.miss": "Out on {stat}.",
+  "grid.of": "{score} of {target} right.",
 
   // What gets shared
   "share.heading": "Bigger Than — Football Legends",
@@ -203,6 +227,7 @@ export const en = {
   "share.endedLabel": "Ended on",
   "share.exhausted": "Went the distance: every pairing dealt",
   "share.challenge": "Can you beat {score}? {url}",
+  "share.challengePerfect": "Can you match {score}? {url}",
   "share.fileName": "bigger-than-{score}.png",
 
   // Stat labels, by StatKey

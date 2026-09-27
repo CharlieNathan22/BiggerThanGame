@@ -14,25 +14,25 @@
  * qualified at round one. The ceiling is what makes a late round hard.
  */
 
-import type { Band, Player, StatKey } from "./types.js";
+import type { Band, Mode, Player, StatKey } from "./types.js";
 import { STATS } from "./stats.js";
 import { isEligible } from "./eligibility.js";
 
-interface BandRow {
+export interface BandRow {
   readonly upTo: number;
   readonly band: Band;
 }
 
 /**
- * The schedule, in rank distance. `upTo` is inclusive; the final row catches
- * everything after.
+ * The long schedule, for the modes with no finish line (Endless and Ranked),
+ * in rank distance. `upTo` is inclusive; the final row catches everything after.
  *
  * Tuned against simulation.md on the 77-player legends deck. Re-check it
  * there after substantial deck growth — the floors are fractions of the deck,
  * so they scale with it, but the knife-edge band's absolute width shrinks as
  * the deck grows.
  */
-const SCHEDULE: readonly BandRow[] = [
+const LONG_SCHEDULE: readonly BandRow[] = [
   { upTo: 10, band: { floor: 0.45, ceiling: null } },
   { upTo: 18, band: { floor: 0.25, ceiling: 0.7 } },
   { upTo: 26, band: { floor: 0.15, ceiling: 0.5 } },
@@ -42,6 +42,36 @@ const SCHEDULE: readonly BandRow[] = [
 ];
 
 /**
+ * Friendly's schedule: twenty questions (`WIN_ROUNDS`). Uncapped for the eight
+ * rounds that prefer iconic challengers (`ICONIC_ROUNDS`), then a gentle climb
+ * that **never gets easier**: from round 9 each band is at least as hard as the
+ * one before (floor and ceiling never rise). Round 20, the **final question**,
+ * is the hardest band in the run — tough, but no knife edge, so a win is not a
+ * coin flip. DESIGN.md §8.
+ *
+ * Tuned against simulation.md on the 107-player legends deck for a win rate
+ * of about 10%; re-tune once the deck is complete and real play (M5c) replaces
+ * the modelled player.
+ */
+const FRIENDLY_SCHEDULE: readonly BandRow[] = [
+  { upTo: 8, band: { floor: 0.45, ceiling: null } },
+  { upTo: 13, band: { floor: 0.4, ceiling: null } },
+  { upTo: 17, band: { floor: 0.3, ceiling: 0.8 } },
+  { upTo: 19, band: { floor: 0.25, ceiling: 0.7 } },
+  { upTo: Infinity, band: { floor: 0.15, ceiling: 0.5 } },
+];
+
+/**
+ * The band schedule per mode. Changing one changes every run of that mode —
+ * and every golden fingerprint for it.
+ */
+export const BAND_SCHEDULES: Readonly<Record<Mode, readonly BandRow[]>> = {
+  friendly: FRIENDLY_SCHEDULE,
+  endless: LONG_SCHEDULE,
+  ranked: LONG_SCHEDULE,
+};
+
+/**
  * Volatile stats (followers) also need the two values at least this far apart
  * as a ratio, whatever the band. Rank distance says how far apart two players
  * sit in the deck; it says nothing about whether a refresh could swap them.
@@ -49,10 +79,11 @@ const SCHEDULE: readonly BandRow[] = [
  */
 export const VOLATILE_FLOOR = 1.0;
 
-/** 1-based round number in, band out. */
-export function bandForRound(round: number): Band {
-  const row = SCHEDULE.find((r) => round <= r.upTo);
-  return row ? row.band : SCHEDULE[SCHEDULE.length - 1]!.band;
+/** 1-based round number and mode in, band out. */
+export function bandForRound(round: number, mode: Mode): Band {
+  const schedule = BAND_SCHEDULES[mode];
+  const row = schedule.find((r) => round <= r.upTo);
+  return row ? row.band : schedule[schedule.length - 1]!.band;
 }
 
 /**
@@ -61,8 +92,8 @@ export function bandForRound(round: number): Band {
  * pair dealable" — the engine and viability.md alike — goes through this, so
  * they can't disagree.
  */
-export function bandFor(stat: StatKey, round: number): Band {
-  const base = bandForRound(round);
+export function bandFor(stat: StatKey, round: number, mode: Mode): Band {
+  const base = bandForRound(round, mode);
   return STATS[stat].volatile === true ? { ...base, minRatio: VOLATILE_FLOOR } : base;
 }
 

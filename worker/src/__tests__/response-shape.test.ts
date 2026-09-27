@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { STATS, valueOf } from "@bt/core";
+import { STATS, WIN_ROUNDS, valueOf } from "@bt/core";
 import type { AnswerResponse, Player, RoundPayload, StartResponse } from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
 import { FIXTURE_DECK, SAMPLE_DECK, context, fakeImages, runDay, walkRun } from "./helpers.js";
@@ -124,15 +124,30 @@ function checkResponse(
   } else {
     expectKeysWithin(response, ["challenge", "end", "next", "reveal"]);
     expectKeysWithin(response.reveal, REVEAL_KEYS);
+    // Friendly never deals past its twentieth round, and never scores past it.
+    expect(response.reveal.round).toBeLessThanOrEqual(WIN_ROUNDS.friendly!);
     if ("end" in response) {
+      expect(["wrong", "deck-exhausted", "won"]).toContain(response.end);
       expectKeysWithin(response.challenge, CHALLENGE_LINK_KEYS);
       expect(response.challenge.score).toBe(
         response.reveal.correct ? response.reveal.round : response.reveal.round - 1,
       );
+      expect(response.challenge.score).toBeLessThanOrEqual(WIN_ROUNDS.friendly!);
+      // A run is won exactly when its twentieth round is answered correctly.
+      const lastRight = response.reveal.correct && response.reveal.round === WIN_ROUNDS.friendly;
+      expect(response.end === "won").toBe(lastRight);
+      expect(response.end === "wrong").toBe(!response.reveal.correct);
     } else {
       expect(response).not.toHaveProperty("challenge");
     }
-    if ("next" in response) checkRound(response.next, deck, now);
+    if ("next" in response) {
+      checkRound(response.next, deck, now);
+      expect(response.next.index).toBeLessThanOrEqual(WIN_ROUNDS.friendly!);
+      // The last round deals no photo for a round that will never come.
+      if (response.next.index === WIN_ROUNDS.friendly) {
+        expect(response.next).not.toHaveProperty("upcoming");
+      }
+    }
   }
 }
 

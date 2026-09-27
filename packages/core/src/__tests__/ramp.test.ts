@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BAND_SCHEDULES,
   VOLATILE_FLOOR,
   bandFor,
   bandForRound,
@@ -11,6 +12,7 @@ import {
   withinBand,
 } from "../ramp.js";
 import { NOW } from "../__fixtures__/deck.js";
+import { WIN_ROUNDS } from "../sequence.js";
 import type { Player } from "../types.js";
 
 const forward = (id: string, caps: number, extra: Partial<Player> = {}): Player => ({
@@ -23,24 +25,30 @@ const forward = (id: string, caps: number, extra: Partial<Player> = {}): Player 
   ...extra,
 });
 
-describe("bandForRound", () => {
+describe("bandForRound, the long schedule (Endless and Ranked)", () => {
+  const band = (round: number) => bandForRound(round, "ranked");
+
+  it("is shared by Endless and Ranked", () => {
+    expect(BAND_SCHEDULES.endless).toBe(BAND_SCHEDULES.ranked);
+  });
+
   it("opens uncapped so blowouts can be dealt", () => {
-    expect(bandForRound(1).ceiling).toBeNull();
-    expect(bandForRound(10).ceiling).toBeNull();
+    expect(band(1).ceiling).toBeNull();
+    expect(band(10).ceiling).toBeNull();
   });
 
   it("opens at least 45% of the deck apart", () => {
-    expect(bandForRound(1).floor).toBe(0.45);
+    expect(band(1).floor).toBe(0.45);
   });
 
   it("caps from round 11", () => {
-    expect(bandForRound(11).ceiling).toBe(0.7);
+    expect(band(11).ceiling).toBe(0.7);
   });
 
   it("tightens monotonically across every boundary", () => {
     const rounds = [1, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 100];
-    const floors = rounds.map((r) => bandForRound(r).floor);
-    const ceilings = rounds.map((r) => bandForRound(r).ceiling ?? 1);
+    const floors = rounds.map((r) => band(r).floor);
+    const ceilings = rounds.map((r) => band(r).ceiling ?? 1);
     for (let i = 1; i < rounds.length; i++) {
       expect(floors[i]!).toBeLessThanOrEqual(floors[i - 1]!);
       expect(ceilings[i]!).toBeLessThanOrEqual(ceilings[i - 1]!);
@@ -49,33 +57,69 @@ describe("bandForRound", () => {
 
   it("stays within the 0–1 scale of rank distance", () => {
     for (const r of [1, 11, 19, 27, 35, 43]) {
-      const b = bandForRound(r);
+      const b = band(r);
       expect(b.floor).toBeGreaterThanOrEqual(0);
       expect(b.ceiling ?? 1).toBeLessThanOrEqual(1);
     }
   });
 
   it("reaches the knife edge and stays there", () => {
-    expect(bandForRound(43)).toEqual({ floor: 0.02, ceiling: 0.12 });
-    expect(bandForRound(500)).toEqual({ floor: 0.02, ceiling: 0.12 });
+    expect(band(43)).toEqual({ floor: 0.02, ceiling: 0.12 });
+    expect(band(500)).toEqual({ floor: 0.02, ceiling: 0.12 });
+  });
+});
+
+describe("bandForRound, Friendly's twenty rounds", () => {
+  const rounds = Array.from({ length: WIN_ROUNDS.friendly! }, (_, i) => i + 1);
+  const band = (round: number) => bandForRound(round, "friendly");
+
+  it("opens as generously as the long schedule", () => {
+    expect(band(1)).toEqual(bandForRound(1, "ranked"));
+  });
+
+  it("keeps rounds 1–8 on the opening band", () => {
+    for (const r of rounds.slice(0, 8)) expect(band(r)).toEqual({ floor: 0.45, ceiling: null });
+  });
+
+  it("never gets easier from round 9 on", () => {
+    for (const r of rounds.slice(8)) {
+      expect(band(r).floor).toBeLessThanOrEqual(band(r - 1).floor);
+      expect(band(r).ceiling ?? 1).toBeLessThanOrEqual(band(r - 1).ceiling ?? 1);
+    }
+  });
+
+  it("makes the final question the hardest band in the run, capped and not a knife edge", () => {
+    const last = band(WIN_ROUNDS.friendly!);
+    expect(last.ceiling).not.toBeNull();
+    for (const r of rounds.slice(0, -1)) {
+      expect(last.floor).toBeLessThan(band(r).floor);
+      expect(last.ceiling!).toBeLessThan(band(r).ceiling ?? 1);
+    }
+    expect(last.floor).toBeGreaterThan(bandForRound(43, "ranked").floor);
   });
 });
 
 describe("bandFor", () => {
   it("bands every stat, the former band-exempt ones included", () => {
     for (const stat of ["it", "clubs", "age"] as const) {
-      expect(bandFor(stat, 30)).toEqual(bandForRound(30));
+      expect(bandFor(stat, 30, "ranked")).toEqual(bandForRound(30, "ranked"));
+      expect(bandFor(stat, 15, "friendly")).toEqual(bandForRound(15, "friendly"));
     }
   });
 
-  it("adds the volatility floor to volatile stats at every round", () => {
-    for (const r of [1, 11, 43]) {
-      expect(bandFor("ig", r)).toEqual({ ...bandForRound(r), minRatio: VOLATILE_FLOOR });
+  it("adds the volatility floor to volatile stats at every round, in every mode", () => {
+    for (const mode of ["friendly", "endless", "ranked"] as const) {
+      for (const r of [1, 11, 20, 43]) {
+        expect(bandFor("ig", r, mode)).toEqual({
+          ...bandForRound(r, mode),
+          minRatio: VOLATILE_FLOOR,
+        });
+      }
     }
   });
 
   it("leaves other stats without a ratio floor", () => {
-    expect(bandFor("caps", 1).minRatio).toBeUndefined();
+    expect(bandFor("caps", 1, "ranked").minRatio).toBeUndefined();
   });
 });
 

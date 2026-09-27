@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { MAX_ROUNDS, STATS, buildRun, valueOf } from "@bt/core";
+import { STATS, WIN_ROUNDS, buildRun, valueOf } from "@bt/core";
 import type { ContinueResponse, Player, Round } from "@bt/core";
 import { toRoundPayload } from "../payload.js";
 import type { RateDecision } from "../rate-limit.js";
@@ -103,13 +103,24 @@ describe("answering", () => {
   it.each([
     ["sample", SAMPLE_DECK],
     ["fixture", FIXTURE_DECK],
-  ])("ends a perfect run on the %s deck with deck-exhausted at the round cap", async (_, deck) => {
+  ])("wins a perfect run on the %s deck at round twenty", async (_, deck) => {
     const { answers } = await walkRun(context({ deck }), deck);
     const last = answers.at(-1)!;
-    expect(answers).toHaveLength(MAX_ROUNDS);
-    expect(last.reveal).toMatchObject({ round: MAX_ROUNDS, correct: true });
-    expect(last).toMatchObject({ end: "deck-exhausted" });
+    expect(WIN_ROUNDS.friendly).toBe(20);
+    expect(answers).toHaveLength(20);
+    expect(last.reveal).toMatchObject({ round: 20, correct: true });
+    expect(last).toMatchObject({ end: "won" });
     expect("next" in last).toBe(false);
+    // Only the last round ends a run that is still right.
+    for (const res of answers.slice(0, -1)) expect("next" in res).toBe(true);
+  });
+
+  it("ends a miss on round twenty as wrong, at nineteen", async () => {
+    const ctx = context({ uuid: () => uuidFrom(20) });
+    const { runId, answers } = await walkRun(ctx);
+    const twenty = (answers.at(-2) as ContinueResponse).next;
+    const res = await answer(ctx, runId, 20, wrongGuess(correctGuess(SAMPLE_DECK, runId, twenty)));
+    expect(res).toMatchObject({ end: "wrong", challenge: { score: 19 } });
   });
 });
 
@@ -224,7 +235,7 @@ describe("validation", () => {
     ["a negative round", () => ({ ...good(), round: -3 })],
     ["a fractional round", () => ({ ...good(), round: 1.5 })],
     ["a round as a string", () => ({ ...good(), round: "1" })],
-    ["a round past the cap", () => ({ ...good(), round: MAX_ROUNDS + 1 })],
+    ["a round past Friendly's twenty", () => ({ ...good(), round: 21 })],
     ["an unknown guess", () => ({ ...good(), guess: "up" })],
     ["a guess in the wrong case", () => ({ ...good(), guess: "Higher" })],
     ["a missing guess", () => ({ mode: "friendly", runId, round: 1 })],

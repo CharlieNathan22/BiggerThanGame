@@ -15,7 +15,7 @@ import {
 } from "../machine";
 import type { GameEvent, GameState } from "../machine";
 import { TIMINGS } from "../timing";
-import { cont, exhausted, round, wrong } from "./fixtures";
+import { cont, exhausted, round, won, wrong } from "./fixtures";
 
 function run(events: readonly GameEvent[], from: GameState = initialState()): GameState {
   return events.reduce(reduce, from);
@@ -128,6 +128,22 @@ describe("reduce — the happy path", () => {
     expect(s.phase).toBe("over");
     expect(s.end).toBe("deck-exhausted");
     expect(s.streak).toBe(1);
+  });
+
+  it("ends a won run on the server's word, with the point, a link and no next round", () => {
+    let s = run([
+      ...toAwaiting,
+      { type: "guess", guess: "higher", at: 0 },
+      { type: "answered", response: won(1), at: 50 },
+    ]);
+    expect(s.end).toBe("won");
+    expect(s.next).toBeNull();
+    expect(s.link).toEqual(won(1).challenge);
+    s = run([{ type: "settled" }, { type: "advance" }], s);
+    expect(s.phase).toBe("over");
+    expect(s.end).toBe("won");
+    expect(s.streak).toBe(1);
+    expect(s.history.at(-1)?.correct).toBe(true);
   });
 });
 

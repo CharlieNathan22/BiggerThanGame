@@ -1,6 +1,7 @@
 <!--
   The persistent title bar (DESIGN.md §12). Static pages render it server-side
-  with no JS; the game island reuses it with live scores. "— Football Legends"
+  with no JS; the game island reuses it with live scores: "Streak n", or in a
+  mode with a win target the score out of it, "n / 20", and "Best n/20". "— Football Legends"
   shows only on the Legends pages (`legends`); elsewhere it is the brand alone
   (DESIGN.md §17), and so is a short landscape screen, where the bar must stay
   one row.
@@ -21,8 +22,11 @@
   import { HOME_PATH } from "../lib/paths";
 
   interface Props {
-    /** Streak and best. Shown on the game only; other pages have no run. */
-    scores?: { streak: number; best: number };
+    /**
+     * Streak and best. Shown on the game only; other pages have no run.
+     * `target` is the mode's win target (Friendly's 20), or null for none.
+     */
+    scores?: { streak: number; best: number; target: number | null };
     /** Add "— Football Legends": /football-higher-or-lower/legends and the pages under it. */
     legends?: boolean;
     /** The page being shown, as served (`/about`), for `aria-current`. */
@@ -68,12 +72,25 @@
   <div class="end">
     {#if scores}
       <div class="scores">
-        <div class="score">
-          <span>{t("scores.streak")}</span><strong class="num">{scores.streak}</strong>
-        </div>
-        <div class="score">
-          <span>{t("scores.best")}</span><strong class="num">{scores.best}</strong>
-        </div>
+        {#if scores.target === null}
+          <div class="score">
+            <span>{t("scores.streak")}</span><strong class="num">{scores.streak}</strong>
+          </div>
+          <div class="score">
+            <span>{t("scores.best")}</span><strong class="num">{scores.best}</strong>
+          </div>
+        {:else}
+          <div class="score">
+            <span class="sr">{t("scores.score")}</span><strong class="num"
+              >{t("scores.of", { score: scores.streak, target: scores.target })}</strong
+            >
+          </div>
+          <div class="score">
+            <span>{t("scores.best")}</span><strong class="num"
+              >{t("score.of", { score: scores.best, target: scores.target })}</strong
+            >
+          </div>
+        {/if}
       </div>
     {/if}
     <nav class="links" aria-label={t("nav.label")}>
@@ -230,27 +247,25 @@
   ul {
     list-style: none;
   }
+  /* No underlines: the current page is gold, and hover, press and keyboard
+     focus turn a link gold with a stronger glow. */
   nav a {
     position: relative;
     color: var(--dim);
     text-decoration: none;
-    text-underline-offset: var(--nav-underline-offset);
     text-shadow: var(--glow);
-    transition: text-shadow var(--dur-hover);
+    transition:
+      color var(--dur-hover),
+      text-shadow var(--dur-hover);
   }
-  nav a:hover {
-    color: var(--chalk);
-    text-decoration: underline;
+  nav a[aria-current] {
+    color: var(--gold);
   }
   nav a:hover,
   nav a:active,
   nav a:focus-visible {
-    text-shadow: var(--glow-hover);
-  }
-  nav a[aria-current] {
-    color: var(--chalk);
-    text-decoration: underline;
-    text-decoration-color: var(--gold);
+    color: var(--gold);
+    text-shadow: var(--glow-strong);
   }
 
   /* Desktop: the links inline. */

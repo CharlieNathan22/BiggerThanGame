@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { iconicViability, rankCorrelation, statViability, viabilityReport } from "../viability.js";
+import {
+  REPORT_BANDS,
+  iconicViability,
+  rankCorrelation,
+  roundsWith,
+  statViability,
+  uncoveredBands,
+  viabilityReport,
+} from "../viability.js";
 import {
   HALF_GAP,
   ROUND_RANGES,
+  SKILL_CEILING,
   SIM_MODES,
   pCorrect,
   rangeOf,
@@ -10,7 +19,7 @@ import {
   simulationReport,
 } from "../simulate.js";
 import { playerSchema, toPlayer } from "../schema.js";
-import { ICONIC_ROUNDS } from "@bt/core";
+import { BAND_SCHEDULES, ICONIC_ROUNDS, WIN_ROUNDS } from "@bt/core";
 import type { Player } from "@bt/core";
 
 const NOW = new Date("2026-09-18T00:00:00Z");
@@ -140,13 +149,66 @@ describe("pCorrect", () => {
     expect(pCorrect(0.5)).toBeGreaterThan(pCorrect(0.1));
   });
 
-  it("is halfway to the ceiling at HALF_GAP", () => {
-    expect(pCorrect(HALF_GAP)).toBeCloseTo(0.725, 5);
+  it("is 60% of the way to the ceiling at HALF_GAP", () => {
+    expect(pCorrect(HALF_GAP)).toBeCloseTo(0.77, 5);
   });
 
-  it("stays below the skill ceiling even at opposite ends of the deck", () => {
-    expect(pCorrect(1)).toBeLessThan(0.95);
-    expect(pCorrect(1)).toBeGreaterThan(0.85);
+  it("reaches the skill ceiling at opposite ends of the deck, and never passes it", () => {
+    expect(SKILL_CEILING).toBe(0.95);
+    expect(pCorrect(1)).toBeCloseTo(SKILL_CEILING, 10);
+    expect(pCorrect(0.99)).toBeLessThan(SKILL_CEILING);
+    expect(pCorrect(1.5)).toBeCloseTo(SKILL_CEILING, 10);
+  });
+});
+
+describe("simulating Friendly's twenty-question challenge", () => {
+  it("never plays a Friendly run past twenty, and counts the runs that reach it as wins", () => {
+    const r = simulate({ deck: players, now: NOW, mode: "friendly", runs: 300 });
+    expect(r.maxConstructible).toBeLessThanOrEqual(20);
+    expect(r.streaks.at(-1)!).toBeLessThanOrEqual(20);
+    expect(r.wins).toBe(r.streaks.filter((n) => n === 20).length);
+    // A win is not the engine running out.
+    expect(r.exhausted).toBe(0);
+  });
+
+  it("counts no wins in a mode without a target", () => {
+    expect(WIN_ROUNDS.endless).toBeNull();
+    const r = simulate({ deck: players, now: NOW, mode: "endless", runs: 100 });
+    expect(r.wins).toBe(0);
+  });
+
+  it("reports the win rate and the streaks by title for Friendly only", () => {
+    const results = SIM_MODES.map((mode) => simulate({ deck: players, now: NOW, mode, runs: 50 }));
+    const md = simulationReport(results, players.length, NOW);
+    expect(md).toContain("## Friendly: the 20-question challenge");
+    expect(md).toMatch(/\*\*Win rate: \d+\.\d%\.\*\*/);
+    expect(md).toContain("| 15–19 |");
+    expect(md).toContain("| **20 (won)** |");
+    expect(md).toMatch(
+      /Reached the final question \(round 20\): \d+\.\d% of runs, and \d+\.\d% of those won\./,
+    );
+    expect(md).not.toContain("## Endless: the");
+  });
+});
+
+describe("the report's bands", () => {
+  it("cover every band of every mode's schedule", () => {
+    for (const mode of Object.keys(BAND_SCHEDULES) as Array<keyof typeof BAND_SCHEDULES>) {
+      expect(uncoveredBands(mode)).toEqual([]);
+    }
+  });
+
+  it("say where each band falls in both schedules", () => {
+    expect(REPORT_BANDS[0]!.rounds).toBe(
+      `1–10; Friendly ${roundsWith("friendly", REPORT_BANDS[0]!.band)}`,
+    );
+    const knifeEdge = REPORT_BANDS.find((b) => b.label === "knife edge")!;
+    expect(roundsWith("endless", knifeEdge.band)).toBe("43+");
+    // Friendly's own bands follow the long schedule's: the run-in and the final question.
+    expect(REPORT_BANDS.filter((b) => b.mode === "friendly").map((b) => b.rounds)).toEqual([
+      "Friendly 9–13",
+      "Friendly 14–17",
+    ]);
   });
 });
 

@@ -1,7 +1,9 @@
 /**
  * The share image: a 1080×1350 PNG drawn on a canvas in the browser when a run
  * ends (DESIGN.md §13). Score, streak title, the grid, the stat that ended it,
- * the final round's two players with their revealed figures, and the site.
+ * the final round's two players with their revealed figures, and the site. In
+ * a mode with a win target the score reads "7/20", the grid shows every round
+ * of the challenge (the ones not reached empty), and a won run has a trophy.
  *
  * **No player photos.** Their CC-BY and CC-BY-SA licences require attribution
  * that can't travel with a shared image, so the image is type and colour only.
@@ -40,6 +42,7 @@ export interface ShareLayout {
   readonly cellGap: number;
   readonly cellRadius: number;
   readonly columns: number;
+  readonly trophySize: number;
 }
 
 export const SHARE_LAYOUT: ShareLayout = {
@@ -65,6 +68,7 @@ export const SHARE_LAYOUT: ShareLayout = {
   cellGap: 12,
   cellRadius: 12,
   columns: 10,
+  trophySize: 132,
 };
 
 export const SHARE_LAYOUT_TOKENS: Readonly<Record<keyof ShareLayout, string>> = {
@@ -90,6 +94,7 @@ export const SHARE_LAYOUT_TOKENS: Readonly<Record<keyof ShareLayout, string>> = 
   cellGap: "--share-cell-gap",
   cellRadius: "--share-cell-radius",
   columns: "--share-columns",
+  trophySize: "--share-trophy",
 };
 
 /** A pixel token as a number: `56px` or `56`. */
@@ -117,6 +122,8 @@ export interface SharePalette {
   readonly gold: string;
   readonly goldRule: string;
   readonly miss: string;
+  /** The edge of a round the run didn't reach. */
+  readonly empty: string;
   readonly tiers: Readonly<Record<Tier, string>>;
   /** `--legends-gradient`'s stops, for "Legends" and the streak title. */
   readonly legends: readonly GradientStop[];
@@ -200,6 +207,7 @@ export function readPalette(read: (property: string) => string): SharePalette {
     gold: get("--gold", "#ffb020"),
     goldRule: get("--gold-rule", "rgba(255, 176, 32, 0.28)"),
     miss: get("--miss", "#b8322a"),
+    empty: get("--grid-empty-edge", "rgba(238, 243, 241, 0.28)"),
     tiers: {
       basic: get("--t-basic", "#ffc24d"),
       uncommon: get("--t-unc", "#5ab9f0"),
@@ -331,12 +339,19 @@ export function drawShareCard(
   const gridH = rows > 0 ? rows * layout.cell + (rows - 1) * layout.cellGap : 0;
   const blocks: { h: number; draw: (top: number) => void }[] = [];
 
+  if (card.won) {
+    blocks.push({
+      h: layout.trophySize,
+      draw: (top) => drawTrophy(centre, top, layout.trophySize),
+    });
+  }
   blocks.push({
     h: layout.scoreSize * 0.78 + layout.captionSize * 1.4,
     draw: (top) => {
-      face("num", layout.scoreSize);
       ctx.fillStyle = palette.gold;
-      ctx.fillText(String(card.score), centre, top + layout.scoreSize * 0.74);
+      // "20/20" is wider than a streak: it shrinks to fit rather than overrun.
+      fit(card.score, layout.scoreSize, W - pad * 2, (s) => face("num", s));
+      ctx.fillText(card.score, centre, top + layout.scoreSize * 0.74);
       face("caption", layout.captionSize);
       ctx.fillStyle = palette.dim;
       ctx.fillText(card.caption, centre, top + layout.scoreSize * 0.78 + layout.captionSize * 1.2);
@@ -444,6 +459,15 @@ export function drawShareCard(
       const rowW = inRow * cell + (inRow - 1) * cellGap;
       const cx = centre - rowW / 2 + (i % columns) * (cell + cellGap);
       const cy = top + row * (cell + cellGap);
+      if (c.kind === "empty") {
+        // A round not reached: an edge, no fill.
+        const edge = 3;
+        ctx.strokeStyle = palette.empty;
+        ctx.lineWidth = edge;
+        roundRect(cx + edge / 2, cy + edge / 2, cell - edge, cell - edge, cellRadius - edge / 2);
+        ctx.stroke();
+        return;
+      }
       ctx.fillStyle = c.kind === "miss" ? palette.miss : palette.tiers[c.tier];
       roundRect(cx, cy, cell, cell, cellRadius);
       ctx.fill();
@@ -461,6 +485,37 @@ export function drawShareCard(
         ctx.stroke();
       }
     });
+  }
+
+  /** A trophy in the gold-leaf gradient, `size` square, its top centre at (`cx`, `top`). */
+  function drawTrophy(cx: number, top: number, size: number): void {
+    const u = size / 100;
+    const gold = gradient(top, top + size);
+    // The cup: straight sides into a rounded bowl.
+    ctx.fillStyle = gold;
+    ctx.beginPath();
+    ctx.moveTo(cx - 30 * u, top);
+    ctx.lineTo(cx + 30 * u, top);
+    ctx.lineTo(cx + 30 * u, top + 26 * u);
+    ctx.arcTo(cx + 30 * u, top + 58 * u, cx, top + 58 * u, 30 * u);
+    ctx.arcTo(cx - 30 * u, top + 58 * u, cx - 30 * u, top + 26 * u, 30 * u);
+    ctx.closePath();
+    ctx.fill();
+    // The handles.
+    ctx.strokeStyle = gold;
+    ctx.lineWidth = 7 * u;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      ctx.moveTo(cx + side * 30 * u, top + 10 * u);
+      ctx.lineTo(cx + side * 44 * u, top + 10 * u);
+      ctx.arcTo(cx + side * 44 * u, top + 36 * u, cx + side * 26 * u, top + 38 * u, 16 * u);
+    }
+    ctx.stroke();
+    // The stem and the base.
+    ctx.fillRect(cx - 5 * u, top + 56 * u, 10 * u, 20 * u);
+    ctx.fillRect(cx - 17 * u, top + 76 * u, 34 * u, 9 * u);
+    ctx.fillRect(cx - 26 * u, top + 88 * u, 52 * u, 12 * u);
   }
 
   function roundRect(rx: number, ry: number, w: number, h: number, r: number): void {

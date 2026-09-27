@@ -9,8 +9,8 @@
  * fresh with the same polite note the server's refusal gets.
  */
 
-import { MAX_ROUNDS } from "@bt/core";
-import type { ChallengeLink } from "@bt/core";
+import { roundCap } from "@bt/core";
+import type { ChallengeLink, Mode } from "@bt/core";
 import { FRIENDLY_PATH } from "../lib/paths";
 
 export const CHALLENGE_PARAMS = ["challenge", "score", "sig"] as const;
@@ -28,14 +28,15 @@ export type ChallengeParam =
   | { readonly kind: "link"; readonly link: ChallengeLink }
   | { readonly kind: "broken" };
 
-export function readChallenge(search: string): ChallengeParam {
+/** A score above `mode`'s cap (20 in Friendly) can't have been played, so the link is broken. */
+export function readChallenge(search: string, mode: Mode): ChallengeParam {
   const params = new URLSearchParams(search);
   if (!CHALLENGE_PARAMS.some((name) => params.has(name))) return { kind: "none" };
   const runId = params.get("challenge") ?? "";
   const scoreText = params.get("score") ?? "";
   const sig = params.get("sig") ?? "";
   const score = /^\d{1,2}$/.test(scoreText) ? Number(scoreText) : NaN;
-  if (!RUN_ID.test(runId) || !SIG.test(sig) || !(score >= 0 && score <= MAX_ROUNDS)) {
+  if (!RUN_ID.test(runId) || !SIG.test(sig) || !(score >= 0 && score <= roundCap(mode))) {
     return { kind: "broken" };
   }
   return { kind: "link", link: { runId, score, sig } };

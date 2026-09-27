@@ -6,7 +6,17 @@ import { describe, expect, it } from "vitest";
 import { en } from "../../i18n/en";
 import { initialState } from "../machine";
 import type { GameState, RoundRecord } from "../machine";
-import { gridLabel, shareCard, shareGrid, shareText, titleText } from "../share";
+import {
+  challengeHeading,
+  challengeIntro,
+  gridCells,
+  gridLabel,
+  outcomeText,
+  shareCard,
+  shareGrid,
+  shareText,
+  titleText,
+} from "../share";
 import {
   SHARE_LAYOUT,
   SHARE_LAYOUT_TOKENS,
@@ -32,36 +42,77 @@ const rec = (index: number, tier: Tier, correct = true): RoundRecord => ({
 const run = (tiers: Tier[], ended = true): RoundRecord[] =>
   tiers.map((tier, i) => rec(i + 1, tier, !(ended && i === tiers.length - 1)));
 
+// Endless and Ranked have no win target: the plain streak, and a grid that
+// stops at the miss. Friendly scores out of twenty.
+
 describe("the share grid", () => {
   it("draws a tier square per answered round and a cross for the miss", () => {
-    expect(shareGrid(run(["basic", "uncommon", "rare", "rare"]))).toBe("🟨🟦🟪❌");
+    expect(shareGrid(run(["basic", "uncommon", "rare", "rare"]), "endless")).toBe("🟨🟦🟪❌");
   });
 
   it("wraps at ten", () => {
-    const grid = shareGrid(run(Array<Tier>(23).fill("basic")));
+    const grid = shareGrid(run(Array<Tier>(23).fill("basic")), "endless");
     expect(grid.split("\n").map((l) => [...l].length)).toEqual([10, 10, 3]);
   });
 
   it("has no cross when the run wasn't lost", () => {
-    expect(shareGrid(run(["basic", "basic"], false))).toBe("🟨🟨");
+    expect(shareGrid(run(["basic", "basic"], false), "endless")).toBe("🟨🟨");
   });
 
   it("labels the tiers for a screen reader, colour aside", () => {
-    expect(gridLabel(run(["basic", "basic", "rare", "uncommon"]))).toBe(
+    expect(gridLabel(run(["basic", "basic", "rare", "uncommon"]), "endless")).toBe(
       "Your run: 2 basic, 0 uncommon and 1 rare stats right. Out on Highest transfer fee.",
     );
   });
 });
 
-describe("streak titles in text", () => {
-  it("has words for every title in core's table", () => {
-    for (const title of STREAK_TITLES) expect(en[`title.${title.id}`]).toBeTruthy();
+describe("the share grid in Friendly", () => {
+  it("is always two rows of ten, the rounds not reached left empty", () => {
+    const grid = shareGrid(run(["basic", "uncommon", "rare", "rare"]), "friendly");
+    expect(grid.split("\n")).toEqual(["🟨🟦🟪❌" + "⬛".repeat(6), "⬛".repeat(10)]);
   });
 
-  it("gives none below five", () => {
-    expect(titleText(4)).toBe("");
-    expect(titleText(10)).toBe("Starter");
-    expect(titleText(50)).toBe("GOAT");
+  it("fills both rows for a won run", () => {
+    const grid = shareGrid(run(Array<Tier>(20).fill("basic"), false), "friendly");
+    expect(grid.split("\n")).toEqual(["🟨".repeat(10), "🟨".repeat(10)]);
+  });
+
+  it("pads the grid's cells to twenty", () => {
+    const cells = gridCells(run(["basic", "rare"]), "friendly");
+    expect(cells).toHaveLength(20);
+    expect(cells.slice(0, 2)).toEqual([{ kind: "hit", tier: "basic" }, { kind: "miss" }]);
+    expect(cells.slice(2).every((c) => c.kind === "empty")).toBe(true);
+    expect(gridCells(run(["basic", "rare"]), "endless")).toHaveLength(2);
+  });
+
+  it("says how many of the twenty were right", () => {
+    expect(gridLabel(run(["basic", "basic", "rare", "uncommon"]), "friendly")).toBe(
+      "3 of 20 right. Your run: 2 basic, 0 uncommon and 1 rare stats right. Out on Highest transfer fee.",
+    );
+  });
+});
+
+describe("streak titles in text", () => {
+  it("has words for every title in every mode's table", () => {
+    for (const titles of Object.values(STREAK_TITLES)) {
+      for (const title of titles) expect(en[`title.${title.id}`]).toBeTruthy();
+    }
+  });
+
+  it("gives none below five, and the long table's titles in Endless", () => {
+    expect(titleText(4, "endless")).toBe("");
+    expect(titleText(10, "endless")).toBe("Starter");
+    expect(titleText(20, "endless")).toBe("Captain");
+    expect(titleText(50, "endless")).toBe("GOAT");
+  });
+
+  it("gives Friendly its own: Captain at fifteen, Legend for the win", () => {
+    expect(titleText(4, "friendly")).toBe("");
+    expect(titleText(5, "friendly")).toBe("Squad player");
+    expect(titleText(10, "friendly")).toBe("Starter");
+    expect(titleText(15, "friendly")).toBe("Captain");
+    expect(titleText(19, "friendly")).toBe("Captain");
+    expect(titleText(20, "friendly")).toBe("Legend");
   });
 });
 
@@ -69,7 +120,7 @@ describe("the share text", () => {
   const history = run([...Array<Tier>(12).fill("basic"), "rare"]);
 
   it("carries score, title, grid, the ending stat and the challenge link", () => {
-    const text = shareText(12, history, "wrong", link(12), "https://biggerthangame.com");
+    const text = shareText(12, history, "wrong", link(12), "https://biggerthangame.com", "endless");
     const lines = text.split("\n");
     expect(lines[0]).toBe("Bigger Than — Football Legends");
     expect(lines[1]).toBe("12 in a row · Starter");
@@ -83,19 +134,30 @@ describe("the share text", () => {
   });
 
   it("names no player and no value", () => {
-    const text = shareText(
-      3,
-      run(["basic", "basic", "basic", "basic"]),
-      "wrong",
-      link(3),
-      "https://s",
-    );
-    expect(text).not.toMatch(/\bp\d\b/);
-    expect(text.replace(/https?:\S+/, "")).not.toMatch(/\d{2,}/);
+    for (const mode of ["endless", "friendly"] as const) {
+      const text = shareText(
+        3,
+        run(["basic", "basic", "basic", "basic"]),
+        "wrong",
+        link(3),
+        "https://s",
+        mode,
+      );
+      expect(text).not.toMatch(/\bp\d\b/);
+      // "3/20" is the score; anything else with two digits would be a value.
+      expect(text.replace(/https?:\S+/, "").replaceAll("3/20", "")).not.toMatch(/\d{2,}/);
+    }
   });
 
   it("falls back to the site's address without a signed link", () => {
-    const text = shareText(1, run(["basic"], false), "network", null, "https://biggerthangame.com");
+    const text = shareText(
+      1,
+      run(["basic"], false),
+      "network",
+      null,
+      "https://biggerthangame.com",
+      "endless",
+    );
     expect(text.split("\n")).toEqual([
       "Bigger Than — Football Legends",
       "1 correct, then out",
@@ -105,8 +167,62 @@ describe("the share text", () => {
   });
 
   it("says so when a run went the distance", () => {
-    const text = shareText(2, run(["basic", "basic"], false), "deck-exhausted", link(2), "s");
+    const text = shareText(
+      2,
+      run(["basic", "basic"], false),
+      "deck-exhausted",
+      link(2),
+      "s",
+      "endless",
+    );
     expect(text).toContain("Went the distance");
+  });
+});
+
+describe("the share text in Friendly", () => {
+  const site = "https://biggerthangame.com";
+
+  it("scores a lost run out of twenty and asks a friend to beat it", () => {
+    const history = run([...Array<Tier>(12).fill("basic"), "rare"]);
+    const lines = shareText(12, history, "wrong", link(12), site, "friendly").split("\n");
+    expect(lines[1]).toBe("12/20 · Starter");
+    expect(lines[2]).toBe("🟨".repeat(10));
+    expect(lines[3]).toBe("🟨🟨❌" + "⬛".repeat(7));
+    expect(lines[4]).toBe("Ended on: Club trophies");
+    expect(lines[5]).toMatch(/^Can you beat 12\/20\? https:\/\/biggerthangame\.com\/.*&score=12&/);
+    expect(lines).toHaveLength(6);
+  });
+
+  it("gives a won run a trophy, no ending stat, and a challenge to match it", () => {
+    const history = run(Array<Tier>(20).fill("uncommon"), false);
+    const lines = shareText(20, history, "won", link(20), site, "friendly").split("\n");
+    expect(lines[1]).toBe("🏆 20/20 · Legend");
+    expect(lines.slice(2, 4)).toEqual(["🟦".repeat(10), "🟦".repeat(10)]);
+    expect(lines[4]).toMatch(/^Can you match 20\/20\? /);
+    expect(lines).toHaveLength(5);
+  });
+
+  it("gives no trophy for twenty in a mode without a target", () => {
+    const history = run(Array<Tier>(20).fill("basic"), false);
+    const text = shareText(20, history, "deck-exhausted", link(20), site, "endless");
+    expect(text).not.toContain("🏆");
+    expect(text).toContain("20 in a row · Captain");
+  });
+});
+
+describe("challenge text", () => {
+  it("reads Beat n/20 in Friendly and Match 20/20 for a won run", () => {
+    expect(challengeHeading(7, "friendly")).toBe("Beat 7/20");
+    expect(challengeHeading(20, "friendly")).toBe("Match 20/20");
+    expect(challengeHeading(7, "endless")).toBe("Beat 7");
+    expect(challengeIntro(7, "friendly")).toContain("scored 7/20");
+    expect(challengeIntro(20, "friendly")).toContain("Can you match it?");
+  });
+
+  it("frames a won replay of a won run as a match", () => {
+    expect(outcomeText("matched", 20, "friendly")).toBe("You matched 20/20. Perfect.");
+    expect(outcomeText("short", 20, "friendly")).toBe("20/20 to match. Not this time.");
+    expect(outcomeText("beat", 12, "friendly")).toBe("You beat 12/20.");
   });
 });
 
@@ -135,20 +251,54 @@ describe("the share card", () => {
       history: run(["basic", "basic", "basic"]),
       streak: 2,
     });
-    const shared = shareCard(c, "biggerthangame.com");
+    const shared = shareCard(c, "biggerthangame.com", "endless");
     expect(shared.players).toEqual([
       { name: "Anchor Name", display: "91" },
       { name: "Challenger Name", display: "88" },
     ]);
     expect(shared.ended).toEqual({ label: "Ended on", stat: "International caps", tier: "basic" });
     expect(shared.challenge).toBe("");
+    expect(shared.score).toBe("2");
+    expect(shared.won).toBe(false);
   });
 
   it("frames a replay against its target", () => {
     const c = over({ streak: 13, challenge: { status: "accepted", score: 12 } });
-    expect(shareCard(c, "s").challenge).toBe("You beat 12.");
-    expect(shareCard({ ...c, streak: 12 }, "s").challenge).toBe("You matched 12. So close.");
-    expect(shareCard({ ...c, streak: 2 }, "s").challenge).toBe("12 to beat. Not this time.");
+    expect(shareCard(c, "s", "endless").challenge).toBe("You beat 12.");
+    expect(shareCard({ ...c, streak: 12 }, "s", "endless").challenge).toBe(
+      "You matched 12. So close.",
+    );
+    expect(shareCard({ ...c, streak: 2 }, "s", "endless").challenge).toBe(
+      "12 to beat. Not this time.",
+    );
+    expect(shareCard({ ...c, streak: 2 }, "s", "friendly").challenge).toBe(
+      "12/20 to beat. Not this time.",
+    );
+  });
+
+  it("scores Friendly out of twenty, with twenty cells, and marks a win", () => {
+    const lost = shareCard(
+      over({ streak: 7, history: run(Array<Tier>(8).fill("basic")) }),
+      "s",
+      "friendly",
+    );
+    expect(lost.score).toBe("7/20");
+    expect(lost.cells).toHaveLength(20);
+    expect(lost.won).toBe(false);
+
+    const won = shareCard(
+      over({ streak: 20, end: "won", history: run(Array<Tier>(20).fill("basic"), false) }),
+      "s",
+      "friendly",
+    );
+    expect(won).toMatchObject({
+      score: "20/20",
+      won: true,
+      title: "Legend",
+      caption: "a perfect run",
+    });
+    expect(won.ended).toBeNull();
+    expect(won.note).toBe("");
   });
 });
 
@@ -227,7 +377,8 @@ function recorder() {
 describe("drawing the share image", () => {
   const brand = { bigger: "Bigger", than: "Than", middle: " Game — Football ", legends: "Legends" };
   const card = {
-    score: 12,
+    score: "12",
+    won: false,
     caption: "in a row",
     title: "Starter",
     cells: [...Array(12).fill({ kind: "hit", tier: "basic" }), { kind: "miss" }] as ReturnType<
@@ -275,6 +426,35 @@ describe("drawing the share image", () => {
       brand,
     );
     expect(texts).toContain("12");
+  });
+
+  it("draws a won Friendly run: the score out of twenty, a trophy, empty cells edged", () => {
+    const { ctx, texts, calls } = recorder();
+    const strokes: string[] = [];
+    ctx.stroke = () => void strokes.push(String(ctx.strokeStyle));
+    const palette = readPalette(read);
+    drawShareCard(
+      ctx,
+      {
+        ...card,
+        score: "20/20",
+        won: true,
+        title: "Legend",
+        cells: [
+          ...Array(18).fill({ kind: "hit", tier: "basic" }),
+          { kind: "empty" },
+          { kind: "empty" },
+        ],
+        ended: null,
+      },
+      palette,
+      SHARE_LAYOUT,
+      brand,
+    );
+    expect(texts).toContain("20/20");
+    expect(texts).toContain("Legend");
+    expect(calls.has("fillRect")).toBe(true);
+    expect(strokes.filter((s) => s === palette.empty)).toHaveLength(2);
   });
 });
 

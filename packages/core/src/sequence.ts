@@ -26,12 +26,36 @@ export interface RunOptions {
   readonly mode: Mode;
   /** Reference date — age is derived from it, so it must be fixed per run. */
   readonly now: Date;
-  /** Hard cap on rounds generated. Defaults to `MAX_ROUNDS`. */
+  /** Hard cap on rounds generated. Defaults to the mode's `roundCap`. */
   readonly maxRounds?: number;
 }
 
-/** Default cap on a run's length. A run that reaches it has exhausted the deck. */
+/**
+ * The cap on a run's length in the modes with no finish line. A run that
+ * reaches it has exhausted the deck.
+ */
 export const MAX_ROUNDS = 60;
+
+/**
+ * Rounds that win a run, per mode: answer this many correctly and the run ends,
+ * won. Null for a mode with no finish line, which runs until a miss or
+ * `MAX_ROUNDS`. Friendly is a 20-question challenge (DESIGN.md §3).
+ */
+export const WIN_ROUNDS: Readonly<Record<Mode, number | null>> = {
+  friendly: 20,
+  endless: null,
+  ranked: null,
+};
+
+/** Whether `round` is `mode`'s final question: the last round of its win target. */
+export function isFinalRound(round: number, mode: Mode): boolean {
+  return WIN_ROUNDS[mode] === round;
+}
+
+/** The most rounds a run of `mode` can deal: its win target, or `MAX_ROUNDS`. */
+export function roundCap(mode: Mode): number {
+  return WIN_ROUNDS[mode] ?? MAX_ROUNDS;
+}
 
 /**
  * How many rounds the opening stat holds. Fixed, unlike every later stat's
@@ -52,7 +76,7 @@ export const OPENING_DWELL = 2;
  * fingerprint for it.
  */
 export const ICONIC_ROUNDS: Readonly<Record<Mode, number>> = {
-  friendly: 10,
+  friendly: 8,
   endless: 5,
   ranked: 5,
 };
@@ -77,10 +101,11 @@ const OPENING_TIERS: ReadonlySet<Tier> = new Set<Tier>(["basic", "uncommon"]);
 function openingAnchor(
   deck: readonly Player[],
   stat: StatKey,
+  mode: Mode,
   now: Date,
   rng: Rng,
 ): Player | undefined {
-  const band = bandFor(stat, 1);
+  const band = bandFor(stat, 1, mode);
   const dealable = deck.filter(
     (p) =>
       isEligible(p, stat, now) && candidates(p, stat, band, { deck, now, seen: [] }).length > 0,
@@ -90,9 +115,9 @@ function openingAnchor(
 }
 
 export function buildRun(opts: RunOptions): Round[] {
-  const { deck, seed, now } = opts;
-  const maxRounds = opts.maxRounds ?? MAX_ROUNDS;
-  const iconicRounds = ICONIC_ROUNDS[opts.mode];
+  const { deck, seed, mode, now } = opts;
+  const maxRounds = Math.min(opts.maxRounds ?? Infinity, roundCap(mode));
+  const iconicRounds = ICONIC_ROUNDS[mode];
   const rng = createRng(seed);
 
   let stat: StatKey | undefined;
@@ -103,7 +128,7 @@ export function buildRun(opts: RunOptions): Round[] {
   let openers = STAT_KEYS.filter((key) => OPENING_TIERS.has(STATS[key].tier));
   while (openers.length > 0) {
     const candidateStat = weightedPick(openers, rng)!;
-    const pick = openingAnchor(deck, candidateStat, now, rng);
+    const pick = openingAnchor(deck, candidateStat, mode, now, rng);
     if (pick !== undefined) {
       stat = candidateStat;
       anchor = pick;
@@ -126,7 +151,8 @@ export function buildRun(opts: RunOptions): Round[] {
       const viable = STAT_KEYS.filter((key) => {
         if (!isEligible(anchor as Player, key, now)) return false;
         return (
-          candidates(anchor as Player, key, bandFor(key, index), { deck, now, seen }).length > 0
+          candidates(anchor as Player, key, bandFor(key, index, mode), { deck, now, seen }).length >
+          0
         );
       });
       const next = chooseStat({ current: stat, viable, rng });
@@ -138,7 +164,15 @@ export function buildRun(opts: RunOptions): Round[] {
     }
 
     const preferIconic = index <= iconicRounds;
-    const match = selectChallenger(anchor, stat, index, { deck, now, seen }, rng, preferIconic);
+    const match = selectChallenger(
+      anchor,
+      stat,
+      index,
+      mode,
+      { deck, now, seen },
+      rng,
+      preferIconic,
+    );
     if (match === undefined) break;
 
     rounds.push({

@@ -2,10 +2,14 @@
  * Streak titles: a name for a run that reached a milestone, shown on the
  * game-over panel and in what the player shares.
  *
- * One table, easy to retune. Each entry is the lowest streak that earns the
- * title; below the first there is none. The words themselves are
- * player-facing text and live in the web app's language files, keyed by `id`.
+ * One table per mode, easy to retune. Each entry is the lowest streak that
+ * earns the title; below the first there is none. Friendly's run to twenty
+ * (`WIN_ROUNDS`) has its own, ending on the win; the open-ended modes keep the
+ * long one. The words themselves are player-facing text and live in the web
+ * app's language files, keyed by `id`.
  */
+
+import type { Mode } from "./types.js";
 
 export type StreakTitleId = "squad" | "starter" | "captain" | "legend" | "goat";
 
@@ -15,8 +19,8 @@ export interface StreakTitle {
   readonly min: number;
 }
 
-/** Ascending by `min`. */
-export const STREAK_TITLES: readonly StreakTitle[] = [
+/** Endless and Ranked: no finish line. Ascending by `min`. */
+const LONG_TITLES: readonly StreakTitle[] = [
   { id: "squad", min: 5 },
   { id: "starter", min: 10 },
   { id: "captain", min: 20 },
@@ -24,10 +28,25 @@ export const STREAK_TITLES: readonly StreakTitle[] = [
   { id: "goat", min: 45 },
 ];
 
-/** The highest title `streak` has earned, or undefined below the first. */
-export function streakTitle(streak: number): StreakTitle | undefined {
+/** Friendly: twenty questions, Legend for the win. Ascending by `min`. */
+const FRIENDLY_TITLES: readonly StreakTitle[] = [
+  { id: "squad", min: 5 },
+  { id: "starter", min: 10 },
+  { id: "captain", min: 15 },
+  { id: "legend", min: 20 },
+];
+
+/** The titles per mode, each table ascending by `min`. DESIGN.md §13. */
+export const STREAK_TITLES: Readonly<Record<Mode, readonly StreakTitle[]>> = {
+  friendly: FRIENDLY_TITLES,
+  endless: LONG_TITLES,
+  ranked: LONG_TITLES,
+};
+
+/** The highest title `streak` has earned in `mode`, or undefined below the first. */
+export function streakTitle(streak: number, mode: Mode): StreakTitle | undefined {
   let earned: StreakTitle | undefined;
-  for (const title of STREAK_TITLES) if (streak >= title.min) earned = title;
+  for (const title of STREAK_TITLES[mode]) if (streak >= title.min) earned = title;
   return earned;
 }
 

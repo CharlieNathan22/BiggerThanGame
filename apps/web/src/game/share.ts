@@ -6,13 +6,19 @@
  * correct }` per answered round — so it can't carry a value or an answer. The
  * image adds the final round's two players and their revealed figures, which
  * the player has just seen. Pure, so the wording and edge cases are tested.
+ *
+ * Everything takes the mode. A mode with a win target (`WIN_ROUNDS`: Friendly's
+ * twenty) scores out of it ("7/20"), lays the grid out as every round of the
+ * challenge — two rows of ten, the rounds not reached left empty — and gives a
+ * won run a trophy. The other modes keep the plain streak.
  */
 
-import { challengeOutcome, streakTitle } from "@bt/core";
-import type { ChallengeLink, ChallengeOutcome, Tier } from "@bt/core";
+import { WIN_ROUNDS, challengeOutcome, streakTitle } from "@bt/core";
+import type { ChallengeLink, ChallengeOutcome, Mode, Tier } from "@bt/core";
 import { statLabel, t } from "../i18n";
 import { challengeUrl } from "./challenge";
 import type { EndReason, GameState, RoundRecord } from "./machine";
+import { overCaption, scoreFigure } from "./view";
 
 /** One square per answered round, in its tier's colour. */
 export const TIER_SQUARE: Readonly<Record<Tier, string>> = {
@@ -24,20 +30,40 @@ export const TIER_SQUARE: Readonly<Record<Tier, string>> = {
 /** The round that ended the run. */
 export const MISS_SQUARE = "❌";
 
+/** A round of the challenge the run didn't reach. */
+export const EMPTY_SQUARE = "⬛";
+
+/** On the score line of a won run. */
+export const TROPHY = "🏆";
+
 /** Squares per line, so a long run doesn't become one unreadable line. */
 export const GRID_COLUMNS = 10;
 
-/** A grid square: the round's tier, or the miss that ended the run. */
-export type GridCell = { readonly kind: "hit"; readonly tier: Tier } | { readonly kind: "miss" };
+/** A grid square: the round's tier, the miss that ended the run, or a round not reached. */
+export type GridCell =
+  | { readonly kind: "hit"; readonly tier: Tier }
+  | { readonly kind: "miss" }
+  | { readonly kind: "empty" };
 
-export function gridCells(history: readonly RoundRecord[]): GridCell[] {
-  return history.map((r) => (r.correct ? { kind: "hit", tier: r.tier } : { kind: "miss" }));
+/** One cell per answered round; in a mode with a win target, padded to it with empty cells. */
+export function gridCells(history: readonly RoundRecord[], mode: Mode): GridCell[] {
+  const cells: GridCell[] = history.map((r) =>
+    r.correct ? { kind: "hit", tier: r.tier } : { kind: "miss" },
+  );
+  const target = WIN_ROUNDS[mode] ?? 0;
+  while (cells.length < target) cells.push({ kind: "empty" });
+  return cells;
+}
+
+/** Whether the run was won: every round of its mode's target answered. */
+export function isWon(end: EndReason | null): boolean {
+  return end === "won";
 }
 
 /** The grid as text, `GRID_COLUMNS` squares to a line. */
-export function shareGrid(history: readonly RoundRecord[]): string {
-  const squares = gridCells(history).map((c) =>
-    c.kind === "miss" ? MISS_SQUARE : TIER_SQUARE[c.tier],
+export function shareGrid(history: readonly RoundRecord[], mode: Mode): string {
+  const squares = gridCells(history, mode).map((c) =>
+    c.kind === "miss" ? MISS_SQUARE : c.kind === "empty" ? EMPTY_SQUARE : TIER_SQUARE[c.tier],
   );
   const lines: string[] = [];
   for (let i = 0; i < squares.length; i += GRID_COLUMNS) {
@@ -50,12 +76,18 @@ export function shareGrid(history: readonly RoundRecord[]): string {
  * The grid for a screen reader: how many rounds of each tier, and what ended
  * it. Colour never carries the tier alone (DESIGN.md §6).
  */
-export function gridLabel(history: readonly RoundRecord[]): string {
+export function gridLabel(history: readonly RoundRecord[], mode: Mode): string {
   const counts: Record<Tier, number> = { basic: 0, uncommon: 0, rare: 0 };
   for (const r of history) if (r.correct) counts[r.tier] += 1;
   const miss = history.find((r) => !r.correct);
-  const label = t("grid.label", { ...counts, rounds: history.length });
-  return miss === undefined ? label : `${label} ${t("grid.miss", { stat: statLabel(miss.stat) })}`;
+  const target = WIN_ROUNDS[mode];
+  const right = counts.basic + counts.uncommon + counts.rare;
+  const parts = [
+    ...(target === null ? [] : [t("grid.of", { score: right, target })]),
+    t("grid.label", { ...counts, rounds: history.length }),
+    ...(miss === undefined ? [] : [t("grid.miss", { stat: statLabel(miss.stat) })]),
+  ];
+  return parts.join(" ");
 }
 
 /** What ended the run, as the share says it. */
@@ -66,20 +98,57 @@ export function endedText(history: readonly RoundRecord[], end: EndReason | null
   return "";
 }
 
-/** "12 in a row", "1 correct, then out". */
-export function scoreText(score: number): string {
+/**
+ * "12 in a row", "1 correct, then out"; in a mode with a win target, "7/20",
+ * and "🏆 20/20" for a win.
+ */
+export function scoreText(score: number, mode: Mode, end: EndReason | null = null): string {
+  if (WIN_ROUNDS[mode] !== null) {
+    const figure = scoreFigure(score, mode);
+    return isWon(end) ? `${TROPHY} ${figure}` : figure;
+  }
   return score === 1 ? t("share.score.one", { score }) : t("share.score.other", { score });
 }
 
 /** The streak title's words, or "" below the first. */
-export function titleText(score: number): string {
-  const title = streakTitle(score);
+export function titleText(score: number, mode: Mode): string {
+  const title = streakTitle(score, mode);
   return title === undefined ? "" : t(`title.${title.id}`);
 }
 
+/**
+ * A challenge to a won run's score can't be beaten, only matched: the score is
+ * the mode's win target.
+ */
+export function isPerfectTarget(target: number, mode: Mode): boolean {
+  return WIN_ROUNDS[mode] === target;
+}
+
+/** "Beat 7/20", or "Match 20/20" when the challenge is a won run. */
+export function challengeHeading(target: number, mode: Mode): string {
+  const score = scoreFigure(target, mode);
+  return isPerfectTarget(target, mode)
+    ? t("challenge.headingPerfect", { score })
+    : t("challenge.heading", { score });
+}
+
+/** The start panel's line under the heading, for a challenge. */
+export function challengeIntro(target: number, mode: Mode): string {
+  const score = scoreFigure(target, mode);
+  return isPerfectTarget(target, mode)
+    ? t("challenge.introPerfect", { score })
+    : t("challenge.intro", { score });
+}
+
 /** How a replay went against the score it was challenged to beat. */
-export function outcomeText(outcome: ChallengeOutcome, target: number): string {
-  return t(`challenge.${outcome}`, { score: target });
+export function outcomeText(outcome: ChallengeOutcome, target: number, mode: Mode): string {
+  const score = scoreFigure(target, mode);
+  if (isPerfectTarget(target, mode)) {
+    return outcome === "matched"
+      ? t("challenge.matchedPerfect", { score })
+      : t("challenge.shortPerfect", { score });
+  }
+  return t(`challenge.${outcome}`, { score });
 }
 
 /** The score a replayed run had to beat, and how it went; null for any other run. */
@@ -92,14 +161,18 @@ export function challengeResult(
 }
 
 /**
- * The share text:
+ * The share text, in Friendly:
  *
  *   Bigger Than — Football Legends
- *   12 in a row · Starter
+ *   12/20 · Starter
  *   🟨🟨🟦🟨🟪🟨🟨🟨🟦🟨
- *   🟨🟨❌
+ *   🟨🟨❌⬛⬛⬛⬛⬛⬛⬛
  *   Ended on: Club trophies
- *   Can you beat 12? https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=…
+ *   Can you beat 12/20? https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=…
+ *
+ * A won run's score line is "🏆 20/20 · Legend", with no "Ended on", and its
+ * challenge is to match it. In a mode without a win target the score is "12 in
+ * a row" and the grid stops at the miss.
  *
  * No player names, no values, no answers. Without a signed link — a run
  * banked after the connection dropped — it ends with the site's address.
@@ -110,16 +183,20 @@ export function shareText(
   end: EndReason | null,
   link: ChallengeLink | null,
   site: string,
+  mode: Mode,
 ): string {
-  const title = titleText(score);
+  const title = titleText(score, mode);
+  const line = scoreText(score, mode, end);
+  const figure = scoreFigure(score, mode);
+  const challenge = isPerfectTarget(score, mode) ? "share.challengePerfect" : "share.challenge";
   const lines = [
     t("share.heading"),
-    title === "" ? scoreText(score) : `${scoreText(score)} · ${title}`,
-    shareGrid(history),
+    title === "" ? line : `${line} · ${title}`,
+    shareGrid(history, mode),
     endedText(history, end),
-    link === null ? site : t("share.challenge", { score, url: challengeUrl(site, link) }),
+    link === null ? site : t(challenge, { score: figure, url: challengeUrl(site, link) }),
   ];
-  return lines.filter((line) => line !== "").join("\n");
+  return lines.filter((l) => l !== "").join("\n");
 }
 
 /** A card's name and the figure the player saw for it. */
@@ -130,7 +207,10 @@ export interface SharedFigure {
 
 /** Everything the share image shows. Drawn by share-image.ts. */
 export interface ShareCard {
-  readonly score: number;
+  /** As the mode shows it: "12", or "7/20". */
+  readonly score: string;
+  /** Every round of the challenge answered: a trophy over the score. */
+  readonly won: boolean;
   readonly caption: string;
   readonly title: string;
   readonly cells: readonly GridCell[];
@@ -145,15 +225,16 @@ export interface ShareCard {
 }
 
 /** The share image's content, from a finished run. */
-export function shareCard(state: GameState, siteLabel: string): ShareCard {
+export function shareCard(state: GameState, siteLabel: string, mode: Mode): ShareCard {
   const { round, reveal, history, streak, end } = state;
   const miss = history.find((r) => !r.correct);
   const result = challengeResult(state);
   return {
-    score: streak,
-    caption: streak === 1 ? t("over.caption.one") : t("over.caption.other"),
-    title: titleText(streak),
-    cells: gridCells(history),
+    score: scoreFigure(streak, mode),
+    won: isWon(end),
+    caption: overCaption(state),
+    title: titleText(streak, mode),
+    cells: gridCells(history, mode),
     ended:
       miss === undefined
         ? null
@@ -166,7 +247,7 @@ export function shareCard(state: GameState, siteLabel: string): ShareCard {
             { name: round.challenger.name, display: reveal.display },
           ]
         : null,
-    challenge: result === null ? "" : outcomeText(result.outcome, result.target),
+    challenge: result === null ? "" : outcomeText(result.outcome, result.target, mode),
     site: siteLabel,
   };
 }

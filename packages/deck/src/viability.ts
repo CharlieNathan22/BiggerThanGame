@@ -8,6 +8,7 @@
  */
 
 import {
+  BAND_SCHEDULES,
   ICONIC_ROUNDS,
   STATS,
   STAT_KEYS,
@@ -16,27 +17,81 @@ import {
   isEligible,
   pairFits,
   percentiles,
+  WIN_ROUNDS,
 } from "@bt/core";
 import type { Band, Mode, Player, StatKey } from "@bt/core";
 
+/** Names for the long schedule's bands, in order. */
+const BAND_LABELS = ["opening", "early", "middle", "late", "hard", "knife edge"] as const;
+
+/** The rounds of `mode`'s schedule that use `band`, e.g. `"1–8"`, or "" if none do. */
+export function roundsWith(mode: Mode, band: Band): string {
+  let from = 1;
+  const spans: string[] = [];
+  for (const row of BAND_SCHEDULES[mode]) {
+    if (JSON.stringify(row.band) === JSON.stringify(band)) {
+      const to = Math.min(row.upTo, WIN_ROUNDS[mode] ?? Infinity);
+      spans.push(to === Infinity ? `${from}+` : from === to ? `${from}` : `${from}–${to}`);
+    }
+    from = row.upTo + 1;
+  }
+  return spans.join(", ");
+}
+
+/** One band the report counts pairs for. */
+export interface ReportBand {
+  readonly label: string;
+  /** Where the band falls, in each schedule that uses it. */
+  readonly rounds: string;
+  /** A mode and round that use it: counts use `bandFor(stat, round, mode)`. */
+  readonly mode: Mode;
+  readonly round: number;
+  readonly band: Band;
+}
+
+const same = (a: Band, b: Band): boolean => JSON.stringify(a) === JSON.stringify(b);
+
 /**
- * The distinct bands the ramp uses, with a label for the report. `round` is
- * the first round of each: counts use `bandFor(stat, round)`, which adds the
- * volatility floor for Instagram — the same band the engine applies.
+ * The distinct bands the ramp uses, with a label for the report: the long
+ * schedule's, some of which Friendly reuses over fewer rounds, then any band
+ * only Friendly uses. Counts use
+ * `bandFor(stat, round, mode)`, which adds the volatility floor for Instagram —
+ * the same band the engine applies. `rounds` says where each band falls in
+ * both schedules.
  */
-export const REPORT_BANDS: ReadonlyArray<{
-  label: string;
-  rounds: string;
-  round: number;
-  band: Band;
-}> = [
-  { label: "opening", rounds: "1–10", round: 1, band: bandForRound(1) },
-  { label: "early", rounds: "11–18", round: 11, band: bandForRound(11) },
-  { label: "middle", rounds: "19–26", round: 19, band: bandForRound(19) },
-  { label: "late", rounds: "27–34", round: 27, band: bandForRound(27) },
-  { label: "hard", rounds: "35–42", round: 35, band: bandForRound(35) },
-  { label: "knife edge", rounds: "43+", round: 43, band: bandForRound(43) },
-];
+export const REPORT_BANDS: readonly ReportBand[] = (() => {
+  const long = BAND_SCHEDULES.endless.map((row, i, rows): ReportBand => {
+    const friendly = roundsWith("friendly", row.band);
+    const endless = roundsWith("endless", row.band);
+    return {
+      label: BAND_LABELS[i] ?? `band ${i + 1}`,
+      rounds: friendly === "" ? endless : `${endless}; Friendly ${friendly}`,
+      mode: "endless",
+      round: i === 0 ? 1 : rows[i - 1]!.upTo + 1,
+      band: row.band,
+    };
+  });
+  const own: ReportBand[] = [];
+  BAND_SCHEDULES.friendly.forEach((row, i, rows) => {
+    if (long.some((b) => same(b.band, row.band)) || own.some((b) => same(b.band, row.band))) return;
+    const rounds = roundsWith("friendly", row.band);
+    own.push({
+      label: `Friendly ${rounds}`,
+      rounds: `Friendly ${rounds}`,
+      mode: "friendly",
+      round: i === 0 ? 1 : rows[i - 1]!.upTo + 1,
+      band: row.band,
+    });
+  });
+  return [...long, ...own];
+})();
+
+/** Bands in `mode`'s schedule that the report doesn't cover. Always empty; a test holds it there. */
+export function uncoveredBands(mode: Mode): Band[] {
+  return BAND_SCHEDULES[mode]
+    .map((row) => row.band)
+    .filter((band) => !REPORT_BANDS.some((b) => same(b.band, band)));
+}
 
 export interface StatViability {
   readonly stat: StatKey;
@@ -60,7 +115,10 @@ function valuesFor(players: readonly Player[], key: StatKey, now: Date): Array<[
 export function statViability(players: readonly Player[], key: StatKey, now: Date): StatViability {
   const values = valuesFor(players, key, now);
   const table = percentiles(players, key, now);
-  const bands = REPORT_BANDS.map((b) => ({ label: b.label, band: bandFor(key, b.round) }));
+  const bands = REPORT_BANDS.map((b) => ({
+    label: b.label,
+    band: bandFor(key, b.round, b.mode),
+  }));
   const pairsByBand: Record<string, number> = {};
   for (const b of REPORT_BANDS) pairsByBand[b.label] = 0;
 
@@ -166,7 +224,8 @@ export function iconicViability(
   key: StatKey,
   now: Date,
 ): IconicViability {
-  const band = bandFor(key, 1);
+  // Every mode opens on the same band.
+  const band = bandFor(key, 1, "endless");
   const table = percentiles(players, key, now);
   const values = valuesFor(players, key, now);
   const iconicIds = new Set(players.filter((p) => p.iconic === true).map((p) => p.id));
@@ -199,6 +258,20 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
   lines.push("exactly as the engine deals them. A stat showing 0 at a band cannot be dealt there");
   lines.push("and will force relaxation every time the wheel picks it.");
   lines.push("");
+
+  lines.push("| Band | Rank distance | Rounds |");
+  lines.push("|---|---|---|");
+  for (const b of REPORT_BANDS) {
+    const range = `${b.band.floor}–${b.band.ceiling ?? "no ceiling"}`;
+    lines.push(`| ${b.label} | ${range} | ${b.rounds} |`);
+  }
+  lines.push("");
+  for (const mode of Object.keys(BAND_SCHEDULES) as Mode[]) {
+    for (const band of uncoveredBands(mode)) {
+      lines.push(`> ${mode}'s band ${JSON.stringify(band)} is not covered by this report.`);
+      lines.push("");
+    }
+  }
 
   const header = [
     "Stat",
@@ -256,9 +329,9 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
       `falls back to the whole deck; \`simulation.md\` reports how often that happens in play.`,
   );
   lines.push("");
-  const opening = bandForRound(1);
+  const opening = bandForRound(1, "endless");
   const beyond = (Object.entries(ICONIC_ROUNDS) as Array<[Mode, number]>).filter(
-    ([, n]) => JSON.stringify(bandForRound(n)) !== JSON.stringify(opening),
+    ([mode, n]) => JSON.stringify(bandForRound(n, mode)) !== JSON.stringify(opening),
   );
   for (const [mode] of beyond) {
     lines.push(

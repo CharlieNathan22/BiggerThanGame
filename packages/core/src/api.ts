@@ -18,8 +18,11 @@ import type { Position, StatKey, Tier } from "./types.js";
 
 export type Guess = "higher" | "lower";
 
-/** Why a run stopped. A wrong guess, or no further round could be dealt. */
-export type RunEnd = "wrong" | "deck-exhausted";
+/**
+ * Why a run stopped: a wrong guess; no further round could be dealt; or, in a
+ * mode with a finish line (`WIN_ROUNDS`), its last round answered correctly.
+ */
+export type RunEnd = "wrong" | "deck-exhausted" | "won";
 
 /** Starts a run. The server mints the run id; the client never picks a seed. */
 export interface StartRequest {

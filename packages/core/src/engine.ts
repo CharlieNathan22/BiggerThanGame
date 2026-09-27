@@ -11,7 +11,7 @@
 import { isEligible } from "./eligibility.js";
 import { bandFor, pairFits, percentiles, relaxations } from "./ramp.js";
 import { STATS } from "./stats.js";
-import type { Band, Player, Relaxation, StatKey } from "./types.js";
+import type { Band, Mode, Player, Relaxation, StatKey } from "./types.js";
 import type { Rng } from "./prng.js";
 
 /** How many recent players are excluded from selection. */
@@ -84,7 +84,8 @@ export function candidates(
 }
 
 /**
- * Pick a challenger, widening the band rather than ever failing to deal.
+ * Pick a challenger, widening the band rather than ever failing to deal. The
+ * requested band is the round's in `mode`'s schedule (`BAND_SCHEDULES`).
  *
  * Order: when `preferIconic` is set, iconic players only at the requested band;
  * then the whole deck at the requested band; then each relaxation in turn; then
@@ -97,11 +98,12 @@ export function selectChallenger(
   anchor: Player,
   stat: StatKey,
   round: number,
+  mode: Mode,
   ctx: MatchContext,
   rng: Rng,
   preferIconic = false,
 ): Match | undefined {
-  const target = bandFor(stat, round);
+  const target = bandFor(stat, round, mode);
   const ladder = relaxations(target);
 
   if (preferIconic) {

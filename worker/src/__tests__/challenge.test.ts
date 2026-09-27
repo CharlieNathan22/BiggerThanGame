@@ -92,11 +92,11 @@ describe("the link at a run's end", () => {
     expect(end.challenge.runId).toBe(await signedRunId("2026-09-19", uuidFrom(40)));
   });
 
-  it("scores a perfect run that exhausts the deck at every round", async () => {
+  it("scores a won run at twenty", async () => {
     const { answers } = await walkRun(context());
     const last = answers.at(-1) as EndResponse;
-    expect(last.end).toBe("deck-exhausted");
-    expect(last.challenge.score).toBe(last.reveal.round);
+    expect(last.end).toBe("won");
+    expect(last.challenge.score).toBe(20);
   });
 });
 
@@ -171,6 +171,30 @@ describe("replaying a challenge", () => {
   });
 });
 
+describe("replaying a won run", () => {
+  it("accepts a link at twenty, and the replay can be won too", async () => {
+    const original = context({ uuid: () => uuidFrom(46) });
+    const won = (await walkRun(original)).answers.at(-1) as EndResponse;
+    expect(won.challenge.score).toBe(20);
+
+    const friend = context({ uuid: () => uuidFrom(903) });
+    const replay = await startChallenge(friend, won.challenge);
+    expect(replay.challenge).toEqual({ accepted: true, score: 20 });
+    let round = replay.round;
+    let res = await answer(friend, replay.runId, 1, correctGuess(SAMPLE_DECK, replay.runId, round));
+    while ("next" in res) {
+      round = res.next;
+      res = await answer(
+        friend,
+        replay.runId,
+        round.index,
+        correctGuess(SAMPLE_DECK, replay.runId, round),
+      );
+    }
+    expect(res).toMatchObject({ end: "won", challenge: { runId: won.challenge.runId, score: 20 } });
+  });
+});
+
 describe("refusing a challenge", () => {
   const fresh = (res: StartResponse) => {
     expect(res.runId).toMatch(/^20260919-[0-9a-f-]{36}\.[A-Za-z0-9_-]{22}$/);
@@ -188,7 +212,7 @@ describe("refusing a challenge", () => {
 
   it("refuses an edited score", async () => {
     const link = (await playTo(context(), 2)).challenge;
-    for (const score of [3, 1, 60]) {
+    for (const score of [3, 1, 20]) {
       const res = await startChallenge(context(), { ...link, score });
       expect(res.challenge).toEqual({ accepted: false, reason: "invalid" });
       fresh(res);
@@ -235,7 +259,7 @@ describe("refusing a challenge", () => {
     ["a score as a string", { score: "2" }],
     ["a fractional score", { score: 2.5 }],
     ["a negative score", { score: -1 }],
-    ["a score past the cap", { score: 61 }],
+    ["a score past Friendly's twenty", { score: 21 }],
     ["a missing sig", { sig: undefined }],
     ["a numeric challenge", { challenge: 20260919 }],
     ["an overlong sig", { sig: "A".repeat(200) }],

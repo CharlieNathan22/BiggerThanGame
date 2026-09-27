@@ -12,9 +12,14 @@ interface Props {
   canonical?: string | false;
   /** The Legends page's extra light over the background (Base.astro). */
   legendsLights?: boolean;
+  /**
+   * Text that selects as usual: the reading pages (About, Credits). Elsewhere
+   * the page is a front door, not a document, so nothing on it selects.
+   */
+  selectable?: boolean;
 }
 
-const { title, description, canonical, legendsLights = false } = Astro.props;
+const { title, description, canonical, legendsLights = false, selectable = false } = Astro.props;
 const path = servedPath(Astro.url.pathname);
 ---
 
@@ -25,7 +30,7 @@ const path = servedPath(Astro.url.pathname);
   {...(canonical !== undefined ? { canonical } : {})}
 >
   <TitleBar legends={isLegendsPath(path)} current={path} />
-  <main class="prose">
+  <main class:list={["prose", { fixed: !selectable }]}>
     <slot />
   </main>
   <Footer />
@@ -52,3 +57,12 @@ const path = servedPath(Astro.url.pathname);
     })();
   </script>
 </Base>
+
+<style>
+  /* Nothing selects on a long press or a double-click, and a tap doesn't flash. */
+  .fixed {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+</style>

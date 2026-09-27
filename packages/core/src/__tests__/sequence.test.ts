@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { ICONIC_ROUNDS, OPENING_DWELL, buildRun, roundAt } from "../sequence.js";
+import {
+  ICONIC_ROUNDS,
+  MAX_ROUNDS,
+  OPENING_DWELL,
+  WIN_ROUNDS,
+  buildRun,
+  isFinalRound,
+  roundAt,
+  roundCap,
+} from "../sequence.js";
 import { STATS, STAT_KEYS } from "../stats.js";
 import { SEEN_DEPTH, candidates, valueOf } from "../engine.js";
 import { isEligible } from "../eligibility.js";
-import { bandFor } from "../ramp.js";
+import { BAND_SCHEDULES, bandFor } from "../ramp.js";
 import { NOW, fixtureDeck } from "../__fixtures__/deck.js";
 import type { Mode, Player } from "../types.js";
 
@@ -195,8 +204,13 @@ describe("iconic preference", () => {
     expect(share(long!)).toBeGreaterThan(share(short!));
   });
 
-  it("deals identical rounds across modes until the shorter window ends", () => {
-    const shared = Math.min(...MODES.map((m) => ICONIC_ROUNDS[m]));
+  it("deals identical rounds across modes until the shorter window or first band ends", () => {
+    // Every schedule opens on the same band, so the modes agree until one
+    // stops preferring iconic players or moves on to its second band.
+    const shared = Math.min(
+      ...MODES.map((m) => ICONIC_ROUNDS[m]),
+      ...MODES.map((m) => BAND_SCHEDULES[m][0]!.upTo),
+    );
     for (const seed of seeds) {
       const byMode = MODES.map((m) =>
         ladderRun(seed, m)
@@ -214,6 +228,51 @@ describe("iconic preference", () => {
         JSON.stringify(ladderRun(seed, "ranked").map((r) => r.challenger.id)),
     );
     expect(differs).toBe(true);
+  });
+});
+
+describe("a run's length and bands, per mode", () => {
+  it("knows Friendly's final question, and that the other modes have none", () => {
+    expect(isFinalRound(20, "friendly")).toBe(true);
+    expect(isFinalRound(19, "friendly")).toBe(false);
+    expect(isFinalRound(20, "endless")).toBe(false);
+    expect(isFinalRound(MAX_ROUNDS, "ranked")).toBe(false);
+  });
+
+  it("caps Friendly at its win target and the other modes at MAX_ROUNDS", () => {
+    expect(WIN_ROUNDS).toEqual({ friendly: 20, endless: null, ranked: null });
+    expect(roundCap("friendly")).toBe(20);
+    expect(roundCap("endless")).toBe(MAX_ROUNDS);
+    expect(roundCap("ranked")).toBe(MAX_ROUNDS);
+  });
+
+  it("never deals Friendly a round past twenty, whatever maxRounds asks for", () => {
+    for (let i = 0; i < 20; i++) {
+      expect(run(`cap-${i}`, 60, "friendly").length).toBeLessThanOrEqual(20);
+      expect(
+        buildRun({ deck: fixtureDeck, seed: `cap-${i}`, mode: "friendly", now: NOW }).length,
+      ).toBeLessThanOrEqual(20);
+    }
+    expect(
+      roundAt({ deck: fixtureDeck, seed: "cap", mode: "friendly", now: NOW }, 21),
+    ).toBeUndefined();
+  });
+
+  it("still lets a shorter maxRounds stop a run early", () => {
+    expect(run("short", 3, "friendly")).toHaveLength(3);
+  });
+
+  it("deals each mode's rounds from its own schedule", () => {
+    for (const mode of MODES) {
+      for (let i = 0; i < 30; i++) {
+        for (const r of run(`bands-${i}`, 40, mode)) {
+          // A round met outright used exactly the band its mode asks for.
+          if (r.relaxation === "none" || r.relaxation === "iconic") {
+            expect(r.band).toEqual(bandFor(r.stat, r.index, mode));
+          }
+        }
+      }
+    }
   });
 });
 
@@ -252,7 +311,7 @@ describe("the wheel in a run", () => {
           (key) =>
             STATS[key].tier !== "rare" &&
             isEligible(cur.anchor, key, NOW) &&
-            candidates(cur.anchor, key, bandFor(key, cur.index), {
+            candidates(cur.anchor, key, bandFor(key, cur.index, "ranked"), {
               deck: fixtureDeck,
               now: NOW,
               seen,

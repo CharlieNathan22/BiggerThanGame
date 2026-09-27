@@ -3,9 +3,72 @@
  * and the edge cases are under test rather than buried in markup.
  */
 
-import type { StatKey } from "@bt/core";
+import { WIN_ROUNDS, isFinalRound } from "@bt/core";
+import type { Mode, StatKey, Tier } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
-import type { GameState, Hitch } from "./machine";
+import type { GameState, Hitch, RoundRecord } from "./machine";
+
+/**
+ * A score as the mode shows it: out of the win target where the mode has one
+ * (`7/20` in Friendly), else the plain number.
+ */
+export function scoreFigure(score: number, mode: Mode): string {
+  const target = WIN_ROUNDS[mode];
+  return target === null ? String(score) : t("score.of", { score, target });
+}
+
+/**
+ * "Question 7 of 20": the round on screen, in a mode with a win target, and
+ * "Final question — question 20 of 20" on its last. Empty otherwise.
+ */
+export function progressText(state: GameState, mode: Mode): string {
+  const target = WIN_ROUNDS[mode];
+  const round = state.round?.index ?? 1;
+  if (target === null) return "";
+  return isFinalRound(round, mode)
+    ? t("progress.final", { round, target })
+    : t("progress.question", { round, target });
+}
+
+/**
+ * The final question is on screen: the last round of the mode's win target,
+ * dealt and not yet over. The plaque and the track mark it.
+ */
+export function isFinalQuestion(state: GameState, mode: Mode): boolean {
+  if (state.round === null || state.phase === "idle" || state.phase === "over") return false;
+  return isFinalRound(state.round.index, mode);
+}
+
+/**
+ * One segment of the progress track: an answered round in its tier's colour,
+ * the miss, or a round still to come. `current` marks the round on screen.
+ */
+export interface TrackStep {
+  readonly kind: "hit" | "miss" | "todo";
+  readonly tier: Tier | null;
+  readonly current: boolean;
+  /** The final question's segment, the last: marked in gold. */
+  readonly final: boolean;
+}
+
+/**
+ * The progress track, one step per round of the mode's target — none for a
+ * mode without one. Built from the round history, so it holds nothing the
+ * player hasn't seen.
+ */
+export function trackSteps(state: GameState, mode: Mode): TrackStep[] {
+  const target = WIN_ROUNDS[mode];
+  if (target === null) return [];
+  const byIndex = new Map<number, RoundRecord>(state.history.map((r) => [r.index, r]));
+  const onScreen = state.phase === "idle" || state.phase === "over" ? null : state.round?.index;
+  return Array.from({ length: target }, (_, i) => {
+    const record = byIndex.get(i + 1);
+    const current = onScreen === i + 1;
+    const final = i + 1 === target;
+    if (record === undefined) return { kind: "todo", tier: null, current, final };
+    return { kind: record.correct ? "hit" : "miss", tier: record.tier, current, final };
+  });
+}
 
 /** The monogram: the first character of the name, whole even if it's accented or astral. */
 export function initial(name: string): string {
@@ -44,25 +107,33 @@ export function reelStrip(
   return strip;
 }
 
-/** What the screen reader hears. Empty when nothing new has happened. */
-export function announcement(state: GameState): string {
+/**
+ * What the screen reader hears. Empty when nothing new has happened. In a mode
+ * with a win target each question starts with where the run is ("Question 7
+ * of 20"), the text equivalent of the progress track.
+ */
+export function announcement(state: GameState, mode: Mode): string {
   const { round, reveal } = state;
   if (round === null) return "";
+  const target = WIN_ROUNDS[mode];
   if (state.phase === "awaiting") {
     // Say so when the stat has just changed: the plaque is the question.
     const key = round.stat.statChanged ? "live.statChanged" : "live.question";
-    return t(key, {
+    const question = t(key, {
       stat: statLabel(round.stat.key),
       anchor: round.anchor.name,
       value: round.anchor.display,
       challenger: round.challenger.name,
     });
+    return target === null ? question : `${progressText(state, mode)}. ${question}`;
   }
   if ((state.phase === "verdict" || state.phase === "over") && reveal !== null) {
     const params = { challenger: round.challenger.name, value: reveal.display };
-    return reveal.correct
+    if (!reveal.correct) return t("live.wrong", params);
+    if (state.end === "won") return t("live.won", { ...params, score: state.streak });
+    return target === null
       ? t("live.correct", { ...params, streak: state.streak })
-      : t("live.wrong", params);
+      : t("live.correctOf", { ...params, score: state.streak, target });
   }
   return "";
 }
@@ -85,7 +156,8 @@ export function hitchText(hitch: Hitch | null): string {
   return hitch.kind === "slowDown" ? t("hitch.slowDown") : t("hitch.reconnecting");
 }
 
-/** "in a row", or "correct, then out" for a streak of one. */
-export function overCaption(streak: number): string {
-  return streak === 1 ? t("over.caption.one") : t("over.caption.other");
+/** "in a row", "correct, then out" for a streak of one, or "a perfect run" for a win. */
+export function overCaption(state: Pick<GameState, "streak" | "end">): string {
+  if (state.end === "won") return t("over.caption.won");
+  return state.streak === 1 ? t("over.caption.one") : t("over.caption.other");
 }

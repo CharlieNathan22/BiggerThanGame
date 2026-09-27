@@ -6,6 +6,9 @@
  * §8). The server decides correctness and releases the challenger's figure only
  * after the guess.
  *
+ * Friendly is a 20-question challenge (`WIN_ROUNDS`): answering the last round
+ * correctly ends the run, won.
+ *
  * A start may carry a challenge link. When it checks out, the run is a replay
  * of the challenged one — same seed, same date, so the same rounds — under a
  * replay id of its own (run-id.ts). Every end carries a signed link for the
@@ -15,7 +18,7 @@
  * tests drive this directly in Node with no Worker runtime.
  */
 
-import { MAX_ROUNDS, buildRun } from "@bt/core";
+import { WIN_ROUNDS, buildRun, roundCap } from "@bt/core";
 import type {
   AnswerRequest,
   AnswerResponse,
@@ -122,7 +125,7 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
   const seed = await friendlySeed(ctx.secret, run.origin);
   // Two past the answered round: the next question, and the round after it,
   // whose challenger's photo the next question carries as `upcoming`.
-  const maxRounds = Math.min(req.round + 2, MAX_ROUNDS);
+  const maxRounds = Math.min(req.round + 2, roundCap("friendly"));
   const rounds = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds });
 
   const round = rounds[req.round - 1];
@@ -143,8 +146,9 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
   // The score is the rounds answered correctly: every one before this, and this
   // one too if it was right.
   if (!correct) return ended("wrong", req.round - 1);
+  if (req.round === WIN_ROUNDS.friendly) return ended("won", req.round);
 
-  const next = req.round < MAX_ROUNDS ? rounds[req.round] : undefined;
+  const next = rounds[req.round];
   if (next === undefined) return ended("deck-exhausted", req.round);
 
   const response: ContinueResponse = {

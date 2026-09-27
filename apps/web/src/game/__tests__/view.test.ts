@@ -3,8 +3,19 @@ import type { StatKey } from "@bt/core";
 import { describe, expect, it } from "vitest";
 import { initialState, reduce } from "../machine";
 import type { GameEvent, GameState } from "../machine";
-import { announcement, hitchText, initial, overCaption, qualifierText, reelStrip } from "../view";
-import { cont, round, wrong } from "./fixtures";
+import {
+  announcement,
+  hitchText,
+  initial,
+  isFinalQuestion,
+  overCaption,
+  progressText,
+  qualifierText,
+  reelStrip,
+  scoreFigure,
+  trackSteps,
+} from "../view";
+import { cont, round, won, wrong } from "./fixtures";
 
 describe("initial", () => {
   it("takes the first character of the name", () => {
@@ -63,8 +74,16 @@ describe("announcement", () => {
   const at = (events: GameEvent[]): GameState => events.reduce(reduce, initialState());
 
   it("asks the question once the stat has landed", () => {
-    expect(announcement(at(start.slice(0, 3)))).toBe("");
-    expect(announcement(at(start))).toBe("International caps. p1: 50. Is p2 higher or lower?");
+    expect(announcement(at(start.slice(0, 3)), "endless")).toBe("");
+    expect(announcement(at(start), "endless")).toBe(
+      "International caps. p1: 50. Is p2 higher or lower?",
+    );
+  });
+
+  it("says where the run is first in Friendly: the progress track's text", () => {
+    expect(announcement(at(start), "friendly")).toBe(
+      "Question 1 of 20. International caps. p1: 50. Is p2 higher or lower?",
+    );
   });
 
   it("gives the challenger's value and the verdict", () => {
@@ -74,7 +93,8 @@ describe("announcement", () => {
       { type: "answered", response: cont(1, round(2), 80), at: 1 },
       { type: "settled" },
     ]);
-    expect(announcement(right)).toBe("p2: 80. Correct. Streak 1.");
+    expect(announcement(right, "endless")).toBe("p2: 80. Correct. Streak 1.");
+    expect(announcement(right, "friendly")).toBe("p2: 80. Correct. 1 of 20.");
 
     const lost = at([
       ...start,
@@ -82,19 +102,121 @@ describe("announcement", () => {
       { type: "answered", response: wrong(1, 20), at: 1 },
       { type: "settled" },
     ]);
-    expect(announcement(lost)).toBe("p2: 20. Wrong. The run is over.");
+    expect(announcement(lost, "friendly")).toBe("p2: 20. Wrong. The run is over.");
+  });
+
+  it("says so when the last round wins the run", () => {
+    const state = at([
+      ...start,
+      { type: "guess", guess: "higher", at: 0 },
+      { type: "answered", response: won(1, 80), at: 1 },
+      { type: "settled" },
+    ]);
+    expect(announcement({ ...state, streak: 20 }, "friendly")).toBe(
+      "p2: 80. Correct — that's all 20. You won!",
+    );
   });
 
   it("says nothing while the answer is in flight", () => {
-    expect(announcement(at([...start, { type: "guess", guess: "higher", at: 0 }]))).toBe("");
+    expect(
+      announcement(at([...start, { type: "guess", guess: "higher", at: 0 }]), "friendly"),
+    ).toBe("");
   });
 });
 
 describe("overCaption", () => {
   it("reads naturally for one", () => {
-    expect(overCaption(1)).toBe("correct, then out");
-    expect(overCaption(0)).toBe("in a row");
-    expect(overCaption(12)).toBe("in a row");
+    expect(overCaption({ streak: 1, end: "wrong" })).toBe("correct, then out");
+    expect(overCaption({ streak: 0, end: "wrong" })).toBe("in a row");
+    expect(overCaption({ streak: 12, end: "wrong" })).toBe("in a row");
+  });
+
+  it("calls a win a perfect run", () => {
+    expect(overCaption({ streak: 20, end: "won" })).toBe("a perfect run");
+  });
+});
+
+describe("scores, per mode", () => {
+  it("reads out of twenty in Friendly and plain elsewhere", () => {
+    expect(scoreFigure(7, "friendly")).toBe("7/20");
+    expect(scoreFigure(7, "endless")).toBe("7");
+    expect(scoreFigure(7, "ranked")).toBe("7");
+  });
+
+  it("gives the progress as text in Friendly only", () => {
+    expect(progressText(initialState(), "friendly")).toBe("Question 1 of 20");
+    expect(progressText({ ...initialState(), round: round(7) }, "friendly")).toBe(
+      "Question 7 of 20",
+    );
+    expect(progressText(initialState(), "endless")).toBe("");
+  });
+});
+
+describe("the final question", () => {
+  const at20 = (phase: GameState["phase"]): GameState => ({
+    ...initialState(),
+    phase,
+    round: round(20),
+  });
+
+  it("is round twenty in Friendly, while it is on screen", () => {
+    expect(isFinalQuestion(at20("awaiting"), "friendly")).toBe(true);
+    expect(isFinalQuestion(at20("dealing"), "friendly")).toBe(true);
+    expect(isFinalQuestion(at20("verdict"), "friendly")).toBe(true);
+    expect(isFinalQuestion(at20("over"), "friendly")).toBe(false);
+    expect(isFinalQuestion({ ...at20("awaiting"), round: round(19) }, "friendly")).toBe(false);
+  });
+
+  it("doesn't exist in a mode without a win target", () => {
+    expect(isFinalQuestion(at20("awaiting"), "endless")).toBe(false);
+  });
+
+  it("is marked on the track's last segment", () => {
+    const steps = trackSteps(at20("awaiting"), "friendly");
+    expect(steps.map((s) => s.final)).toEqual([...Array(19).fill(false), true]);
+    expect(steps.at(-1)).toMatchObject({ current: true, final: true });
+  });
+
+  it("is named in the progress text and announced first", () => {
+    const state = at20("awaiting");
+    expect(progressText(state, "friendly")).toBe("Final question — question 20 of 20");
+    expect(announcement(state, "friendly")).toBe(
+      "Final question — question 20 of 20. International caps. p20: 50. Is p21 higher or lower?",
+    );
+  });
+});
+
+describe("the progress track", () => {
+  const history = [
+    { index: 1, stat: "caps", tier: "basic", correct: true },
+    { index: 2, stat: "fee", tier: "uncommon", correct: true },
+    { index: 3, stat: "ct", tier: "rare", correct: false },
+  ] as const;
+
+  it("has a step per round of the target, and none without one", () => {
+    expect(trackSteps(initialState(), "friendly")).toHaveLength(20);
+    expect(trackSteps(initialState(), "endless")).toEqual([]);
+  });
+
+  it("fills answered rounds by tier, marks the miss, and lights the round on screen", () => {
+    const playing: GameState = {
+      ...initialState(),
+      phase: "awaiting",
+      round: round(3),
+      history: history.slice(0, 2),
+    };
+    const steps = trackSteps(playing, "friendly");
+    expect(steps.slice(0, 4)).toEqual([
+      { kind: "hit", tier: "basic", current: false, final: false },
+      { kind: "hit", tier: "uncommon", current: false, final: false },
+      { kind: "todo", tier: null, current: true, final: false },
+      { kind: "todo", tier: null, current: false, final: false },
+    ]);
+
+    const over: GameState = { ...playing, phase: "over", history };
+    const done = trackSteps(over, "friendly");
+    expect(done[2]).toEqual({ kind: "miss", tier: "rare", current: false, final: false });
+    expect(done.some((s) => s.current)).toBe(false);
   });
 });
 
