@@ -31,6 +31,7 @@ function over(ending: GameEvent): GameState {
   return at([
     { type: "start" },
     { type: "started", runId: RUN_ID, round: r1 },
+    { type: "introDone" },
     { type: "dealt" },
     { type: "spun" },
     { type: "guess", guess: "higher", at: 0 },
@@ -84,6 +85,7 @@ describe("reportedRound", () => {
     const playing = at([
       { type: "start" },
       { type: "started", runId: RUN_ID, round: round(1) },
+      { type: "introDone" },
       { type: "dealt" },
       { type: "spun" },
     ]);

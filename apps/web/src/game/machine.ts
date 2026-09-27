@@ -1,11 +1,16 @@
 /**
  * The game island's state machine, as a pure reducer.
  *
- *   idle → starting → dealing → [spinning] → awaiting → revealing → verdict
- *                        ↑                                             │
- *                        └──────────── correct, next round ────────────┤
- *                                                                      ↓
- *                                                                     over
+ *   idle → starting → intro → dealing → [spinning] → awaiting → revealing → verdict
+ *                               ↑                                             │
+ *                               └──────────── correct, next round ────────────┤
+ *                                                                             ↓
+ *                                                                            over
+ *
+ * `intro` is the first deal's "floodlights on" kick-off: round one is on the
+ * pitch while the lights come up and the cards slide in. The controller ends
+ * it once round one's photos have loaded, within `introMin` to `introMax`.
+ * Later rounds deal straight from the verdict.
  *
  * The server decides everything that matters — the pair, the stat, whether a
  * guess was right. This module only sequences what the player sees, so it holds
@@ -42,7 +47,15 @@ import type {
 import type { Timings } from "./timing";
 
 export type Phase =
-  "idle" | "starting" | "dealing" | "spinning" | "awaiting" | "revealing" | "verdict" | "over";
+  | "idle"
+  | "starting"
+  | "intro"
+  | "dealing"
+  | "spinning"
+  | "awaiting"
+  | "revealing"
+  | "verdict"
+  | "over";
 
 /** Why a run stopped: the server's reasons, or the connection dropping. */
 export type EndReason = RunEnd | "network";
@@ -158,6 +171,8 @@ export type GameEvent =
       readonly challenge?: ChallengeStatus;
     }
   | { readonly type: "startFailed"; readonly failure: Failure; readonly at: number }
+  /** The first deal's intro is over: deal round one as usual. */
+  | { readonly type: "introDone" }
   | { readonly type: "dealt" }
   | { readonly type: "spun" }
   | { readonly type: "guess"; readonly guess: Guess; readonly at: number }
@@ -211,10 +226,19 @@ export function reduce(state: GameState, event: GameEvent): GameState {
 
     case "started":
       if (state.phase !== "starting") return state;
-      return deal(
-        { ...state, runId: event.runId, challenge: settleChallenge(state.challenge, event) },
-        event.round,
-      );
+      // Round one goes on the pitch for the intro; the plaque stays empty
+      // until the first spin lands.
+      return {
+        ...state,
+        phase: "intro",
+        runId: event.runId,
+        challenge: settleChallenge(state.challenge, event),
+        round: event.round,
+      };
+
+    case "introDone":
+      if (state.phase !== "intro" || state.round === null) return state;
+      return deal(state, state.round);
 
     case "startFailed":
       if (state.phase !== "starting") return state;

@@ -1075,11 +1075,25 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   sees. Higher / Lower and the connection note share one slot that keeps its room whether they show
   or not, so the text never moves between rounds. `srcset` comes from `srcsetFor`; `sizes` from
   `photoSizes`, which allows for a wide photo drawn wider than its half by the cover crop. The
-  monogram shows when there is no photo or it fails to load, including a `403`. The controller
-  preloads round one's two photos when the run starts, each new challenger's photo when an answer
-  lands, and the round's `upcoming` photo as soon as the round is dealt, through an off-screen
-  `Image` with the card's own `sizes` and `srcset` (`game/photos.ts`). A photo already fetched is
-  not fetched again.
+  monogram shows when there is no photo or it fails to load, including a `403`, and while a photo
+  is still loading, which then fades up over it (`--dur-photo-in`; at once when it was already
+  cached). The controller preloads round one's two photos when the run starts, each new
+  challenger's photo when an answer lands, and the round's `upcoming` photo as soon as the round
+  is on screen, through an off-screen `Image` with the card's own `sizes` and `srcset`
+  (`game/photos.ts`). A photo already fetched is not fetched again; the preload's promise settles
+  when it has loaded or failed.
+- **The first deal** of every run (Start, Play again, a challenge link) is a "floodlights on"
+  kick-off, the machine's `intro` phase. Round one is on the pitch under a dark layer that lifts
+  with a flicker and a warm wash from the top corners, while the two halves slide in from opposite
+  edges to meet (above and below when stacked, left and right side by side) and their photos fade
+  up. The intro lasts at least `--dur-intro-min` (1s), longer while round one's two photos are
+  still loading, and never more than `--dur-intro-max` (2s); a photo that isn't in by then keeps
+  its monogram and fades in when it arrives. Then, in round one's usual beat before the wheel, the
+  names appear and the plaque drops into place, and the spin runs as always. The question is
+  announced when the plaque lands, as for every round; focus is untouched. Transform and opacity
+  only, every value a token (`--dur-intro-*`, `--intro-*`). With reduced motion nothing moves:
+  the pitch fades up from dark over `--dur-intro-min`, still waiting for the photos up to the
+  maximum. Later rounds deal without it (`entrance` in `game/view.ts`).
 - **Accessibility:** every control is a native button or link with a visible focus ring; the game
   plays from the keyboard (arrow keys, and focus returns to Higher and to Play again);
   `prefers-reduced-motion` stops the reel, the count-up and every transition; live regions announce
@@ -1099,7 +1113,8 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   (§7) — then presses the right button. It lives in `game/dev.ts`, loaded by a dynamic import behind
   `import.meta.env.DEV`, so production builds don't contain it.
 - The island's flow is a plain-TS state machine in `apps/web/src/game/` (`machine.ts`, a pure
-  reducer: idle → starting → dealing → spinning → awaiting → revealing → verdict → over), run by
+  reducer: idle → starting → intro → dealing → spinning → awaiting → revealing → verdict → over,
+  with `intro` on the first deal only), run by
   `controller.ts` with the API, clock and timers injected so it is tested in Node. It keeps a
   **round history** of `{ index, stat, tier, correct }` per answered round — no values — for the
   share grid and image. Script timers read the `--dur-*` tokens at runtime; a test keeps their

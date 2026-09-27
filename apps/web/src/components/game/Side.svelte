@@ -1,11 +1,16 @@
 <!--
   One full-bleed half of the pitch: a player's photo (or monogram), name,
   country and figure.
+
+  On the first deal (`entrance`) the half slides in from its own edge, to
+  meet the other in the middle, with its text held back; the text then
+  appears in the beat before the first spin. No slide with reduced motion.
 -->
 <script lang="ts">
   import type { PlayerCard } from "@bt/core";
   import type { Snippet } from "svelte";
   import { initial } from "../../game/view";
+  import type { Entrance } from "../../game/view";
   import Photo from "./Photo.svelte";
 
   interface Props {
@@ -19,12 +24,28 @@
     value?: Snippet;
     /** Anything below the figure — the challenger's Higher / Lower. */
     children?: Snippet;
+    /** The first deal's kick-off, if it's playing. */
+    entrance?: Entrance;
   }
 
-  let { side, player, verdict = null, qualifier = "", value, children }: Props = $props();
+  let {
+    side,
+    player,
+    verdict = null,
+    qualifier = "",
+    value,
+    children,
+    entrance = null,
+  }: Props = $props();
 </script>
 
-<div class="side {side}" class:hit={verdict === "hit"} class:miss={verdict === "miss"}>
+<div
+  class="side {side}"
+  class:hit={verdict === "hit"}
+  class:miss={verdict === "miss"}
+  class:intro={entrance === "intro"}
+  class:enter={entrance === "enter"}
+>
   {#if player}
     {#key player.id}
       <Photo image={player.image} initial={initial(player.name)} />
@@ -191,6 +212,43 @@
     align-items: center;
     justify-content: center;
   }
+  /* The first deal. Each half starts off its own edge (above and below when
+     stacked, left and right side by side) and slides to meet the other. */
+  .side.a {
+    --intro-from: translateY(calc(-1 * var(--intro-slide-from)));
+  }
+  .side.b {
+    --intro-from: translateY(var(--intro-slide-from));
+  }
+  @media (min-width: 780px), (orientation: landscape) and (max-height: 500px) {
+    .side.a {
+      --intro-from: translateX(calc(-1 * var(--intro-slide-from)));
+    }
+    .side.b {
+      --intro-from: translateX(var(--intro-slide-from));
+    }
+  }
+  .side.intro {
+    animation: slide-in var(--dur-intro-slide) var(--ease-intro) var(--intro-slide-delay) both;
+  }
+  .side.intro .text {
+    opacity: 0;
+  }
+  .side.enter .text {
+    animation: names-in var(--dur-intro-names) var(--ease) both;
+  }
+  @keyframes slide-in {
+    from {
+      transform: var(--intro-from);
+    }
+  }
+  @keyframes names-in {
+    from {
+      opacity: 0;
+      transform: translateY(var(--intro-names-rise));
+    }
+  }
+
   .qual {
     margin-top: var(--qual-gap);
     font-size: var(--fs-qual);

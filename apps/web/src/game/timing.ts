@@ -9,6 +9,13 @@
  */
 
 export interface Timings {
+  /**
+   * The first deal's "floodlights on" intro lasts at least this long, and
+   * longer while round one's photos are still loading.
+   */
+  readonly introMin: number;
+  /** ...but no longer than this: a photo still loading then fades in when it arrives. */
+  readonly introMax: number;
   /** Players shown, then a beat before the wheel (DESIGN.md §4). */
   readonly beat: number;
   /** No spin when the stat holds: the pause before the anchor's value shows. */
@@ -50,6 +57,8 @@ export interface Timings {
 }
 
 export const TIMINGS: Timings = {
+  introMin: 1000,
+  introMax: 2000,
   beat: 700,
   hold: 340,
   spin: 1800,
@@ -70,6 +79,8 @@ export const TIMINGS: Timings = {
 
 /** The custom property behind each timing. */
 export const TIMING_TOKENS: Readonly<Record<keyof Timings, string>> = {
+  introMin: "--dur-intro-min",
+  introMax: "--dur-intro-max",
   beat: "--dur-beat",
   hold: "--dur-hold",
   spin: "--dur-spin",

@@ -7,6 +7,9 @@
   settles. All of that is decoration; which stat, and whether to spin at all,
   come from the state machine.
 
+  On the first deal (`entrance`) the plaque is hidden while the cards slide
+  in, then drops into place before the first spin.
+
   On the final question (`final`) the plaque wears a gold ring and a gold
   "Final question" tab sits on its top edge. The tab is hidden from screen
   readers, which hear "Final question" in the live region.
@@ -19,6 +22,7 @@
   import { TIER_COLOUR } from "../../lib/tiers";
   import type { Timings } from "../../game/timing";
   import { reelStrip } from "../../game/view";
+  import type { Entrance } from "../../game/view";
 
   interface Props {
     stat: StatPayload | null;
@@ -29,9 +33,19 @@
     reducedMotion: boolean;
     /** The final question is on screen. */
     final?: boolean;
+    /** The first deal's kick-off, if it's playing. */
+    entrance?: Entrance;
   }
 
-  let { stat, spinIndex, spinTo, timings, reducedMotion, final = false }: Props = $props();
+  let {
+    stat,
+    spinIndex,
+    spinTo,
+    timings,
+    reducedMotion,
+    final = false,
+    entrance = null,
+  }: Props = $props();
 
   let strip: StatKey[] = $state([]);
   let offset = $state(0);
@@ -90,6 +104,8 @@
 <div
   class="plaque"
   class:final
+  class:intro={entrance === "intro"}
+  class:enter={entrance === "enter"}
   class:pop
   style:--tier={tint ? TIER_COLOUR[tint] : undefined}
   onanimationend={() => (pop = false)}
@@ -170,6 +186,20 @@
   }
   .plaque.pop {
     animation: pop var(--dur-pop) var(--ease);
+  }
+  /* The first deal: out of sight while the cards slide in, then dropping
+     into place, with a little overshoot. */
+  .plaque.intro {
+    opacity: 0;
+  }
+  .plaque.enter {
+    animation: drop var(--dur-intro-drop) var(--ease-win) var(--intro-drop-delay) both;
+  }
+  @keyframes drop {
+    from {
+      opacity: 0;
+      transform: translate(-50%, calc(-50% - var(--intro-drop)));
+    }
   }
   @keyframes pop {
     0% {

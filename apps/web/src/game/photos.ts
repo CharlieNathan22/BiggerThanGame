@@ -76,37 +76,46 @@ export interface ImageLike {
  * `sizes` and `srcset` so the card reuses the fetch. `sizes` is set before
  * `srcset`, as the browser picks a candidate as soon as `srcset` is set.
  *
+ * Returns a promise that settles (never rejects) when the photo has loaded or
+ * failed, so the first deal's intro can wait on it. No photo settles at once.
+ *
  * Each image is held until it has loaded or failed, so it can't be collected
- * mid-fetch; a URL already loading or loaded isn't fetched again.
+ * mid-fetch; a URL already loading or loaded isn't fetched again, and asking
+ * for it again returns the same promise.
  */
 export function createPreloader(
   base: string,
   make: () => ImageLike,
-): (image: CardImage | undefined) => void {
-  const started = new Set<string>();
+): (image: CardImage | undefined) => Promise<void> {
+  const started = new Map<string, Promise<void>>();
   const inFlight = new Set<ImageLike>();
   return (image) => {
-    if (image === undefined) return;
+    if (image === undefined) return Promise.resolve();
     const sources = photoSources(base, image);
     const id = `${sources.srcset}|${sources.sizes}`;
-    if (started.has(id)) return;
-    started.add(id);
+    const existing = started.get(id);
+    if (existing !== undefined) return existing;
     const img = make();
-    const done = () => {
-      inFlight.delete(img);
-      img.onload = null;
-      img.onerror = null;
-    };
-    img.onload = done;
-    img.onerror = () => {
-      done();
-      // A failed photo may be tried again by a later card.
-      started.delete(id);
-    };
+    const settled = new Promise<void>((resolve) => {
+      const done = () => {
+        inFlight.delete(img);
+        img.onload = null;
+        img.onerror = null;
+        resolve();
+      };
+      img.onload = done;
+      img.onerror = () => {
+        done();
+        // A failed photo may be tried again by a later card.
+        started.delete(id);
+      };
+    });
+    started.set(id, settled);
     img.decoding = "async";
     img.sizes = sources.sizes;
     img.srcset = sources.srcset;
     img.src = sources.src;
     inFlight.add(img);
+    return settled;
   };
 }

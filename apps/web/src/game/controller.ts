@@ -9,7 +9,9 @@
  *
  * Photos are fetched the moment a round payload lands, never at reveal time
  * (ARCHITECTURE.md §9): each response brings one new card, and its photo loads
- * while the current reveal plays out.
+ * while the current reveal plays out. Round one's two photos are what the
+ * first deal's intro waits on: at least `introMin`, until both have loaded or
+ * failed, and never more than `introMax`.
  *
  * Only one timer is ever pending. Starting a new run bumps a generation
  * number, so a response or timer from an abandoned run is ignored.
@@ -46,8 +48,11 @@ export interface ControllerDeps {
   readonly saveBest?: (best: number) => void;
   /** A challenge link the first run starts from. */
   readonly challenge?: Challenge | null;
-  /** Starts fetching a card's photo into the browser cache. */
-  readonly preload?: (image: CardImage | undefined) => void;
+  /**
+   * Starts fetching a card's photo into the browser cache. The promise, if
+   * any, settles when it has loaded or failed.
+   */
+  readonly preload?: (image: CardImage | undefined) => Promise<void> | void;
 }
 
 type Listener = (state: GameState) => void;
@@ -111,12 +116,15 @@ export class GameController {
     if (after.phase !== before.phase) this.#clearTimer();
     if (after.best > before.best) this.#deps.saveBest?.(after.best);
 
-    if (event.type === "started") this.#preload(event.round);
-    if (event.type === "answered" && "next" in event.response) this.#preload(event.response.next);
-    // Once a round is on screen, the photo of the challenger after it: a whole
-    // round's head start on a cold resize (ARCHITECTURE.md §9).
-    if (after.phase === "dealing" && before.phase !== "dealing") {
-      this.#deps.preload?.(after.round?.upcoming);
+    if (event.type === "answered" && "next" in event.response) {
+      void this.#preload(event.response.next);
+    }
+    // Once a round is on screen (round one from its intro), the photo of the
+    // challenger after it: a whole round's head start on a cold resize
+    // (ARCHITECTURE.md §9).
+    // Round one's comes from the intro case below, after its own two photos.
+    if (after.phase === "dealing" && before.phase !== "dealing" && before.phase !== "intro") {
+      void this.#deps.preload?.(after.round?.upcoming);
     }
 
     // A request that has to go again: wait, then retry.
@@ -147,6 +155,23 @@ export class GameController {
             }),
         );
         return;
+
+      case "intro": {
+        if (before.phase === "intro" || after.round === null) return;
+        // Round one's photos, fetched now. The intro ends at `introMax` at the
+        // latest; once they're in, at `introMin` from its start, or at once
+        // if that has passed.
+        const began = this.#deps.now();
+        const photos = this.#preload(after.round);
+        void this.#deps.preload?.(after.round.upcoming);
+        this.#after(timings.introMax, { type: "introDone" });
+        void photos.then(() => {
+          if (!current() || this.#state.phase !== "intro") return;
+          const wait = Math.max(0, timings.introMin - (this.#deps.now() - began));
+          this.#after(wait, { type: "introDone" });
+        });
+        return;
+      }
 
       case "dealing":
         if (after.round === null) return;
@@ -192,10 +217,11 @@ export class GameController {
     }
   }
 
-  #preload(round: RoundPayload): void {
+  /** Fetches the round's new cards' photos; settles when all have loaded or failed. */
+  #preload(round: RoundPayload): Promise<void> {
     const { preload } = this.#deps;
-    if (preload === undefined) return;
-    for (const card of newCards(round)) preload(card.image);
+    if (preload === undefined) return Promise.resolve();
+    return Promise.all(newCards(round).map((card) => preload(card.image))).then(() => {});
   }
 
   /** Dispatches `event` after `ms`; a function is called then, to read the clock. */

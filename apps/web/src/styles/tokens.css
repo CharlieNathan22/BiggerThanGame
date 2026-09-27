@@ -297,6 +297,23 @@
   /* A round of the challenge the run didn't reach: an empty square with an edge. */
   --grid-empty-edge: rgba(238, 243, 241, 0.28);
 
+  /* The first deal's intro: the pitch starts dark (--intro-dark) and the
+     floodlights come up with a flicker, dipping to --intro-flicker-* on the
+     way; a warm wash from the two top corners peaks at --intro-warm-peak and
+     fades. The cards slide in from --intro-slide-from away; the plaque drops
+     from --intro-drop above its place. With reduced motion the whole pitch
+     simply fades in from dark over --dur-intro-min. */
+  --intro-dark: rgba(var(--ink-rgb), 0.92);
+  --intro-flicker-low: 0.45;
+  --intro-flicker-mid: 0.75;
+  --intro-warm:
+    radial-gradient(ellipse 60% 55% at 0% 0%, rgba(255, 224, 168, 0.22), transparent 70%),
+    radial-gradient(ellipse 60% 55% at 100% 0%, rgba(255, 224, 168, 0.22), transparent 70%);
+  --intro-warm-peak: 1;
+  --intro-slide-from: 100%;
+  --intro-drop: 28px;
+  --intro-names-rise: 6px;
+
   /* The progress track under the title bar, in a mode with a win target
      (Friendly's twenty): one segment per round, thin enough to cost the game
      almost no height on a phone. */
@@ -496,6 +513,26 @@
   --dur-side: 300ms;
   --dur-tint: 400ms;
   --dur-pop: 420ms;
+  /* The first deal's "floodlights on" intro: at least --dur-intro-min, longer
+     while round one's photos load, never more than --dur-intro-max. Read by
+     the game's script (game/timing.ts). */
+  --dur-intro-min: 1000ms;
+  --dur-intro-max: 2000ms;
+  /* Inside it: the lights warming up with a flicker, then the two cards
+     sliding in from opposite sides to meet. */
+  --dur-intro-lights: 900ms;
+  --intro-slide-delay: 200ms;
+  --dur-intro-slide: 700ms;
+  --ease-intro: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Then, in the beat before the first spin: the names, and the plaque
+     dropping into place (it overshoots a little, --ease-win). Both finish
+     inside --dur-beat. */
+  --dur-intro-names: 320ms;
+  --intro-drop-delay: 120ms;
+  --dur-intro-drop: 460ms;
+  /* A photo fading up as it loads, over the monogram. None for a photo that
+     was already cached, and none with reduced motion. */
+  --dur-photo-in: 450ms;
   /* Players shown, then a beat before the wheel (DESIGN.md §4). */
   --dur-beat: 700ms;
   /* No spin when the stat holds: the pause before the anchor's value shows. */

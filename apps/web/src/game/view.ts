@@ -160,6 +160,22 @@ export function verdictLabel(state: GameState): string | null {
   return state.reveal.correct ? t("verdict.correct") : t("verdict.incorrect");
 }
 
+/**
+ * Where the first deal's "floodlights on" kick-off is:
+ * - `intro`: the lights coming up and the two cards sliding in, names and
+ *   plaque not shown yet (the machine's `intro` phase);
+ * - `enter`: round one's beat before the wheel, as the names appear and the
+ *   plaque drops into place;
+ * - null the rest of the run. Later rounds deal without it.
+ */
+export type Entrance = "intro" | "enter" | null;
+
+export function entrance(state: GameState): Entrance {
+  if (state.phase === "intro") return "intro";
+  if (state.phase === "dealing" && state.round?.index === 1) return "enter";
+  return null;
+}
+
 /** The note under the challenger while a request waits to go again. */
 export function hitchText(hitch: Hitch | null): string {
   if (hitch === null) return "";

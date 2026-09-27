@@ -5,6 +5,7 @@ import { initialState, reduce } from "../machine";
 import type { GameEvent, GameState } from "../machine";
 import {
   announcement,
+  entrance,
   hitchText,
   initial,
   isFinalQuestion,
@@ -69,6 +70,7 @@ describe("announcement", () => {
   const start: GameEvent[] = [
     { type: "start" },
     { type: "started", runId: "20260926-a", round: r1 },
+    { type: "introDone" },
     { type: "dealt" },
     { type: "spun" },
   ];
@@ -125,11 +127,33 @@ describe("announcement", () => {
   });
 });
 
+describe("entrance", () => {
+  const events: GameEvent[] = [
+    { type: "start" },
+    { type: "started", runId: "20260926-a", round: round(1) },
+    { type: "introDone" },
+    { type: "dealt" },
+  ];
+  const at = (n: number): GameState => events.slice(0, n).reduce(reduce, initialState());
+
+  it("plays the intro, then the names and plaque in round one's beat, then nothing", () => {
+    expect(entrance(at(1))).toBeNull();
+    expect(entrance(at(2))).toBe("intro");
+    expect(entrance(at(3))).toBe("enter");
+    expect(entrance(at(4))).toBeNull();
+  });
+
+  it("isn't played for a later round's deal", () => {
+    expect(entrance({ ...initialState(), phase: "dealing", round: round(2) })).toBeNull();
+  });
+});
+
 describe("verdictLabel", () => {
   const r1 = round(1, { stat: "caps", anchorValue: 50 });
   const toGuess: GameEvent[] = [
     { type: "start" },
     { type: "started", runId: "20260926-a", round: r1 },
+    { type: "introDone" },
     { type: "dealt" },
     { type: "spun" },
     { type: "guess", guess: "higher", at: 0 },

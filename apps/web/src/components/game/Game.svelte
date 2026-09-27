@@ -55,6 +55,7 @@
   import {
     announcement,
     challengeNotice,
+    entrance,
     hitchText,
     overCaption,
     isFinalQuestion,
@@ -225,10 +226,16 @@
   );
   const judged = $derived((phase === "verdict" || phase === "over") && reveal !== null);
   const spinIndex = $derived(
-    round !== null && shouldSpin(round) && phase !== "dealing" && phase !== "starting"
+    round !== null &&
+      shouldSpin(round) &&
+      phase !== "dealing" &&
+      phase !== "starting" &&
+      phase !== "intro"
       ? round.index
       : null,
   );
+  /** The first deal's kick-off: the lights and the cards, then the names and the plaque. */
+  const kickoff = $derived(entrance(game));
   const tier = $derived(game.plaque?.tier ?? "basic");
   // A slow-down is a pause, not a wait on the network: the number rests at "?"
   // rather than scrambling until it's over.
@@ -368,9 +375,10 @@
     />
   {/if}
 
-  <main class="pitch" aria-label={t("pitch.label")}>
+  <main class="pitch" class:intro={kickoff === "intro"} aria-label={t("pitch.label")}>
     <Side
       side="a"
+      entrance={kickoff}
       player={round?.anchor ?? null}
       qualifier={anchorShown && round ? qualifierText(round.stat.key, round.anchor.qualifier) : ""}
     >
@@ -383,6 +391,7 @@
 
     <Side
       side="b"
+      entrance={kickoff}
       player={round?.challenger ?? null}
       verdict={judged && reveal ? (reveal.correct ? "hit" : "miss") : null}
       qualifier={judged && round && reveal ? qualifierText(round.stat.key, reveal.qualifier) : ""}
@@ -455,7 +464,16 @@
       {timings}
       {reducedMotion}
       final={finalQuestion}
+      entrance={kickoff}
     />
+
+    {#if kickoff === "intro"}
+      <!-- The floodlights: the pitch starts dark and comes up with a flicker,
+           with a warm wash from the top corners. Over the cards, under the
+           plaque and the notes. Decoration only. -->
+      <div class="lights" aria-hidden="true"></div>
+      <div class="flood" aria-hidden="true"></div>
+    {/if}
 
     <p class="sr" aria-live="polite">{announcement(game, mode)}</p>
     {#if phase !== "idle" && phase !== "starting"}
@@ -663,6 +681,73 @@
   @media (orientation: landscape) and (max-height: 500px) {
     .pitch {
       flex-direction: row;
+    }
+  }
+
+  /* The first deal: the halves slide in from beyond the pitch, so it clips. */
+  .pitch.intro {
+    overflow: hidden;
+  }
+  .lights,
+  .flood {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .lights {
+    background: var(--intro-dark);
+    animation: lights-on var(--dur-intro-lights) var(--ease) both;
+  }
+  .flood {
+    background: var(--intro-warm);
+    animation: flood var(--dur-intro-min) var(--ease) both;
+  }
+  /* Dark, then the lights catch: two dips and recoveries, then full on. */
+  @keyframes lights-on {
+    0%,
+    22% {
+      opacity: 1;
+    }
+    30% {
+      opacity: var(--intro-flicker-low);
+    }
+    36% {
+      opacity: var(--intro-flicker-mid);
+    }
+    46% {
+      opacity: var(--intro-flicker-low);
+    }
+    52% {
+      opacity: var(--intro-flicker-mid);
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes flood {
+    0%,
+    25% {
+      opacity: 0;
+    }
+    55% {
+      opacity: var(--intro-warm-peak);
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  /* Reduced motion stops every animation (base.css); the lights instead fade
+     straight up from dark, with no flicker and nothing moving. */
+  @media (prefers-reduced-motion: reduce) {
+    .pitch .lights {
+      animation: lights-fade var(--dur-intro-min) linear both !important;
+    }
+  }
+  @keyframes lights-fade {
+    from {
+      opacity: 1;
     }
   }
 

@@ -29,12 +29,13 @@ const r3 = round(3, { stat: "ig", statChanged: true });
 const toAwaiting: GameEvent[] = [
   { type: "start" },
   { type: "started", runId: "20260926-x", round: r1 },
+  { type: "introDone" },
   { type: "dealt" },
   { type: "spun" },
 ];
 
 describe("reduce — the happy path", () => {
-  it("walks idle → starting → dealing → spinning → awaiting on round one", () => {
+  it("walks idle → starting → intro → dealing → spinning → awaiting on round one", () => {
     const phases: string[] = [];
     let s = initialState();
     phases.push(s.phase);
@@ -42,8 +43,20 @@ describe("reduce — the happy path", () => {
       s = reduce(s, e);
       phases.push(s.phase);
     }
-    expect(phases).toEqual(["idle", "starting", "dealing", "spinning", "awaiting"]);
+    expect(phases).toEqual(["idle", "starting", "intro", "dealing", "spinning", "awaiting"]);
     expect(s.runId).toBe("20260926-x");
+  });
+
+  it("puts round one on the pitch for the intro, and deals it only when the intro is done", () => {
+    const intro = run(toAwaiting.slice(0, 2));
+    expect(intro.phase).toBe("intro");
+    expect(intro.round?.index).toBe(1);
+    // The wheel's timer can't run ahead of the intro.
+    expect(reduce(intro, { type: "dealt" })).toBe(intro);
+    expect(reduce(intro, { type: "introDone" }).phase).toBe("dealing");
+    // A stray intro timer later on does nothing.
+    const awaiting = run(toAwaiting);
+    expect(reduce(awaiting, { type: "introDone" })).toBe(awaiting);
   });
 
   it("keeps the plaque blank until round one's wheel lands", () => {
