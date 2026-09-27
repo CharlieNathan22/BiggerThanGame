@@ -227,8 +227,9 @@ export interface ShownFigure {
  * The anchor's figure, or null while it isn't shown. From the wheel landing
  * to the game-over panel it is the anchor's value. Before that, after a slide,
  * the card still shows the figure it was revealed with: the same number when
- * the stat holds, and on a stat change the old stat's figure until the wheel
- * lands on the new one. Round one's anchor shows nothing until then.
+ * the stat holds, and on a stat change the old stat's figure, which fades out
+ * as the wheel starts (`anchorFading`) and gives way to the new one when it
+ * lands. Round one's anchor shows nothing until then.
  */
 export function anchorFigure(state: GameState): ShownFigure | null {
   const { phase, round } = state;
@@ -249,6 +250,15 @@ export function anchorFigure(state: GameState): ShownFigure | null {
     return { display: carried.display, qualifier: carried.qualifier, stat: plaque.key };
   }
   return null;
+}
+
+/**
+ * The anchor's old figure is fading out: the stat has changed and the wheel
+ * is spinning to the new one, so the old number is never shown beside it.
+ */
+export function anchorFading(state: GameState): boolean {
+  const { round } = state;
+  return state.phase === "spinning" && round !== null && round.index > 1 && round.stat.statChanged;
 }
 
 /** The first deal's kick-off is playing: round one's cards sliding in. */

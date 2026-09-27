@@ -42,12 +42,12 @@
   .unknown {
     font-size: var(--fs-fig);
     line-height: var(--lh-tight);
-    /* The card's dark halo on top, the gold glow outside it. */
-    text-shadow: var(--halo), var(--glow);
+    /* The gold glow. */
+    text-shadow: var(--fig-glow);
   }
+  /* Always gold, whatever the stat's tier; the plaque carries the tier colour. */
   .fig {
-    color: var(--tier);
-    transition: color var(--dur-tint) var(--ease);
+    color: var(--fig-colour);
   }
   /* The final figure, unseen, sets the width; the live one sits on top of it. */
   .reserved {

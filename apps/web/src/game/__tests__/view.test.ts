@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { initialState, reduce } from "../machine";
 import type { GameEvent, GameState } from "../machine";
 import {
+  anchorFading,
   anchorFigure,
   announcement,
   hitchText,
@@ -205,15 +206,23 @@ describe("anchorFigure", () => {
     expect(anchorFigure(at(toNext(next)))).toMatchObject({ display: "80", stat: "caps" });
   });
 
-  it("keeps the old stat's figure on a stat change until the wheel lands on the new one", () => {
+  it("fades the old stat's figure out as the wheel starts, and shows the new one when it lands", () => {
     const next = round(2, { stat: "apps", statChanged: true, anchorValue: 700 });
     const dealing = at(toNext(next));
     expect(anchorFigure(dealing)).toMatchObject({ display: "80", stat: "caps" });
-    const landed = [{ type: "dealt" }, { type: "spun" }].reduce(
-      (s, e) => reduce(s, e as GameEvent),
-      dealing,
-    );
+    expect(anchorFading(dealing)).toBe(false);
+    const spinning = reduce(dealing, { type: "dealt" });
+    expect(spinning.phase).toBe("spinning");
+    expect(anchorFading(spinning)).toBe(true);
+    const landed = reduce(spinning, { type: "spun" });
     expect(anchorFigure(landed)).toMatchObject({ display: "700", stat: "apps" });
+    expect(anchorFading(landed)).toBe(false);
+  });
+
+  it("never fades when the stat holds, nor on round one's spin", () => {
+    const next = round(2, { stat: "caps", anchorValue: 80 });
+    expect(anchorFading(at(toNext(next)))).toBe(false);
+    expect(anchorFading(at([{ type: "dealt" }]))).toBe(false);
   });
 });
 

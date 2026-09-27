@@ -75,6 +75,12 @@
     0 0 var(--halo-blur) rgba(var(--ink-rgb), var(--halo-opacity));
   /* The same halo as a filter, for the name, whose two-line clip would cut a
      text-shadow. */
+  /* The cards' numbers: gold, whatever the stat's tier, with a gold glow
+     (the "?" too). */
+  --fig-colour: var(--gold);
+  --fig-glow-blur: 16px;
+  --fig-glow-opacity: 0.85;
+  --fig-glow: 0 0 var(--fig-glow-blur) rgba(var(--glow-rgb), var(--fig-glow-opacity));
   --halo-filter: drop-shadow(
       0 0 var(--halo-edge-blur) rgba(var(--ink-rgb), var(--halo-edge-opacity))
     )
@@ -544,6 +550,10 @@
      the anchor's place, the anchor's slides off, the next comes in. Read by
      the game's script (game/timing.ts); none with reduced motion. */
   --dur-slide: 600ms;
+  /* On a stat change, the anchor's old figure fading out as the wheel starts,
+     so it is never shown next to the new stat. The new one appears when the
+     wheel lands. Off with reduced motion (it simply goes). */
+  --dur-figure-out: 250ms;
   --ease-slide: cubic-bezier(0.65, 0, 0.35, 1);
   /* From a wrong answer's colour to the game-over panel. */
   --dur-over: 1400ms;

@@ -40,6 +40,8 @@
     gliding?: number;
     /** The next challenger, coming in during the slide. */
     incoming?: boolean;
+    /** The figure and its qualifier fade out (the anchor's, on a stat change). */
+    fading?: boolean;
   }
 
   let {
@@ -53,6 +55,7 @@
     place = side === "a" ? 0 : 1,
     gliding = 0,
     incoming = false,
+    fading = false,
   }: Props = $props();
 
   let text: HTMLDivElement | undefined = $state();
@@ -108,7 +111,7 @@
         <div class="name">{player.name}</div>
         <div class="meta">{player.country}</div>
       </div>
-      <div class="value">
+      <div class="value" class:fading>
         {@render value?.()}
         <div class="qual">{qualifier}</div>
       </div>
@@ -318,6 +321,11 @@
     }
   }
 
+  /* Fades out; when it stops fading (the new figure is in) it is simply there. */
+  .value.fading {
+    opacity: 0;
+    transition: opacity var(--dur-figure-out) var(--ease);
+  }
   .qual {
     margin-top: var(--qual-gap);
     font-size: var(--fs-qual);

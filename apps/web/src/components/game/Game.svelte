@@ -54,6 +54,7 @@
   import { createTurnstileLoader } from "../../game/turnstile";
   import type { ScriptDocument, Turnstile, TurnstileHost } from "../../game/turnstile";
   import {
+    anchorFading,
     anchorFigure,
     announcement,
     challengeNotice,
@@ -238,6 +239,7 @@
   /** The cards on the pitch; three during the carousel to the next pair. */
   const cards = $derived(pitchCards(game));
   const anchorShows = $derived(anchorFigure(game));
+  const anchorFades = $derived(anchorFading(game));
   /** The carousel's length while it runs, for the cards' own glide; else 0. */
   const gliding = $derived(phase === "sliding" ? timings.slide : 0);
   /** The first deal's kick-off: round one's cards sliding in. */
@@ -410,6 +412,7 @@
         place={card.place}
         {gliding}
         incoming={card.role === "incoming"}
+        fading={card.role === "anchor" && anchorFades}
         {intro}
         player={card.player}
         verdict={card.role === "challenger" && judged && reveal

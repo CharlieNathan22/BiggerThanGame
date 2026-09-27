@@ -1068,7 +1068,9 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   the name and country carry a tint (`--tint-*`): a deeper, wider dark shadow drawn from the letters
   themselves (`filter: drop-shadow` on their block), so it follows the text's shape with no box, and
   the photo shows between and around the words. The figure, the "?" and the qualifier have no tint;
-  a dark `text-shadow` halo (`--halo-*`) rings the glyphs; an optional gold hairline sits under the
+  the figure is always gold (`--fig-colour`, whatever the tier; the plaque carries the tier colour),
+  the figure and the "?" have a gold glow (`--fig-glow*`), and the qualifier a dark `text-shadow`
+  halo (`--halo-*`); an optional gold hairline sits under the
   name (`--name-rule-*`). Higher and Lower (`--pick-*`) carry an up and a down arrow (inline SVG,
   `aria-hidden`); hover, only where the device has one, and keyboard focus turn the button white
   inside a gold ring (`--pick-ring*`); a press turns it white and pushes it in, which is what touch
@@ -1105,8 +1107,9 @@ none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and 
   its verdict colour fades back to rest on the way; the verdict label has gone by then. The slide
   is the last `--dur-slide` (600ms, `--ease-slide`) of the usual `--dur-next`, so rounds take no
   longer; the plaque stays put and any wheel spin comes after, as before. The carried figure stays
-  on the anchor (`anchorFigure`): the same number when the stat holds, and on a stat change the old
-  stat's figure until the wheel lands on the new one. The incoming photo develops in as usual
+  on the anchor (`anchorFigure`) when the stat holds. On a stat change it stays until the wheel
+  starts, then fades out with its qualifier (`anchorFading`, `--dur-figure-out`) and the new stat's
+  figure appears when the wheel lands, so the old number is never shown beside the new stat. The incoming photo develops in as usual
   (normally it was preloaded a round early). No slide after a wrong answer or a win, on the first
   deal, or with reduced motion, where the pair simply changes at the same moment. Focus and
   announcements are unchanged.
