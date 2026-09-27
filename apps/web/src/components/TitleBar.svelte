@@ -33,9 +33,11 @@
     legends?: boolean;
     /** The page being shown, as served (`/about`), for `aria-current`. */
     current?: string;
+    /** Stays at the top of the screen as the page scrolls (About, Credits). */
+    sticky?: boolean;
   }
 
-  let { scores, legends = false, current }: Props = $props();
+  let { scores, legends = false, current, sticky = false }: Props = $props();
 
   /** A nav link's `aria-current` on this page. */
   function marked(link: NavLink): "page" | "true" | undefined {
@@ -62,7 +64,7 @@
 
 <svelte:document onclick={onDocumentClick} onkeydown={onDocumentKeydown} />
 
-<header class="topbar">
+<header class="topbar" class:sticky>
   <a class="title" href={HOME_PATH} aria-current={currentPage(HOME_PATH, current)}>
     <span class="bt">{t("brand.bigger")}<em>{t("brand.than")}</em> {t("brand.game")}</span>
     {#if legends}
@@ -140,6 +142,12 @@
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+  }
+  /* The long pages keep the bar at the top as they scroll; the page's frame
+     clips without making a scroll container, so it sticks to the screen. */
+  .topbar.sticky {
+    position: sticky;
+    top: 0;
   }
   .title {
     position: relative;

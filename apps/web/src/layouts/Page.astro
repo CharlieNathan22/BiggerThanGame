@@ -13,13 +13,22 @@ interface Props {
   /** The Legends page's extra light over the background (Base.astro). */
   legendsLights?: boolean;
   /**
-   * Text that selects as usual: the reading pages (About, Credits). Elsewhere
-   * the page is a front door, not a document, so nothing on it selects.
+   * Text that selects as usual: Credits' list. Elsewhere nothing on the page
+   * selects; a page can still hold back parts of a selectable one.
    */
   selectable?: boolean;
+  /** The title bar stays at the top as the page scrolls: the long pages, About and Credits. */
+  stickyBar?: boolean;
 }
 
-const { title, description, canonical, legendsLights = false, selectable = false } = Astro.props;
+const {
+  title,
+  description,
+  canonical,
+  legendsLights = false,
+  selectable = false,
+  stickyBar = false,
+} = Astro.props;
 const path = servedPath(Astro.url.pathname);
 ---
 
@@ -29,7 +38,7 @@ const path = servedPath(Astro.url.pathname);
   {legendsLights}
   {...(canonical !== undefined ? { canonical } : {})}
 >
-  <TitleBar legends={isLegendsPath(path)} current={path} />
+  <TitleBar legends={isLegendsPath(path)} current={path} sticky={stickyBar} />
   <main class:list={["prose", { fixed: !selectable }]}>
     <slot />
   </main>

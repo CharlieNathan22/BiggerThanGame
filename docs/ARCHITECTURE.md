@@ -984,8 +984,10 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   its gold outline too. The title bar's links have no underline: the current page's is gold, and
   hover, press and focus turn a link gold with a stronger glow (`--glow-strong`). On the card text it sits outside the dark halo. The chrome and the whole
   game UI are `user-select: none` with no tap highlight, except the copy-by-hand share box. So is
-  the content of the homepage, the football hub, the Legends page and the 404 (`Page.astro`'s
-  default); About and Credits pass `selectable` and select as usual, as does the feedback form. There is no visible page scrollbar (`scrollbar-width:
+  the content of every static page (`Page.astro`'s default), About included, and the heading and
+  intro of Credits; Credits' list of photos passes `selectable` and selects as usual, as does the
+  feedback form. On About and Credits, the long pages, the title bar stays at the top as the page
+  scrolls (`stickyBar`, `position: sticky`). There is no visible page scrollbar (`scrollbar-width:
 none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and keyboard.
 - Only the game page gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag); every
   other page scrolls.
