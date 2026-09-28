@@ -29,6 +29,7 @@ export const SITE_PAGES = [
   "/",
   "/about",
   "/credits",
+  "/privacy",
   "/football-higher-or-lower",
   "/football-higher-or-lower/legends",
   "/football-higher-or-lower/legends/friendly",

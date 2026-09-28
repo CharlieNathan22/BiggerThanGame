@@ -13,6 +13,7 @@ import { LEGENDS_PATH } from "../lib/paths";
     {t("brand.bigger")} <em>{t("brand.than")}</em> {t("brand.game")}
   </h1>
   <p class="tagline">{t("home.tagline")}</p>
+  <p class="centred intro">{t("home.intro")}</p>
 
   <Cards label={t("home.games")} roomy>
     <Card large name={t("home.legends.name")} body={t("home.legends.body")} href={LEGENDS_PATH} />
@@ -24,5 +25,10 @@ import { LEGENDS_PATH } from "../lib/paths";
   .tagline {
     font-size: var(--fs-tagline);
     color: var(--chalk);
+  }
+  .intro {
+    max-width: var(--reading-w);
+    margin-left: auto;
+    margin-right: auto;
   }
 </style>

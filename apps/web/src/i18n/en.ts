@@ -36,22 +36,27 @@ export const en = {
   // Breadcrumb on the Legends pages: Football › Legends
   "breadcrumb.label": "Breadcrumb",
   "breadcrumb.separator": "›",
+  // The first step of the trail in structured data (lib/seo.ts); not shown
+  "breadcrumb.home": "Home",
   "breadcrumb.football": "Football",
   "breadcrumb.legends": "Legends",
 
   // Footer
   "footer.nav": "Site",
   "footer.credits": "Credits",
+  "footer.privacy": "Privacy",
   "footer.github": "GitHub",
   "footer.feedbackNav": "Feedback",
   "footer.suggest": "Suggest a legend",
   "footer.problem": "Report a problem",
 
   // Homepage (/). Drafts.
-  "home.title": "Bigger Than Game — Higher or Lower With a Twist",
+  "home.title": "Higher or Lower Games With a Twist | Bigger Than Game",
   "home.description":
-    "Higher or lower where the stat keeps changing under you. Start with football: two legends, one stat, one hidden number. Free, no sign-up.",
+    "A free higher or lower game where the question keeps changing. Start with football legends: two players, one stat, one hidden number. No sign-up needed.",
   "home.tagline": "Higher or lower, where the question keeps changing.",
+  "home.intro":
+    "Bigger Than is a free higher or lower game that plays in your browser. The first game is football: two retired legends, one stat and one hidden number. Guess higher or lower to keep your run going, and watch the plaque, because the stat changes as you play.",
   "home.games": "Games",
   "home.managers.name": "Football Managers",
   "home.managers.body": "Higher or lower with the greatest managers in the game's history.",
@@ -61,9 +66,9 @@ export const en = {
 
   // The football page (/football-higher-or-lower): football higher or lower in
   // general, and a card per deck. Nothing Legends-specific. Drafts.
-  "hub.title": "Football Higher or Lower — Bigger Than Game",
+  "hub.title": "Football Higher or Lower Game, Free Online | Bigger Than Game",
   "hub.description":
-    "A free football higher or lower game where the stat keeps changing. Two footballers, one hidden number: higher or lower? No sign-up.",
+    "Play football higher or lower free in your browser. Two footballers, one stat: is the hidden number higher or lower? The stat changes as you play. No sign-up.",
   "hub.heading": "Football",
   "hub.headingEm": "higher or lower",
   "hub.intro":
@@ -75,9 +80,9 @@ export const en = {
 
   // The Legends deck (/football-higher-or-lower/legends): its intro and the
   // modes. Drafts.
-  "legends.title": "Football Legends Higher or Lower — Bigger Than Game",
+  "legends.title": "Football Legends Quiz: Higher or Lower | Bigger Than Game",
   "legends.description":
-    "Higher or lower with retired football legends, where the stat keeps changing. Play Friendly now, with no clock; Endless and Daily Ranked are on the way.",
+    "A football legends quiz played as higher or lower: retired greats, ten stats from caps to transfer fees, and a question that keeps changing. Free to play.",
   "legends.heading": "Football Legends",
   // The heading's second line: "Higher" and "Lower" in gold, "or" in white
   "legends.headingHigher": "Higher",
@@ -97,9 +102,9 @@ export const en = {
   "mode.soon": "Coming soon",
 
   // The Friendly game page (/football-higher-or-lower/legends/friendly). Drafts.
-  "friendly.title": "Friendly Mode — Football Legends Higher or Lower | Bigger Than Game",
+  "friendly.title": "Play Football Legends Higher or Lower | Bigger Than Game",
   "friendly.description":
-    "Two football legends, one stat, no clock. Guess whether the hidden number is higher or lower — and watch the plaque, because the stat keeps changing. Free, no sign-up.",
+    "Twenty higher or lower questions on football legends, with no timer. Watch the plaque, because the stat changes as you play. Free in your browser, no sign-up.",
 
   // Start panel
   "start.intro":

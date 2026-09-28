@@ -549,7 +549,7 @@
 
     <p class="sr" aria-live="polite">{announcement(game, mode)}</p>
     {#if phase !== "idle" && phase !== "starting"}
-      <!-- The start panel's heading goes with it; the page keeps one. -->
+      <!-- The start panel's heading, "Football Legends", goes with it; the page keeps one. -->
       <h1 class="sr">{t("brand.heading")}</h1>
     {/if}
 
@@ -574,11 +574,15 @@
     {#if phase === "idle" || phase === "starting"}
       <div class="veil">
         <!-- The brand, the deck and the mode, then what to do; side by side on
-             a landscape phone, so it fits. -->
+             a landscape phone, so it fits. The deck is the page's heading; the
+             brand above it is a line of its own. -->
         <div class="panel start">
           <div class="head">
-            <h1>{t("brand.bigger")} <em>{t("brand.than")}</em> {t("brand.game")}</h1>
-            <div class="deckname">{t("brand.footballLegends")}</div>
+            <div class="brand">
+              {t("brand.bigger")} <em>{t("brand.than")}</em>
+              {t("brand.game")}
+            </div>
+            <h1 class="deckname">{t("brand.footballLegends")}</h1>
             <div class="modename"><span>{t(`mode.${mode}.name`)}</span></div>
           </div>
           <div class="lead">
@@ -1129,13 +1133,15 @@
     /* Centres in the veil, and still scrolls from the top when it overflows. */
     margin: auto;
   }
-  .panel h1 {
+  .panel .brand {
+    /* Bold, as it was when it was the heading. */
+    font-weight: bold;
     font-size: var(--fs-display);
     line-height: var(--lh-display);
     font-variation-settings: var(--fv-display);
     letter-spacing: var(--tracking-display);
   }
-  .panel h1 em {
+  .panel .brand em {
     font-style: normal;
     color: var(--gold);
   }
@@ -1148,7 +1154,7 @@
     max-width: var(--start-w);
     margin: var(--start-top) auto auto;
   }
-  .start h1 {
+  .start .brand {
     font-size: var(--fs-start-brand);
     white-space: nowrap;
     text-shadow: var(--heading-glow);

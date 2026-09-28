@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Placeholder mark: a gold "bigger than" sign on the title bar's ink (--gold on --ink). -->
+  <!-- Placeholder mark: a gold "bigger than" sign on the title bar's ink (the gold and ink tokens). No double hyphens in here: XML comments forbid them. -->
   <rect width="64" height="64" rx="12" fill="#06121a"/>
   <path d="M22 16 46 32 22 48" fill="none" stroke="#ffb020" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

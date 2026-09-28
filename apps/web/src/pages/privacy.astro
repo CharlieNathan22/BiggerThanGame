@@ -1,0 +1,117 @@
+---
+// The privacy page: what the site keeps, in plain English, accurate to the
+// code (ARCHITECTURE.md §8, §19). A first draft for the owner to review; not
+// legal advice. Keep it in step with the code: a change to what's stored,
+// logged or measured changes this page too.
+import Page from "../layouts/Page.astro";
+import { CORRECTIONS_EMAIL } from "../config";
+import { FRIENDLY_PATH } from "../lib/paths";
+
+const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-policy/";
+---
+
+<Page
+  title="Privacy: No Cookies, No Accounts, No Ads | Bigger Than Game"
+  description="What Bigger Than Game keeps and why: no cookies, no accounts and no ads. Your best score stays in your browser and game stats are anonymous. In plain English."
+  stickyBar
+>
+  <h1>Privacy</h1>
+  <p>
+    Bigger Than Game is built to know as little about you as possible. This page sets out everything
+    the site keeps, where it's kept and for how long.
+  </p>
+
+  <h2>The short version</h2>
+  <ul>
+    <li>No cookies, no accounts and no sign-up.</li>
+    <li>No advertising, and nothing that tracks you from site to site.</li>
+    <li>Your best score is kept in your own browser, not by us.</li>
+    <li>Game statistics are anonymous: the only thing about you they record is your country.</li>
+    <li>
+      Feedback you send is emailed to us and also kept in our server logs for three days. Please
+      don't include personal details in it.
+    </li>
+  </ul>
+
+  <h2>In your browser</h2>
+  <p>
+    Your best score is saved in your browser's local storage, one number per game mode, so the game
+    can show it next time and tell you when you've beaten it. It never leaves your device, and
+    clearing this site's data in your browser removes it. We don't set any cookies.
+  </p>
+
+  <h2>When you play</h2>
+  <p>
+    The game asks our server for each question as you go, so that the hidden number isn't sent to
+    your browser before you've answered. Like every website, the server sees your IP address when
+    your browser connects. We use it for one thing: limiting how fast a single connection can play,
+    to stop anyone copying the game's data. The limit forgets it within a minute, and it never goes
+    into our logs or statistics.
+  </p>
+  <p>
+    To see how the game plays and keep it fair, the server records anonymous game events: when a run
+    starts and ends, and for each answer the question number, the stat, whether it was right and the
+    score. Each event carries the country your connection comes from (as Cloudflare reports it) and
+    a random run number made for that run alone. There's no IP address, no details of your device or
+    browser, and nothing that links one run to another or to you. These events are kept for three
+    months.
+  </p>
+
+  <h2>Server logs</h2>
+  <p>
+    For three days, our server logs keep a short record of what happened: the start and end of each
+    run (with the country, the score and the question that ended it), requests the server refused,
+    and errors. Cloudflare can also log every request automatically, with its IP address and browser
+    details; we've switched that off.
+  </p>
+
+  <h2>Feedback forms</h2>
+  <p>
+    The forms, <a href={`${FRIENDLY_PATH}#suggest`}>Suggest a legend</a>,{" "}
+    <a href={`${FRIENDLY_PATH}#problem`}>Report a problem</a> and the report on a card at the end of
+    a run, send us what you type: the legend's name and your note, your note and the page you were
+    on, or your note and the two players, the stat and the figures on that card. None of the forms
+    asks for your email address or any other details, and we'd ask you not to put any in.
+  </p>
+  <p>
+    What you send is emailed to us, and we keep the email for as long as we need it to act on what
+    you've told us. A copy is kept in our server logs for three days, with your country and nothing
+    else about you.
+  </p>
+
+  <h3>Cloudflare Turnstile</h3>
+  <p>
+    Before a form sends, Cloudflare Turnstile checks that it's being sent by a person and not a bot.
+    It loads only when you open a form, never while you're just playing. To make that check,
+    Cloudflare processes your IP address, details of your connection and your browser's user agent,
+    to detect and block bots, under the{" "}
+    <a href={TURNSTILE_ADDENDUM}>Cloudflare Turnstile Privacy Addendum</a>. We receive only whether
+    the check passed.
+  </p>
+
+  <h2>Visit counts</h2>
+  <p>
+    We use Cloudflare Web Analytics to count visits: how many people view each page, where they
+    arrived from, and their country and type of device, all in total. It doesn't use cookies or
+    anything else stored in your browser, and it doesn't follow you across sites.
+  </p>
+
+  <h2>Who runs the site</h2>
+  <p>
+    Cloudflare hosts the site and runs its server, and serves the player photos from our own image
+    address. The fonts are served by the site itself, so pages don't contact any font service. The
+    link to GitHub in the footer takes you to GitHub, which has its own privacy policy.
+  </p>
+
+  <h2>No advertising or tracking</h2>
+  <p>
+    There are no adverts, no advertising or social media trackers, and no data sold or passed to
+    anyone for marketing.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions about this page, or about anything you've sent us? Email us at{" "}
+    <a href={`mailto:${CORRECTIONS_EMAIL}`}>{CORRECTIONS_EMAIL}</a>.
+  </p>
+</Page>

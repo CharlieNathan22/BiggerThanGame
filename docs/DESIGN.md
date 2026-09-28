@@ -836,17 +836,28 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
     └── /legends                   the Legends deck: its intro and the three modes. Static,
         │                          no JS. Where "Play" goes.
         └── /friendly              the game: Friendly Mode. Fixed-height, no scroll.
+
+/about  /credits  /privacy         the stats and how to play; photo credits; what the site keeps
 ```
 
 - **The football hub is general.** It says what football higher or lower is — two footballers,
   one stat, and the stat keeps changing — and nothing specific to one deck. Each deck is a card
-  linking to its page; more decks become more cards.
+  linking to its page; more decks become more cards. Below the cards it is the main page for
+  "football higher or lower": a long read on how the game works, which every deck shares — a
+  round, the changing stat, the ten stats, why the players are retired, Friendly, tips. The
+  Legends page has its own long read about its deck, and neither repeats the other.
+- **Search.** Every page has its own title and description written for what people search for,
+  preview tags with one shared image and the game page's own (no player photos), and structured
+  data (`WebSite`
+  everywhere; the game and a breadcrumb trail from the homepage on the football pages). The copy
+  is visible text below the cards, which stay the first thing on screen. No player stat pages,
+  records articles or "coming soon" pages, and no player's figure anywhere on the site.
 - **Modes on a deck's page.** Friendly links to its game page. Endless and Daily Ranked are shown
   as "Coming soon" cards until they ship: not links, not focusable, visibly dimmed, with "Coming
   soon" written out rather than carried by tint alone, and every piece of text still at WCAG AA.
   They are cards on the Legends page, not pages of their own.
 - **Canonical rule.** Every page is canonical to itself, with its own title and meta description;
-  the 404 has none.
+  the 404 has none and is `noindex`. The sitemap lists exactly the canonical pages.
 - **Breadcrumb.** The Legends page shows "Football › Legends" above its heading, in a `nav`
   labelled "Breadcrumb" with `aria-current` on the last item. The game page has none: its
   fixed-height screen has no row to spare on a phone, and its title bar already says "Football
@@ -860,7 +871,8 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   page), How to play and About, with the current page marked. Play is marked current on the
   football hub and every page under it. Inline on desktop; a "Menu" on phones and short
   landscape screens, which opens over the page rather than pushing it down.
-  The footer keeps Credits, GitHub, "Suggest a legend" and "Report a problem".
+  The footer keeps Credits, Privacy, GitHub, "Suggest a legend" and "Report a problem", on one
+  row down to 320px; below 360px GitHub steps out so it still fits.
 - **Local best** is kept per deck and mode — `bt:best:<deck>:<mode>`, `bt:best:legends:friendly`
   today — and shown only on the game pages under `/legends`.
 - **Challenge links** point at the game page:

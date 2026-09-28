@@ -110,6 +110,29 @@
   font-variation-settings: var(--fv-strong);
 }
 
+/* A page's long read, below its cards, which stay the first thing on screen:
+   a narrower column, centred, larger and looser text, and ruled sections (h2).
+   Subheadings (h3) are the same on every prose page. */
+.prose .reading {
+  max-width: var(--reading-w);
+  margin: var(--reading-top) auto 0;
+}
+.prose .reading p,
+.prose .reading li {
+  font-size: var(--fs-reading);
+  line-height: var(--lh-reading);
+}
+.prose .reading p {
+  margin-top: var(--reading-gap);
+}
+.prose h3 {
+  margin-top: var(--reading-sub-top);
+  font-size: var(--fs-reading-sub);
+  line-height: var(--lh-name);
+  color: var(--chalk);
+  font-variation-settings: var(--fv-strong);
+}
+
 /* The start panel's call to action, as a link. */
 .prose .cta {
   display: inline-block;

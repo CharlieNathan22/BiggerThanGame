@@ -1,14 +1,24 @@
 ---
 // The football page: football higher or lower in general, and a card per deck
-// (DESIGN.md §17). Static, no JS. Nothing here is specific to one deck.
+// (DESIGN.md §17). Static, no JS. The main page for "football higher or
+// lower": the cards first, then a long read on how the game works, which
+// every deck shares. Nothing here repeats the Legends page's copy. Draft copy.
+import { STATS, STAT_KEYS } from "@bt/core";
 import Page from "../layouts/Page.astro";
 import Card from "../components/Card.astro";
 import Cards from "../components/Cards.astro";
 import { t } from "../i18n";
-import { LEGENDS_PATH } from "../lib/paths";
+import { ABOUT_PATH, FOOTBALL_PATH, LEGENDS_PATH } from "../lib/paths";
+import { breadcrumbLd, breadcrumbTrail } from "../lib/seo";
+
+const labels = STAT_KEYS.map((key) => STATS[key].label);
 ---
 
-<Page title={t("hub.title")} description={t("hub.description")}>
+<Page
+  title={t("hub.title")}
+  description={t("hub.description")}
+  structuredData={[breadcrumbLd(breadcrumbTrail(FOOTBALL_PATH))]}
+>
   <h1>
     {t("hub.heading")} <em>{t("hub.headingEm")}</em>
   </h1>
@@ -17,4 +27,129 @@ import { LEGENDS_PATH } from "../lib/paths";
   <Cards label={t("hub.decks")}>
     <Card name={t("deck.legends.name")} body={t("deck.legends.body")} href={LEGENDS_PATH} />
   </Cards>
+
+  <article class="reading">
+    <h2>Football higher or lower, explained</h2>
+    <p>
+      Football higher or lower is one simple question asked again and again. Two footballers appear
+      side by side with a stat between them. You can see one player's number; the other is hidden,
+      and you decide whether it's higher or lower. Get it right and your run goes on. Get it wrong
+      and it's over. Your score is how many you got right in a row.
+    </p>
+    <p>
+      Bigger Than is a free football higher or lower game that plays in your browser, on a phone, a
+      tablet or a computer. There's nothing to download and no account to make: pick a deck and the
+      first two players are on the pitch.
+    </p>
+
+    <h2>How a round works</h2>
+    <ol>
+      <li>Two players appear, with their names and nationalities.</li>
+      <li>
+        A wheel spins and lands on a stat. The plaque between the players shows which one, in the
+        stat's colour.
+      </li>
+      <li>The first player's figure is revealed. The second player's stays hidden.</li>
+      <li>
+        You pick <strong>Higher</strong> or <strong>Lower</strong>, and the hidden figure counts up
+        to the answer.
+      </li>
+      <li>
+        If you were right, the player you just guessed stays on as the one to beat, and a new
+        challenger walks out.
+      </li>
+    </ol>
+    <p>
+      Two players are never dealt level on the stat in play, so there's always a right answer. The
+      opening rounds leave wide gaps between the two numbers. As the run goes on the gaps close,
+      until a rough idea isn't enough and you need to actually know.
+    </p>
+
+    <h2>The twist: the stat keeps changing</h2>
+    <p>
+      Most higher or lower games ask the same question all the way through. Here, the stat changes
+      as you play. It holds for a few rounds, then the wheel spins again and lands on something new,
+      and the plaque takes the new stat's colour. The wheel only spins when the stat is changing, so
+      a spin is your cue to read the plaque again.
+    </p>
+    <p>
+      Here's how that plays out. Say the stat is international caps. You're shown a long-serving
+      defender's total and guess that a striker whose international career was short has fewer.
+      Correct. The striker stays on, but now the wheel spins to Instagram followers, and the striker
+      faces a midfielder from an older generation who barely posts. The player who was the underdog
+      a moment ago is now the clear favourite. Knowing who was great is only half of it: you also
+      need to know what they were great at.
+    </p>
+
+    <h2>The ten stats</h2>
+    <p>Every question is about one of these:</p>
+    <ul class="statlist">
+      {labels.map((label) => (
+        <li>{label}</li>
+      ))}
+    </ul>
+    <p>
+      Each stat has a tier, basic, uncommon or rare, which sets how often it comes up and the
+      plaque's colour. The tier doesn't change the score: every right answer is one point. Every
+      stat is defined on the <a href={ABOUT_PATH}>about page</a>, including exactly what counts as a
+      club trophy.
+    </p>
+
+    <h2>Why retired players</h2>
+    <p>
+      Every player in the game has retired. Their caps, goals, trophies and transfer fees are
+      settled, so an answer that was right last month is still right today, and nobody is caught out
+      by a goal scored last weekend. Only Instagram followers and ages still move, which is why
+      followers are shown with the date they were counted. It also means the game rewards people who
+      know their football history, not just this season's highlights.
+    </p>
+
+    <h2>Friendly: twenty questions, no timer</h2>
+    <p>
+      Friendly is the way in. There's no clock, so take as long as you like over each answer. Get
+      all twenty right and you've won the run. It deals from the whole deck with every stat, and
+      your best score is kept on your device so you can try to beat it next time.
+    </p>
+
+    <h2>Tips</h2>
+    <ul>
+      <li>Read the plaque before you pick. When the wheel spins, the question has changed.</li>
+      <li>
+        Club goals and international goals are counted separately. A prolific club scorer can have a
+        thin international record, and the other way round.
+      </li>
+      <li>
+        Transfer fees are shown with the year and aren't adjusted for inflation, so a record fee
+        from decades ago can lose to an ordinary modern one.
+      </li>
+      <li>
+        Instagram followers reward global fame, not career achievement. Some of the greatest players
+        have the smallest followings.
+      </li>
+      <li>Goalkeepers are never asked about goals, but they are asked about appearances.</li>
+      <li>
+        Appearances and caps reward long careers. A steady defender who played for years often beats
+        a bigger name whose career was short.
+      </li>
+    </ul>
+
+    <p class="next">
+      <a class="cta" href={LEGENDS_PATH}>
+        Play Football Legends
+      </a>
+    </p>
+  </article>
 </Page>
+
+<style>
+  .statlist {
+    columns: 2;
+    column-gap: var(--reading-cols-gap);
+  }
+  .statlist li {
+    break-inside: avoid;
+  }
+  .next {
+    text-align: center;
+  }
+</style>

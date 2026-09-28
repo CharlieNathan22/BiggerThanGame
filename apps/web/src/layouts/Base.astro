@@ -6,6 +6,17 @@ import "../styles/background.css";
 import archivoLatin from "@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url";
 import cinzelLatin from "@fontsource/cinzel/files/cinzel-latin-600-normal.woff2?url";
 import { isLegendsPath, servedPath } from "../lib/paths";
+import {
+  LANG,
+  OG_IMAGE,
+  OG_LOCALE,
+  SITE_NAME,
+  THEME_COLOUR,
+  absoluteUrl,
+  jsonLdText,
+  websiteLd,
+} from "../lib/seo";
+import type { JsonLd, PreviewImage } from "../lib/seo";
 
 interface Props {
   title: string;
@@ -15,33 +26,76 @@ interface Props {
   /**
    * The canonical path. By default the page's own; another page's path for a
    * duplicate (none today); false for a page that shouldn't be indexed under
-   * its own URL, like the 404.
+   * its own URL, like the 404, which is also marked `noindex`.
    */
   canonical?: string | false;
   /** The Legends page's extra light over the background: small drifting gold
       glows and a slow floodlight sweep. */
   legendsLights?: boolean;
+  /** Structured data beyond the WebSite every page carries (lib/seo.ts). */
+  structuredData?: readonly JsonLd[];
+  /** The link preview; the site's default unless a page has its own (the game). */
+  image?: PreviewImage;
 }
 
-const { title, description, game = false, canonical, legendsLights = false } = Astro.props;
+const {
+  title,
+  description,
+  game = false,
+  canonical,
+  legendsLights = false,
+  structuredData = [],
+  image = OG_IMAGE,
+} = Astro.props;
 
 // Pages build to `about.html` and are served at `/about` (astro.config.mjs).
 const path = servedPath(Astro.url.pathname);
-const canonicalUrl = canonical === false ? null : new URL(canonical ?? path, Astro.site);
+const canonicalUrl = canonical === false ? null : absoluteUrl(canonical ?? path);
+const imageUrl = absoluteUrl(image.path);
+const jsonLd = [websiteLd(), ...structuredData];
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={LANG}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+    {canonicalUrl ? (
+      <link rel="canonical" href={canonicalUrl} />
+    ) : (
+      <meta name="robots" content="noindex" />
+    )}
+
+    <!-- Link previews: the site's image, or the page's own (the game's), drawn from the tokens (lib/seo.ts). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:locale" content={OG_LOCALE} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+    <meta property="og:image" content={imageUrl} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content={String(image.width)} />
+    <meta property="og:image:height" content={String(image.height)} />
+    <meta property="og:image:alt" content={image.alt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={imageUrl} />
+    <meta name="twitter:image:alt" content={image.alt} />
+
+    {jsonLd.map((data) => (
+      <script is:inline type="application/ld+json" set:html={jsonLdText(data)}></script>
+    ))}
+
     <!-- The title bar's --ink. A meta tag can't read a custom property. -->
-    <meta name="theme-color" content="#06121a" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content={THEME_COLOUR} />
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <!-- The title bar is on every page, so its Latin Archivo is always needed; its
          Cinzel "Legends" only on the Legends pages. -->
     <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />

@@ -588,6 +588,16 @@
   --fs-home-brand: clamp(22px, 7.6vw, 46px);
   /* Room above a static page's content. Less on a landscape phone. */
   --prose-pad-top: 40px;
+  /* A page's long read, below its cards (prose.css, `.reading`): a narrower
+     column than the page, set a little larger and looser than panel text. */
+  --reading-w: 58ch;
+  --reading-top: 72px;
+  --fs-reading: 15.5px;
+  --lh-reading: 1.7;
+  --fs-reading-sub: 16.5px;
+  --reading-sub-top: 26px;
+  --reading-gap: 16px;
+  --reading-cols-gap: 24px;
   /* The Legends page's heading, "Football Legends" over "Higher or Lower". */
   --fs-twoline-heading: clamp(22px, 7.6vw, 46px);
   /* The game's start panel: the brand, the deck in Cinzel, the mode. */

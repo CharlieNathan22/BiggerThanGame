@@ -6,8 +6,8 @@ const credits = loadCredits();
 ---
 
 <Page
-  title="Photo credits — Bigger Than Game"
-  description="Credits for every player photo on Bigger Than: the photographer, the licence and where the image came from."
+  title="Photo Credits for Every Player Photo | Bigger Than Game"
+  description="Credits for every player photo on Bigger Than Game: who took it, the free licence it's shared under and where it came from. Every photo is freely licensed."
   selectable
   stickyBar
 >
@@ -42,7 +42,10 @@ const credits = loadCredits();
             ) : (
               credit.licence
             )}{" "}
-            · <a href={credit.source}>Source</a>
+            ·{" "}
+            <a href={credit.source}>
+              Source<span class="sr"> of the photo of {credit.name}</span>
+            </a>
           </p>
         </li>
       ))}

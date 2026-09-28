@@ -17,6 +17,7 @@ export const FRIENDLY_PATH = "/football-higher-or-lower/legends/friendly";
 
 export const ABOUT_PATH = "/about";
 export const CREDITS_PATH = "/credits";
+export const PRIVACY_PATH = "/privacy";
 
 /** How to play is a section of the about page. */
 export const HOW_TO_PLAY_PATH = "/about#how-to-play";

@@ -50,9 +50,13 @@ pnpm test         # unit tests (vitest) — core, deck and Worker
 pnpm simulate     # 10k-run difficulty simulation → simulation.md
 pnpm deck:import  # players.csv (+ image-log.csv, focus.csv) → players/*.yaml; --dry-run, --prune
 pnpm stats        # gameplay analytics from Analytics Engine; needs .env (see "Logs and analytics")
-pnpm build        # validates deck, emits artifacts, builds site, leak-scans it (sample deck allowed)
+pnpm build        # validates deck, emits artifacts, builds site, leak-scans and search-checks it
+                  # (sample deck allowed)
 pnpm build:prod   # same, but refuses the sample deck — production and deploy only
 pnpm scan:dist    # the leak scan alone: player ids, or values beside names, in apps/web/dist
+pnpm check:site   # the search checks alone: titles, canonicals, previews, JSON-LD, sitemap, robots
+pnpm site:images  # redraws the link preview and app icons into apps/web/public (headless Chrome;
+                  # CHROME_PATH if it isn't found); commit the PNGs
 pnpm typecheck    # tsc, then astro check + svelte-check for apps/web; needs the deck artifacts:
                   # run a deck build first on a clean checkout
 pnpm lint

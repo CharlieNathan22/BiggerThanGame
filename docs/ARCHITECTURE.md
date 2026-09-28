@@ -937,6 +937,7 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
 | `/football-higher-or-lower`                  | the football hub: general intro, a card per deck    | none       |
 | `/football-higher-or-lower/legends`          | the Legends deck: breadcrumb, intro, the mode cards | none       |
 | `/football-higher-or-lower/legends/friendly` | the game (Friendly, Legends deck)                   | the island |
+| `/about`, `/credits`, `/privacy`             | the stats and how to play; credits; privacy         | none       |
 
 - The game island is `client:load`, not `client:visible` — it is above the fold and the first
   interaction must not wait on an intersection observer.
@@ -987,8 +988,10 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   the bar's, so it adds no height to the row it shares, and the open list is an overlay hanging
   from the bar (`--z-topbar`), so the game's fixed-height screen loses nothing. Both lists are
   in the markup; only one is ever displayed.
-- The footer links Credits and GitHub, then the two feedback forms. About and How to play are in the
-  title bar, not repeated here, which keeps the footer to one row down to 320px. The title bar and
+- The footer links Credits, Privacy and GitHub, then the two feedback forms. About and How to
+  play are in the title bar, not repeated here, which keeps the footer to one row down to 320px;
+  below 360px GitHub steps out (`roomy` in `Footer.astro`), as the three site links and the
+  forms don't fit one row there and the game page's Start would go under the footer. The title bar and
   footer are raised surfaces (`--bar-bg`, `--foot-bg`, a `--chrome-rule` hairline and a shadow on
   the edge facing the page) with bold links (`--fv-nav`, `--fv-foot`). They stay compact on the game
   page on phones (`--bar-pad-y`, `--foot-pad-y`, 11.5px footer text so it stays one row at 320px)
@@ -1006,10 +1009,46 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
 none` and `::-webkit-scrollbar`); longer pages still scroll by wheel, touch and keyboard.
 - Only the game page gets the fixed-height, no-scroll layout (`Base.astro`'s `game` flag); every
   other page scrolls.
+- **Search and link previews** (`lib/seo.ts`, written into every head by `Base.astro`): `<html
+lang="en-GB">`; the page's own title and meta description; an absolute canonical on
+  `https://biggerthangame.com`; Open Graph (`og:type`, `og:site_name`, `og:locale` `en_GB`,
+  `og:title`, `og:description`, `og:url`, `og:image` with type, size and alt) and Twitter
+  (`summary_large_image`) tags; and JSON-LD: `WebSite` on every page, a `BreadcrumbList`
+  following the URL down from the homepage on the football hub, the Legends page and the game
+  (the Legends page's visible breadcrumb is that trail without Home, by construction), and one
+  `VideoGame` entity (free, single player, a quiz in the browser) on the Legends page and the
+  game. The 404 has no canonical and is `noindex`. The game page's one `<h1>` is the start
+  panel's "Football Legends"; "Bigger Than Game" above it is a plain brand line, looking exactly
+  as before. During a run the panel goes and a visually hidden `<h1>` takes its place, so there
+  is never more than one. Link previews are 1200 × 630 PNGs under
+  200 KB, with no player photos: `public/og-image.png` for every page but the game, which has
+  its own `og-friendly.png` (the start panel's names, "Friendly · 20 questions" and a plaque
+  asking "International caps", "Higher or lower?"; `image` on `Base.astro`). They and the app
+  icons (`apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, from `favicon.svg`) are drawn
+  by `pnpm site:images` (`scripts/site-images.ts`), which renders HTML pages in headless Chrome
+  with the real tokens and fonts inlined, draws the floodlit background at a sixteenth of the size
+  and scales it up (Chrome dithers gradients, and the noise would double the file), and
+  recompresses every PNG losslessly with Node's zlib (`scripts/png.ts`). They are committed. `site.webmanifest` names the site and
+  uses `--ink`. `public/robots.txt` allows everything but `/api/` and names the sitemap;
+  Cloudflare's managed robots.txt prepends its content-signals notice to it. `sitemap.xml` is an
+  Astro endpoint (`pages/sitemap.xml.ts`): every page but the 404, at its canonical URL, with
+  `lastmod` from the last commit to the page's `.astro` file (the build date for uncommitted
+  changes or without git; a shallow clone gives every page its one commit's date). The copy that
+  search reads is visible text: each page's long read sits below its cards in `.reading`
+  (`prose.css`), a narrower column. **`pnpm check:site`** (`scripts/check-site.ts` over
+  `site-check.ts`) runs after the leak scan in `pnpm build` and `build:prod`, and fails the
+  build on a page without a title, description, canonical, preview tags, `lang`, viewport or
+  exactly one `<h1>`; a title or description another page shares or outside its length range;
+  structured data that doesn't parse or lacks its required fields; an internal link to nothing, or
+  a word glued to a link; a sitemap or robots.txt that disagrees with the pages; or a generated
+  image at the wrong size.
 - Pages build to files (`about.html`, `football-higher-or-lower/legends/friendly.html`) and are
   served without the extension and with no trailing slash — `/about` — which is also the
   canonical URL. Every page is canonical to itself; `Base.astro` can take another `canonical`
-  path for a duplicate (there are none) or `false` (the 404).
+  path for a duplicate (there are none) or `false` (the 404). Workers Static Assets redirects
+  `/about.html`, `/about/` and `/index.html` to the canonical path (307), Cloudflare sends
+  `www` and `http` to the apex over https (301), and a missing page is a real `404` with the
+  404 page (`not_found_handling = "404-page"`), never a soft 404.
 - **Cards** (`Card.astro`, `Cards.astro`) list the games on `/`, the decks on the football hub
   (a grid, with room for more; the homepage's with more room, `roomy`) and the modes on the Legends
   page, with their titles and text centred. The modes stack on a phone; from 560px Friendly

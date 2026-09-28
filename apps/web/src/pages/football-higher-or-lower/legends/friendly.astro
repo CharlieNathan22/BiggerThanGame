@@ -6,9 +6,16 @@ import Footer from "../../../components/Footer.astro";
 import Game from "../../../components/game/Game.svelte";
 import { t } from "../../../i18n";
 import { FRIENDLY_PATH } from "../../../lib/paths";
+import { FRIENDLY_OG_IMAGE, breadcrumbLd, breadcrumbTrail, gameLd } from "../../../lib/seo";
 ---
 
-<Base title={t("friendly.title")} description={t("friendly.description")} game>
+<Base
+  title={t("friendly.title")}
+  description={t("friendly.description")}
+  game
+  image={FRIENDLY_OG_IMAGE}
+  structuredData={[breadcrumbLd(breadcrumbTrail(FRIENDLY_PATH)), gameLd()]}
+>
   <!-- client:load, not client:visible: the first tap must not wait (ARCHITECTURE.md §14). -->
   <Game client:load deck="legends" mode="friendly" path={FRIENDLY_PATH} />
   <noscript>

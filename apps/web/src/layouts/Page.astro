@@ -5,6 +5,7 @@ import Base from "./Base.astro";
 import TitleBar from "../components/TitleBar.svelte";
 import Footer from "../components/Footer.astro";
 import { isLegendsPath, servedPath } from "../lib/paths";
+import type { JsonLd } from "../lib/seo";
 
 interface Props {
   title: string;
@@ -19,6 +20,8 @@ interface Props {
   selectable?: boolean;
   /** The title bar stays at the top as the page scrolls: the long pages, About and Credits. */
   stickyBar?: boolean;
+  /** Structured data beyond the WebSite every page carries (Base.astro). */
+  structuredData?: readonly JsonLd[];
 }
 
 const {
@@ -28,6 +31,7 @@ const {
   legendsLights = false,
   selectable = false,
   stickyBar = false,
+  structuredData = [],
 } = Astro.props;
 const path = servedPath(Astro.url.pathname);
 ---
@@ -36,6 +40,7 @@ const path = servedPath(Astro.url.pathname);
   title={title}
   description={description}
   {legendsLights}
+  {structuredData}
   {...(canonical !== undefined ? { canonical } : {})}
 >
   <TitleBar legends={isLegendsPath(path)} current={path} sticky={stickyBar} />

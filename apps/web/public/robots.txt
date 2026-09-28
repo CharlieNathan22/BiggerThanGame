@@ -1,0 +1,5 @@
+# Everything is open to crawlers except the game's API.
+User-agent: *
+Disallow: /api/
+
+Sitemap: https://biggerthangame.com/sitemap.xml

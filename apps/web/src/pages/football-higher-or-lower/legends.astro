@@ -1,21 +1,54 @@
 ---
 // The Legends deck: its intro and the three modes (DESIGN.md §17). Static, no
-// JS. Where "Play" goes.
+// JS. Where "Play" goes. Below the cards, a long read about this deck: who's
+// in it, what it asks and how to play it; nothing from the football page's.
+// Names only, and no digits anywhere near them, so the leak scan has nothing
+// to weigh (dist-scan.ts). Draft copy.
+import { STATS, STAT_KEYS } from "@bt/core";
+import type { Tier } from "@bt/core";
 import Page from "../../layouts/Page.astro";
 import Breadcrumb from "../../components/Breadcrumb.astro";
 import Card from "../../components/Card.astro";
 import Cards from "../../components/Cards.astro";
 import { t } from "../../i18n";
-import { FOOTBALL_PATH, FRIENDLY_PATH, LEGENDS_PATH } from "../../lib/paths";
+import { ABOUT_PATH, FRIENDLY_PATH, LEGENDS_PATH } from "../../lib/paths";
+import { breadcrumbLd, breadcrumbTrail, gameLd } from "../../lib/seo";
+
+const trail = breadcrumbTrail(LEGENDS_PATH);
+
+/** A stat's label in running text: "club goals", but "Instagram followers". */
+function inSentence(label: string): string {
+  return label.startsWith("Instagram") ? label : label.charAt(0).toLowerCase() + label.slice(1);
+}
+
+/** "a, b and c", from the stats of one tier, in the order the game lists them. */
+function statsOf(tier: Tier): string {
+  const labels = STAT_KEYS.filter((key) => STATS[key].tier === tier).map((key) =>
+    inSentence(STATS[key].label),
+  );
+  return labels.length < 2
+    ? (labels[0] ?? "")
+    : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1) ?? ""}`;
+}
+
+function capitalised(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// Built here, not inline, so formatting can't swallow a space after a stat.
+const tiers =
+  `The basic stats come up most often: ${statsOf("basic")}. ` +
+  `${capitalised(statsOf("uncommon"))} are less common, and the rare ones are ${statsOf("rare")}.`;
 ---
 
-<Page title={t("legends.title")} description={t("legends.description")} legendsLights>
-  <Breadcrumb
-    items={[
-      { label: t("breadcrumb.football"), href: FOOTBALL_PATH },
-      { label: t("breadcrumb.legends"), href: LEGENDS_PATH },
-    ]}
-  />
+<Page
+  title={t("legends.title")}
+  description={t("legends.description")}
+  legendsLights
+  structuredData={[breadcrumbLd(trail), gameLd()]}
+>
+  <!-- The trail without its first step: the brand in the title bar is the way home. -->
+  <Breadcrumb items={trail.slice(1).map((crumb) => ({ label: crumb.name, href: crumb.path }))} />
   <!-- One heading, on two lines, each kept whole, centred, in the gold glow. -->
   <h1 class="twoline glow">
     {t("legends.heading")}
@@ -30,4 +63,69 @@ import { FOOTBALL_PATH, FRIENDLY_PATH, LEGENDS_PATH } from "../../lib/paths";
     <Card name={t("mode.endless.name")} body={t("mode.endless.body")} />
     <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} />
   </Cards>
+
+  <article class="reading">
+    <h2>A football legends quiz, one question at a time</h2>
+    <p>
+      The Legends deck is a football legends quiz played as higher or lower. Instead of a list of
+      questions, you get two players and a hidden number, over and over, and the question keeps
+      changing under you. It's for anyone who grew up arguing about who was better, and wants to
+      find out who really had the numbers.
+    </p>
+
+    <h2>Who's in the deck</h2>
+    <p>
+      Every player in the Legends deck has retired from playing. You'll meet the names everyone
+      knows, like Pelé, Diego Maradona, Johan Cruyff, Zinedine Zidane, Ronaldo Nazário and
+      Ronaldinho, and the modern greats who have since hung up their boots, like Thierry Henry,
+      Andrea Pirlo, Andrés Iniesta, Steven Gerrard and Gianluigi Buffon. Alongside them are the
+      defenders, goalkeepers and holding midfielders who were on the team sheet every week but
+      rarely in the headlines.
+    </p>
+    <p>
+      The deck keeps growing. If someone's missing, use <strong>Suggest a legend</strong> at the
+      bottom of any page. Retired players only.
+    </p>
+
+    <h2>What you'll be asked</h2>
+    <p>
+      {tiers} When the wheel lands on a rare stat, the plaque turns its colour, so you know the
+      question has got harder to guess.
+    </p>
+    <p>
+      Not every stat suits every player. Goalkeepers are never asked about goals, age only comes up
+      for living players, and a player who never moved for a fee is left out of transfer fee
+      questions. The <a href={ABOUT_PATH}>about page</a> sets out exactly what each stat counts.
+    </p>
+
+    <h2>Knowing your legends</h2>
+    <p>
+      Fame will only get you so far here. The deck rewards a particular kind of knowledge: how long
+      a player's career lasted, how often they scored for their country, what a club once paid for
+      them, and how many medals they came home with. A striker everyone remembers can lose on
+      appearances to a full-back who simply never missed a game, and a quiet playmaker can outrank a
+      superstar on trophies.
+    </p>
+
+    <h2>How to play the deck</h2>
+    <p>
+      <strong>Friendly</strong> is open now: twenty questions with no clock, and a win if you get
+      every one right. It's the best way to learn the deck. Two more modes are coming soon.
+      <strong>Endless</strong> will give you as many runs as you like against a short clock, with a
+      board for the best run of the day, and <strong>Daily Ranked</strong> will deal one run a day,
+      the same questions for everyone, on a global leaderboard.
+    </p>
+
+    <p class="next">
+      <a class="cta" href={FRIENDLY_PATH}>
+        Play Friendly
+      </a>
+    </p>
+  </article>
 </Page>
+
+<style>
+  .next {
+    text-align: center;
+  }
+</style>

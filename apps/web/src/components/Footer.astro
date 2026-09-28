@@ -2,15 +2,18 @@
 // The prototype's footer line, carrying site links instead of the prototype
 // notice, and the two general feedback forms. About and How to play are in the
 // title bar's navigation, so they aren't repeated here: that keeps the footer
-// to one row on a 360px phone, and the game its height.
+// to one row on a 360px phone, and the game its height. Below 360px GitHub
+// steps out, so Credits · Privacy and the forms still fit one row at 320px;
+// with it the row wraps and the game's Start button goes under the footer.
 import { GITHUB_URL } from "../config";
 import { t } from "../i18n";
-import { CREDITS_PATH, FRIENDLY_PATH } from "../lib/paths";
+import { CREDITS_PATH, FRIENDLY_PATH, PRIVACY_PATH } from "../lib/paths";
 
-// `rel` only where the link leaves the site.
+// `rel` only where the link leaves the site. `roomy`: only from 360px wide.
 const links = [
   { href: CREDITS_PATH, label: t("footer.credits") },
-  { href: GITHUB_URL, label: t("footer.github"), rel: "noopener" },
+  { href: PRIVACY_PATH, label: t("footer.privacy") },
+  { href: GITHUB_URL, label: t("footer.github"), rel: "noopener", roomy: true },
 ];
 
 // The forms live in the game island on the game page. There, the island opens
@@ -25,12 +28,12 @@ const feedback = [
 <footer class="foot">
   <nav aria-label={t("footer.nav")}>
     {links.map((link, i) => (
-      <>
+      <span class:list={{ roomy: link.roomy }}>
         {i > 0 && <span aria-hidden="true"> · </span>}
         <a href={link.href} rel={link.rel}>
           {link.label}
         </a>
-      </>
+      </span>
     ))}
   </nav>
   <nav aria-label={t("footer.feedbackNav")}>
@@ -73,6 +76,12 @@ const feedback = [
   }
   nav {
     white-space: nowrap;
+  }
+  /* Too narrow for every link on one row: the least needed one steps out. */
+  @media (max-width: 359px) {
+    .roomy {
+      display: none;
+    }
   }
   /* The links read at --dim (4.5:1 and up); only the separators stay faint.
      As in the title bar: no underlines, and hover, press and keyboard focus
