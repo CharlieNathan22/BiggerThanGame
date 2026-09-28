@@ -585,7 +585,8 @@ Validates the final token chain, moderates the nickname, writes to D1 if `publis
 Local-only scores never reach this endpoint.
 
 **`POST /api/feedback`** — the three feedback forms, Phase 3. Types in `packages/core/src/api.ts`,
-handler in `worker/src/feedback.ts`. Stateless: it stores nothing and sends a plain-text email.
+handler in `worker/src/feedback.ts`. Stateless: it sends a plain-text email and logs one line with
+what was sent (§19), and stores nothing else.
 
 ```jsonc
 → { "kind": "suggest", "name": "…", "note"?: "…", "turnstileToken": "…" }
@@ -614,11 +615,15 @@ handler in `worker/src/feedback.ts`. Stateless: it stores nothing and sends a pl
 - **Turnstile** is checked server-side with Siteverify before anything is sent. The widget's script
   loads only when a form opens.
 - **Email** goes through the `send_email` binding (Email Routing) as a hand-built `text/plain`
-  UTF-8 message (`mail.ts`). The subject is fixed per kind (three subjects); user text appears only in the
-  base64-encoded body, never in a header, a log line or a response. The destination is the
-  `FEEDBACK_TO` secret and is not in the repo. A failed send is a calm `502`.
+  UTF-8 message (`mail.ts`). The subject is fixed per kind (three subjects); user text appears in the
+  base64-encoded body and the `feedback` log line, never in a header or a response. The
+  destination is the `FEEDBACK_TO` secret and is not in the repo. A failed send is a calm `502`.
 - **Privacy.** No email field and no other personal details. The IP is used for rate limiting and
-  nothing else: it is not sent to Siteverify, written into the email or logged.
+  nothing else: it is not sent to Siteverify, written into the email or logged. Once a message is
+  accepted (valid, and Turnstile passed) what was sent is logged, whether or not the email then
+  goes: the name and note, the note and page, or the note and the round as the form showed it
+  (§19). That text is kept in Workers Logs for 3 days, with the country and nothing else about
+  the sender.
 
 Corrections land in the deck repo and take effect at the next update (for Ranked, the next rollover),
 never mid-game.
@@ -1300,64 +1305,127 @@ are complete.
 Two instruments, both on the Worker and both configured in `wrangler.toml`. Neither can change a
 response or its timing.
 
-- **Workers Logs** — one structured line for every request the API refuses or fails, and one for
-  each run's start and end (`worker/src/log.ts`). Free plan: 200,000 events a day, kept 3 days.
+- **Workers Logs** — one structured line for every request the API refuses or fails, one for each
+  run's start and end, and one for each feedback message accepted (`worker/src/log.ts`). Free
+  plan: 200,000 events a day, kept 3 days.
 - **Workers Analytics Engine** — one data point for each run start, each judged answer and each
   run end (`worker/src/analytics.ts`), in the dataset `biggerthan_game_events` through the
   `GAME_EVENTS` binding. The dataset is created by the first write after a deploy and keeps three
   months. Queried with SQL through Cloudflare's API: `pnpm stats` (CLAUDE.md) runs the saved
   queries below.
 
+**Invocation logs are off, on purpose.** Cloudflare's automatic invocation logs record every
+request with its IP, location, user agent and headers, which the rules below forbid. So
+`wrangler.toml` sets `invocation_logs = false` under `[observability.logs]`, beside
+`[observability]` `enabled = true` and `head_sampling_rate = 1`. The only lines in Workers Logs are
+the Worker's own `log()` lines. Don't switch invocation logs back on.
+
 ### Never recorded
 
 Nothing personal and nothing hidden, in either instrument:
 
 - no IP address, not even hashed — it is a rate-limit key (§12) and nothing else
-- no user agent, no cookie, and nothing kept in the browser for analytics
+- no user agent, no cookie, no request headers, and nothing kept in the browser for analytics
 - no `RUN_SECRET` or other secret, no seed, no HMAC or signature, no full run id — the **run key**
   (the run id's body, before the ".") stands in for it
-- no feedback text, name or address
-- no stat value, the player's own score apart. The **rank distance** is a position in the deck,
-  written only after the answer, when both figures have been shown, and never sent to the client.
+- no Turnstile token and no `FEEDBACK_TO` address
+- no hidden stat value. The data points carry none, the player's own score apart; the **rank
+  distance** is a position in the deck, written only after the answer, when both figures have been
+  shown, and never sent to the client. The `run_end` line carries the final round's two players
+  and figures, which the response ending the run has just revealed. Nothing else names a player or
+  a value.
+
+Feedback text is the one exception to "nothing the player typed": an accepted message's `feedback`
+line holds what was sent (below), kept in Workers Logs for 3 days, with the country and nothing
+else about the sender. It never appears in a refusal or failure line.
 
 Country is the only thing about the player: Cloudflare's `request.cf.country`, `XX` when unknown.
 Tests hold all of this: `worker/src/__tests__/observability.test.ts` walks complete runs and checks
-every data point and log line for IPs, user agents, secrets, seeds, signed ids, player ids and names,
-and runs the deck's leak scanner over them.
+every data point and log line for IPs, user agents, secrets, seeds and signed ids; checks that no
+player id or name appears outside `run_end`'s final round, and that round against the deck; and
+runs the deck's leak scanner over the rest.
 
 ### Log lines
 
 One object per line, written with the console method that matches its level, so Workers Logs
-indexes every field (a string would only be searchable as text). Every line has `level`, `event`
-and `route`; most have a `reason`.
+indexes every field, nested ones included (a string would only be searchable as text). Every line
+has `level`, `message`, `event` and `route`; most have a `reason`. `message` is what the dashboard
+lists as the line:
 
-| Level   | `event`               | When                                           | `reason`                                                                                            |
-| ------- | --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `info`  | `run_start`           | a run starts (fresh or replay)                 | —                                                                                                   |
-| `info`  | `run_end`             | an answer ends a run                           | the end: `wrong`, `won` or `deck-exhausted`                                                         |
-| `warn`  | `bad_request`         | a 400 from either endpoint                     | the response's `detail`                                                                             |
-| `warn`  | `rate_limited`        | a 429                                          | the limit: `flood`, `starts`, `answers` or `feedback`                                               |
-| `warn`  | `method_not_allowed`  | anything but POST                              | —                                                                                                   |
-| `warn`  | `verification_failed` | Turnstile said no (403)                        | —                                                                                                   |
-| `error` | `internal`            | a 500                                          | `not_configured` (`message` names the missing secrets), or the exception's name, with its `message` |
-| `error` | `unavailable`         | 503, the deck can't deal; 502, Siteverify down | the 503's `detail`, or `turnstile`                                                                  |
-| `error` | `send_failed`         | a feedback email couldn't be sent              | the send error's code, e.g. `E_SENDER_NOT_VERIFIED`                                                 |
-| `error` | `analytics_failed`    | a data point write threw — once per isolate    | the exception's name, with its `message`                                                            |
+- `run_start` or `run_end` for the run lines, exactly;
+- `Legend suggested`, `Problem reported` or `Card error reported` for an accepted feedback message;
+- `<event> · <reason>` for a refusal or failure, e.g. `bad_request · invalid_json`, or the event
+  alone when there's no reason.
 
-Refusals and failures also carry `status`. Nothing else is logged: no successful request, no
-answer (the dataset has those), and no 404 under `/api/`, which scanners probe all day. The start
-and end lines, which exist so runs can be watched live:
+| Level   | `event`               | When                                           | `reason`                                                                                        |
+| ------- | --------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `info`  | `run_start`           | a run starts (fresh or replay)                 | —                                                                                               |
+| `info`  | `run_end`             | an answer ends a run                           | the end: `wrong`, `won` or `deck-exhausted`                                                     |
+| `info`  | `feedback`            | a feedback message is accepted                 | —                                                                                               |
+| `warn`  | `bad_request`         | a 400 from either endpoint                     | the response's `detail`                                                                         |
+| `warn`  | `rate_limited`        | a 429                                          | the limit: `flood`, `starts`, `answers` or `feedback`                                           |
+| `warn`  | `method_not_allowed`  | anything but POST                              | —                                                                                               |
+| `warn`  | `verification_failed` | Turnstile said no (403)                        | —                                                                                               |
+| `error` | `internal`            | a 500                                          | `not_configured` (`cause` names the missing secrets), or the exception's name, with its `cause` |
+| `error` | `unavailable`         | 503, the deck can't deal; 502, Siteverify down | the 503's `detail`, or `turnstile`                                                              |
+| `error` | `send_failed`         | a feedback email couldn't be sent              | the send error's code, e.g. `E_SENDER_NOT_VERIFIED`                                             |
+| `error` | `analytics_failed`    | a data point write threw — once per isolate    | the exception's name, with its `cause`                                                          |
+
+Refusals and failures also carry `status`. Nothing else is logged: no successful answer (the
+dataset has those), and no 404 under `/api/`, which scanners probe all day.
+
+**Run lines**, so runs can be watched live:
 
 ```jsonc
-{ "level": "info", "event": "run_start", "route": "/api/round/next", "mode": "friendly",
-  "run": "20260928-<uuid>", "runKind": "fresh", "deckVersion": "legends-107-e68a4e1b", "country": "GB" }
-{ "level": "info", "event": "run_end", "route": "/api/round/next", "mode": "friendly",
-  "run": "20260928-<uuid>", "runKind": "fresh", "deckVersion": "legends-107-e68a4e1b", "country": "GB",
-  "reason": "won", "score": 20 }
+{ "level": "info", "message": "run_start", "event": "run_start", "route": "/api/round/next",
+  "mode": "friendly", "run": "20260928-<uuid>", "runKind": "fresh",
+  "deckVersion": "legends-107-e68a4e1b", "country": "GB" }
+{ "level": "info", "message": "run_end", "event": "run_end", "route": "/api/round/next",
+  "mode": "friendly", "run": "20260928-<uuid>", "runKind": "fresh",
+  "deckVersion": "legends-107-e68a4e1b", "country": "GB", "reason": "wrong", "score": 6,
+  "endStat": { "id": "caps", "label": "International caps" }, "guess": "higher",
+  "players": [
+    { "role": "anchor", "id": "…", "name": "…", "value": 108, "display": "108" },
+    { "role": "challenger", "id": "…", "name": "…", "value": 91, "display": "91" } ] }
 ```
 
 `run` is the run key, so a start and its end can be paired; for a replay it is the replay's own
-key, `YYYYMMDD-<uuid>~<uuid>`.
+key, `YYYYMMDD-<uuid>~<uuid>`. `run_end` adds the round that ended the run: the miss on `wrong`,
+the final question on `won`, the last answer on `deck-exhausted` (every end follows an answer, so
+there is always one). That's `endStat` (the stat's id and label), `guess` (`higher` or `lower`)
+and `players`, each with the figure its card showed (`display`, plus `qualifier` for a stat that
+has one) and its raw `value`.
+
+**The feedback line**, one per message accepted (valid, and Turnstile passed), whether or not the
+email then sends. A failed send still logs its `send_failed` line after it.
+
+```jsonc
+{ "level": "info", "message": "Legend suggested", "event": "feedback", "route": "/api/feedback",
+  "kind": "suggest", "country": "GB", "submitted": { "name": "…", "note": "…" } }
+{ "level": "info", "message": "Problem reported", "event": "feedback", "route": "/api/feedback",
+  "kind": "problem", "country": "GB", "submitted": { "note": "…", "page": "/about" } }
+{ "level": "info", "message": "Card error reported", "event": "feedback", "route": "/api/feedback",
+  "kind": "correction", "country": "GB",
+  "submitted": { "note": "…", "run": "20260928-<uuid>", "round": 7,
+    "stat": { "id": "fee", "label": "Highest transfer fee" },
+    "players": [ { "role": "anchor", "name": "…", "display": "€77.5m", "qualifier": "2001" },
+                 { "role": "challenger", "name": "…", "display": "…", "qualifier": "…" } ] } }
+```
+
+`submitted` holds what the sender typed, already trimmed, capped and stripped of control characters
+(§8), and kept as plain text inside the JSON. For a correction it adds the round as the form
+showed it, with the run key and never the run id. A note left blank is left out.
+
+**Filtering in the dashboard** (Workers & Pages → biggerthangame → Observability → Logs; switch on
+live to stream):
+
+- runs: `message` equals `run_start` or `run_end`; add `reason` equals `wrong` or `won`
+- where runs end: `endStat.id` (or `endStat.label`) equals a stat; `players.name` finds a player
+- feedback: `event` equals `feedback`, with `kind` equals `suggest`, `problem` or `correction`
+- failures: `level` equals `error`
+
+`npx wrangler tail biggerthangame --format pretty --search run_end` does the same from a terminal,
+for as long as it runs.
 
 **Quota.** Each 429 is a line, so a scraper hammering past the limits can spend the day's 200,000
 log events, and lines past the allowance may not be kept. The game is unaffected. If that starts

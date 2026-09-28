@@ -8,7 +8,7 @@ import { FEEDBACK_LIMITS, SITE_PAGES, STATS, valueOf } from "@bt/core";
 import type { Player, RoundPayload } from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
 import { FEEDBACK_FROM, FEEDBACK_SUBJECTS, handleFeedback } from "../feedback.js";
-import type { FeedbackContext, FeedbackResult } from "../feedback.js";
+import type { AcceptedFeedback, FeedbackContext, FeedbackResult } from "../feedback.js";
 import { cleanLine, cleanNote, parseFeedbackRequest } from "../feedback-validate.js";
 import type { PlainTextMail } from "../mail.js";
 import type { TurnstileOutcome } from "../turnstile.js";
@@ -450,5 +450,122 @@ describe("corrections", () => {
         expect(text).not.toContain(started.round.challenger.id);
       }
     }
+  });
+});
+
+describe("an accepted message", () => {
+  function recording(overrides: Partial<FeedbackContext> = {}) {
+    const accepted: AcceptedFeedback[] = [];
+    const order: string[] = [];
+    const ctx = feedbackContext({
+      accepted: (a) => {
+        accepted.push(a);
+        order.push("accepted");
+      },
+      ...overrides,
+    });
+    const send = ctx.send;
+    return {
+      ctx: {
+        ...ctx,
+        send: async (mail: PlainTextMail) => {
+          order.push("send");
+          await send(mail);
+        },
+      },
+      accepted,
+      order,
+    };
+  }
+
+  it("reports a suggestion's cleaned name and note", async () => {
+    const r = recording();
+    await handleFeedback(
+      suggest({ name: " Gianfranco Zola\u0007", note: "Chelsea\r\nlegend" }),
+      r.ctx,
+    );
+    expect(r.accepted).toEqual([
+      { kind: "suggest", submitted: { name: "Gianfranco Zola", note: "Chelsea\nlegend" } },
+    ]);
+  });
+
+  it("leaves out a suggestion's missing note", async () => {
+    const r = recording();
+    await handleFeedback(suggest(), r.ctx);
+    expect(r.accepted).toEqual([{ kind: "suggest", submitted: { name: "Gianfranco Zola" } }]);
+  });
+
+  it("reports a problem's note and page", async () => {
+    const r = recording();
+    await handleFeedback(problem({ note: "Typo\u0007 here", page: "/credits" }), r.ctx);
+    expect(r.accepted).toEqual([
+      { kind: "problem", submitted: { note: "Typo here", page: "/credits" } },
+    ]);
+  });
+
+  it("reports a correction's round as shown, with the run key and never the run id", async () => {
+    const started = await start(context());
+    const { runId, round } = started;
+    const now = runDay(runId);
+    const r = recording();
+    await handleFeedback(
+      { kind: "correction", runId, round: 1, note: "Wrong fee", turnstileToken: TOKEN },
+      r.ctx,
+    );
+    const def = STATS[round.stat.key];
+    const shown = (role: string, id: string) => {
+      const player = SAMPLE_DECK.find((p) => p.id === id)!;
+      const qualifier = def.qualifier?.(player);
+      return {
+        role,
+        name: player.name,
+        display: def.format(valueOf(player, def.key, now)!),
+        ...(qualifier !== undefined ? { qualifier } : {}),
+      };
+    };
+    expect(r.accepted).toEqual([
+      {
+        kind: "correction",
+        submitted: {
+          note: "Wrong fee",
+          run: runId.slice(0, runId.indexOf(".")),
+          round: 1,
+          stat: { id: def.key, label: def.label },
+          players: [shown("anchor", round.anchor.id), shown("challenger", round.challenger.id)],
+        },
+      },
+    ]);
+    const text = JSON.stringify(r.accepted);
+    expect(text).not.toContain(runId);
+    expect(text).not.toContain(runId.slice(runId.indexOf(".") + 1));
+    expect(text).not.toContain(TOKEN);
+    expect(text).not.toContain("owner@example.com");
+  });
+
+  it("is told only once the message is valid and verified, and before the send", async () => {
+    const refused = recording();
+    await handleFeedback(suggest({ email: "a@b.com" }), refused.ctx);
+    expect(refused.accepted).toEqual([]);
+
+    for (const verdict of ["fail", "error"] as const) {
+      const r = recording({ verifyTurnstile: async () => verdict });
+      await handleFeedback(suggest(), r.ctx);
+      expect(r.accepted, verdict).toEqual([]);
+    }
+
+    const passed = recording();
+    await handleFeedback(suggest(), passed.ctx);
+    expect(passed.order).toEqual(["accepted", "send"]);
+  });
+
+  it("is told even when the send then fails", async () => {
+    const r = recording({
+      send: async () => {
+        throw Object.assign(new Error("nope"), { code: "E_RATE_LIMIT_EXCEEDED" });
+      },
+    });
+    const result = await handleFeedback(suggest(), r.ctx);
+    expect(result.status).toBe(502);
+    expect(r.accepted).toHaveLength(1);
   });
 });

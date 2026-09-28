@@ -73,16 +73,24 @@ not a code problem — read the error before changing code.
 ### Logs and analytics
 
 ARCHITECTURE.md §19 has the schema, the log events and the SQL. Nothing personal is recorded
-anywhere: no IP, user agent or cookie, country only. Never log a secret, seed, signature, full run
-id (the run key — the body before the "." — is fine), feedback text or stat value; use `log()` from
-`worker/src/log.ts`, never a bare `console.*` string.
+anywhere: no IP, user agent, cookie or header, country only. Never log a secret, seed, signature,
+full run id (the run key — the body before the "." — is fine), Turnstile token, `FEEDBACK_TO` or
+an unrevealed stat value. Two deliberate exceptions: `run_end` carries the final round's two
+players and figures (revealed by then), and the `feedback` line carries what the sender submitted.
+Use `log()` from `worker/src/log.ts`, never a bare `console.*` string, and give every line a
+`message`.
 
-**Watching runs live** — every run writes a `run_start` and a `run_end` line (`info`); refusals
-are `warn` and failures `error`.
+**Cloudflare's invocation logs are off on purpose** (`invocation_logs = false` in `wrangler.toml`):
+they record every request's IP, location, user agent and headers. Don't turn them back on.
+
+**Watching runs live** — every run writes a `run_start` and a `run_end` line (`info`), each
+accepted feedback message a `feedback` line (`info`); refusals are `warn` and failures `error`.
 
 - Dashboard: **Workers & Pages → biggerthangame → Observability → Logs** (switch on live to
-  stream). Filter on the logged fields: `event` equals `run_end` for finished runs, and add
-  `reason` equals `won` for wins only; `level` equals `error` for failures. Kept 3 days.
+  stream). Filter on the logged fields: `message` equals `run_start` or `run_end`; add `reason`
+  equals `wrong` or `won`; `endStat.id` equals a stat to see where runs end; `event` equals
+  `feedback`, with `kind` equals `suggest`, `problem` or `correction`; `level` equals `error` for
+  failures. Kept 3 days.
 - Terminal: `npx wrangler tail biggerthangame --format pretty` streams everything live;
   `--search run_end` narrows it to finished runs, `--search won` to wins. Tail shows only what
   happens while it runs.

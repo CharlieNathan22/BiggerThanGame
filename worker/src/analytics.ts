@@ -23,9 +23,11 @@
  *   end:    blob6 end reason ("wrong" | "won" | "deck-exhausted"); double1 final score
  *
  * Privacy (§19): nothing personal — no IP, not even hashed, no user agent, no
- * cookie, nothing kept in the browser. Country only. No stat value: the rank
- * distance is a position in the deck, of two figures both already revealed,
- * and never reaches the client.
+ * cookie, nothing kept in the browser. Country only. No stat value in a data
+ * point: the rank distance is a position in the deck, of two figures both
+ * already revealed, and never reaches the client. The `run_end` log line does
+ * carry the final round's two figures, which the ending response has just
+ * revealed.
  *
  * Fire-and-forget: `writeDataPoint` doesn't block, and a missing or throwing
  * binding (local dev, tests, an outage) is swallowed. The response and its
@@ -33,8 +35,9 @@
  */
 
 import { STATS, bandForRound, isFinalRound, percentiles, rankDistance, valueOf } from "@bt/core";
-import type { Band, Mode, Player, Relaxation, Round, RunEnd, StatKey, Tier } from "@bt/core";
+import type { Band, Guess, Mode, Player, Relaxation, Round, RunEnd, StatKey, Tier } from "@bt/core";
 import type { LogLine } from "./log.js";
+import { figureFor } from "./payload.js";
 
 /** Analytics Engine's limit on an index. */
 export const MAX_INDEX_BYTES = 96;
@@ -75,7 +78,26 @@ export interface EndEvent extends RunFacts {
   readonly type: "end";
   readonly end: RunEnd;
   readonly score: number;
+  /** The answered round that ended the run, for its log line. Not in the data point. */
+  readonly final?: FinalRound;
 }
+
+/** One of the final round's two players, both figures revealed by then. */
+export type RevealedPlayer = {
+  readonly role: "anchor" | "challenger";
+  readonly id: string;
+  readonly name: string;
+  readonly value: number;
+  readonly display: string;
+  readonly qualifier?: string;
+};
+
+/** The round that ended a run: its stat, the guess, and both players with their figures. */
+export type FinalRound = {
+  readonly stat: StatKey;
+  readonly guess: Guess;
+  readonly players: readonly [RevealedPlayer, RevealedPlayer];
+};
 
 export type GameEvent = StartEvent | AnswerEvent | EndEvent;
 
@@ -133,6 +155,24 @@ export function pairRankDistance(deck: readonly Player[], round: Round, now: Dat
   return rankDistance(table, anchor, challenger);
 }
 
+/**
+ * The answered round, as `run_end` logs it. Only for a round whose answer has
+ * been judged: the response that ends the run reveals the challenger's figure.
+ */
+export function finalRound(round: Round, now: Date, guess: Guess): FinalRound {
+  const player = (role: RevealedPlayer["role"], p: Player): RevealedPlayer => ({
+    role,
+    id: p.id,
+    name: p.name,
+    ...figureFor(p, round.stat, now),
+  });
+  return {
+    stat: round.stat,
+    guess,
+    players: [player("anchor", round.anchor), player("challenger", round.challenger)],
+  };
+}
+
 /** The event as one Analytics Engine data point, in the layout above. */
 export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
   const common = [event.type, event.mode, event.runKind, ctx.deckVersion, ctx.country];
@@ -167,8 +207,9 @@ export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
 
 /**
  * The `info` line for a run's start or end, so runs can be watched live in
- * Workers Logs and `wrangler tail`. Answers get no line: that's what the
- * dataset is for.
+ * Workers Logs and `wrangler tail`. The end adds the round that ended the run:
+ * `endStat`, `guess` and both `players` with their figures. Answers get no
+ * line: that's what the dataset is for.
  */
 export function toLogLine(event: GameEvent, ctx: EventContext, route: string): LogLine | undefined {
   const common = {
@@ -181,15 +222,25 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
   } as const;
   switch (event.type) {
     case "start":
-      return { level: "info", event: "run_start", ...common };
-    case "end":
+      return { level: "info", message: "run_start", event: "run_start", ...common };
+    case "end": {
+      const { final } = event;
       return {
         level: "info",
+        message: "run_end",
         event: "run_end",
         ...common,
         reason: event.end,
         score: event.score,
+        ...(final !== undefined
+          ? {
+              endStat: { id: final.stat, label: STATS[final.stat].label },
+              guess: final.guess,
+              players: final.players,
+            }
+          : {}),
       };
+    }
     case "answer":
       return undefined;
   }

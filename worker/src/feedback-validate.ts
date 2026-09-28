@@ -9,7 +9,8 @@
  *
  * Free text is cleaned before it is measured: trimmed, with control
  * characters removed (a note keeps its line breaks). It only ever goes into
- * the body of a plain-text email, never a header, a log line or a response.
+ * the body of a plain-text email and the `feedback` log line (as a JSON
+ * string), never a header or a response.
  */
 
 import { FEEDBACK_LIMITS, MAX_ROUNDS, isSitePage, textLength } from "@bt/core";

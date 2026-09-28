@@ -220,7 +220,7 @@
 
 <!-- A click only adds a shortcut once "Thanks" is showing; the keyboard has Esc and the close button. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="backdrop" class:closing class:sent={status === "sent"} onclick={onBackdropClick}>
+<div class="scrim" class:closing class:sent={status === "sent"} onclick={onBackdropClick}>
   <div
     bind:this={dialog}
     class="dialog"
@@ -302,7 +302,9 @@
 </div>
 
 <style>
-  .backdrop {
+  /* Not `.backdrop`: that's the site background's global class (background.css),
+     whose `pointer-events: none` would leak in and make the form unclickable. */
+  .scrim {
     position: fixed;
     inset: 0;
     z-index: 20;
@@ -328,7 +330,7 @@
     outline: none;
   }
   /* "Thanks" closes on a click anywhere. */
-  .backdrop.sent {
+  .scrim.sent {
     cursor: pointer;
   }
 
@@ -479,7 +481,7 @@
   }
 
   /* After "Thanks": the same fade, out. */
-  .backdrop.closing {
+  .scrim.closing {
     animation: fade-out var(--dur-modal) var(--ease) forwards;
   }
 
@@ -494,8 +496,8 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .backdrop,
-    .backdrop.closing {
+    .scrim,
+    .scrim.closing {
       animation: none;
     }
   }

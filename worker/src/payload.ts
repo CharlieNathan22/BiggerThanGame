@@ -92,13 +92,14 @@ function toAnchorCard(player: Player, stat: StatKey, now: Date, images: ImageLoo
   return { ...toPlayerCard(player, images), ...figureFor(player, stat, now) };
 }
 
-interface Figure {
+export interface Figure {
   readonly value: number;
   readonly display: string;
   readonly qualifier?: string;
 }
 
-function figureFor(player: Player, stat: StatKey, now: Date): Figure {
+/** A figure as the card shows it: the value, its display and any qualifier. */
+export function figureFor(player: Player, stat: StatKey, now: Date): Figure {
   const def = STATS[stat];
   const value = requireValue(player, stat, now);
   const qualifier = def.qualifier?.(player);

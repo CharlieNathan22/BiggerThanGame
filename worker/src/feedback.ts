@@ -6,8 +6,9 @@
  * Privacy: nothing personal is asked for, stored or logged. There is no email
  * field; the IP is used only as a rate-limit key (app.ts) and never reaches
  * Turnstile, the email or a log. The destination address is a secret. This
- * module logs nothing itself: a failure comes back as a `reason` code, which
- * app.ts logs.
+ * module logs nothing itself: an accepted message goes to `accepted`, which
+ * app.ts logs with what was submitted (Workers Logs, kept 3 days), and a
+ * failure comes back as a `reason` code, which app.ts logs.
  *
  * A correction names a run and a round, nothing more. The server verifies the
  * run id's signature, rebuilds that round from the seed exactly as the round
@@ -24,6 +25,7 @@ import { STATS, buildRun, valueOf } from "@bt/core";
 import type {
   ApiError,
   CorrectionRequest,
+  FeedbackRequest,
   FeedbackResponse,
   Player,
   ProblemRequest,
@@ -32,7 +34,9 @@ import type {
 } from "@bt/core";
 import { parseFeedbackRequest } from "./feedback-validate.js";
 import type { FeedbackRejection } from "./feedback-validate.js";
+import type { LogLine, LogValue } from "./log.js";
 import type { PlainTextMail } from "./mail.js";
+import { figureFor } from "./payload.js";
 import { isRunAnswerable, verifyRunId } from "./run-id.js";
 import type { RunId } from "./run-id.js";
 import { friendlySeed } from "./seed.js";
@@ -58,8 +62,21 @@ export interface FeedbackContext {
   /** A unique id for the Message-ID header. */
   readonly uuid: () => string;
   readonly verifyTurnstile: (token: string) => Promise<TurnstileOutcome>;
+  /**
+   * Told when a message is accepted — valid, and Turnstile passed — before it
+   * is sent, so a failed send is still counted. app.ts logs it. Must not throw.
+   */
+  readonly accepted?: (feedback: AcceptedFeedback) => void;
   /** Sends the message. Throws when it couldn't. */
   readonly send: (mail: PlainTextMail) => Promise<void>;
+}
+
+/** What a sender submitted, as the log keeps it: only what they typed or were shown. */
+export type Submitted = { readonly [field: string]: LogValue | undefined };
+
+export interface AcceptedFeedback {
+  readonly kind: FeedbackRequest["kind"];
+  readonly submitted: Submitted;
 }
 
 export type FeedbackResult =
@@ -81,15 +98,21 @@ export async function handleFeedback(body: unknown, ctx: FeedbackContext): Promi
   if (!parsed.ok) return badRequest(parsed.code);
   const req = parsed.value;
 
-  let text: string;
+  let report: Report;
   if (req.kind === "correction") {
-    const report = await correctionText(req, ctx);
-    if (!report.ok) return badRequest(report.code);
-    text = report.text;
+    const correction = await correctionReport(req, ctx);
+    if (!correction.ok) return badRequest(correction.code);
+    report = correction;
   } else if (req.kind === "problem") {
-    text = problemText(req, ctx.clock());
+    report = {
+      text: problemText(req, ctx.clock()),
+      submitted: { note: req.note, page: req.page },
+    };
   } else {
-    text = suggestionText(req, ctx.clock());
+    report = {
+      text: suggestionText(req, ctx.clock()),
+      submitted: { name: req.name, ...(req.note !== undefined ? { note: req.note } : {}) },
+    };
   }
 
   const verdict = await ctx.verifyTurnstile(req.turnstileToken);
@@ -98,12 +121,15 @@ export async function handleFeedback(body: unknown, ctx: FeedbackContext): Promi
     return { status: 502, body: { error: "unavailable" }, reason: "turnstile" };
   }
 
+  // Accepted: valid and verified. Told before the send, so it counts either way.
+  ctx.accepted?.({ kind: req.kind, submitted: report.submitted });
+
   try {
     await ctx.send({
       from: FEEDBACK_FROM,
       to: ctx.to,
       subject: FEEDBACK_SUBJECTS[req.kind],
-      text,
+      text: report.text,
       date: ctx.clock(),
       messageId: `<${ctx.uuid()}@biggerthangame.com>`,
     });
@@ -143,18 +169,25 @@ export function problemText(req: ProblemRequest, received: Date): string {
   ].join("\n");
 }
 
-type CorrectionText =
-  | { readonly ok: true; readonly text: string }
-  | { readonly ok: false; readonly code: FeedbackRejection };
+/** A message's email body, and what the sender submitted, for the log line. */
+interface Report {
+  readonly text: string;
+  readonly submitted: Submitted;
+}
+
+type CorrectionReport =
+  ({ readonly ok: true } & Report) | { readonly ok: false; readonly code: FeedbackRejection };
 
 /**
  * The report's body, from the round as the server deals it. Refuses a run id
  * this server didn't sign, one too old to answer, and a round the run never had.
+ * What's logged is what the form showed: the round, its stat, and both players'
+ * names and figures as the cards displayed them, with the run key, never the id.
  */
-export async function correctionText(
+export async function correctionReport(
   req: CorrectionRequest,
   ctx: Pick<FeedbackContext, "deck" | "secret" | "clock">,
-): Promise<CorrectionText> {
+): Promise<CorrectionReport> {
   const run = await verifyRunId(req.runId, ctx.secret);
   if (run === undefined) return { ok: false, code: "invalid_run" };
   if (!isRunAnswerable(run, ctx.clock())) return { ok: false, code: "run_expired" };
@@ -180,7 +213,47 @@ export async function correctionText(
     `Received: ${ctx.clock().toISOString()}`,
     "",
   ].join("\n");
-  return { ok: true, text };
+  const shown = (role: "anchor" | "challenger", player: Player): LogValue => {
+    const { display, qualifier } = figureFor(player, round.stat, now);
+    return { role, name: player.name, display, ...(qualifier !== undefined ? { qualifier } : {}) };
+  };
+  const submitted: Submitted = {
+    ...(req.note !== undefined ? { note: req.note } : {}),
+    run: run.body,
+    round: round.index,
+    stat: { id: def.key, label: def.label },
+    players: [shown("anchor", round.anchor), shown("challenger", round.challenger)],
+  };
+  return { ok: true, text, submitted };
+}
+
+/** The dashboard's line for each form. */
+export const FEEDBACK_MESSAGES = {
+  suggest: "Legend suggested",
+  problem: "Problem reported",
+  correction: "Card error reported",
+} as const;
+
+/**
+ * The `info` line for an accepted message: what was sent, and the country.
+ * Nothing else about the sender — no IP, user agent or token — and never where
+ * it was emailed. Text arrives trimmed, capped and without control characters
+ * (feedback-validate.ts), and stays plain text inside the JSON.
+ */
+export function feedbackLogLine(
+  accepted: AcceptedFeedback,
+  country: string,
+  route: string,
+): LogLine {
+  return {
+    level: "info",
+    message: FEEDBACK_MESSAGES[accepted.kind],
+    event: "feedback",
+    route,
+    kind: accepted.kind,
+    country,
+    submitted: accepted.submitted,
+  };
 }
 
 /** `Zinedine Zidane (zidane-zinedine): €77.5m, 2001 [77.5]` — as the card showed it, then raw. */

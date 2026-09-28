@@ -12,11 +12,18 @@ binding = "ASSETS"
 not_found_handling = "404-page"
 run_worker_first = ["/api/*"]
 
-# Workers Logs: one structured line per refusal or failure, and per run start
-# and end (worker/src/log.ts, ARCHITECTURE.md §19). Kept for a few days.
+# Workers Logs: one structured line per refusal or failure, per run start and
+# end, and per accepted feedback message (worker/src/log.ts, ARCHITECTURE.md
+# §19). Kept 3 days.
 [observability]
 enabled = true
 head_sampling_rate = 1
+
+# Off on purpose: Cloudflare's automatic invocation logs record every request's
+# IP, location, user agent and headers, which the privacy rules forbid (§19).
+# Our own log() lines are unaffected.
+[observability.logs]
+invocation_logs = false
 
 # Gameplay events (start, answer, end) for Workers Analytics Engine
 # (worker/src/analytics.ts, ARCHITECTURE.md §19). The dataset is created on the

@@ -34,7 +34,7 @@ import type {
   StartRequest,
   StartResponse,
 } from "@bt/core";
-import { pairRankDistance } from "./analytics.js";
+import { finalRound, pairRankDistance } from "./analytics.js";
 import type { GameEvent, RunKind } from "./analytics.js";
 import { challengeLink, checkChallenge } from "./challenge.js";
 import type { ChallengeCheck } from "./challenge.js";
@@ -178,7 +178,8 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
       challenge: await challengeLink(ctx.secret, run.origin, score),
     };
     recordAnswer();
-    ctx.record?.({ type: "end", ...facts, end, score });
+    // Every end follows an answer, so there's always a final round to log.
+    ctx.record?.({ type: "end", ...facts, end, score, final: finalRound(round, now, req.guess) });
     return { status: 200, body: response };
   };
 

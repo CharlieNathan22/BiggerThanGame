@@ -13,7 +13,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { STATS, buildRun, percentiles, rankDistance, valueOf } from "@bt/core";
-import type { AnswerResponse, EndResponse, Guess, Round, StartResponse } from "@bt/core";
+import type { AnswerResponse, EndResponse, Guess, Player, Round, StartResponse } from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
 import {
   DATASET,
@@ -134,7 +134,7 @@ function distance(round: Round, now: Date): number {
 async function play(
   h: Harness,
   opts: { missAt?: number; start?: unknown } = {},
-): Promise<{ runId: string; last: AnswerResponse; answered: number }> {
+): Promise<{ runId: string; last: AnswerResponse; answered: number; guess: Guess }> {
   const started = await send<StartResponse>(h, opts.start ?? { mode: "friendly" });
   let round = started.round;
   for (;;) {
@@ -146,9 +146,36 @@ async function play(
       round: round.index,
       guess,
     });
-    if (!("next" in res)) return { runId: started.runId, last: res, answered: round.index };
+    if (!("next" in res)) return { runId: started.runId, last: res, answered: round.index, guess };
     round = res.next;
   }
+}
+
+/**
+ * `run_end`'s final-round fields, worked out from the deck: the round that
+ * ended the run, the guess, and both players with the figures the cards showed.
+ */
+async function finalFields(runId: string, answered: number, guess: Guess) {
+  const round = (await dealt(runId))[answered - 1]!;
+  const now = runDay(runId);
+  const def = STATS[round.stat];
+  const player = (role: "anchor" | "challenger", p: Player) => {
+    const value = valueOf(p, round.stat, now)!;
+    const qualifier = def.qualifier?.(p);
+    return {
+      role,
+      id: p.id,
+      name: p.name,
+      value,
+      display: def.format(value),
+      ...(qualifier !== undefined ? { qualifier } : {}),
+    };
+  };
+  return {
+    endStat: { id: def.key, label: def.label },
+    guess,
+    players: [player("anchor", round.anchor), player("challenger", round.challenger)],
+  };
 }
 
 describe("the data point layout", () => {
@@ -239,6 +266,7 @@ describe("events from real requests", () => {
     expect(h.lines).toEqual([
       {
         level: "info",
+        message: "run_start",
         event: "run_start",
         route: ROUND_PATH,
         mode: "friendly",
@@ -291,7 +319,7 @@ describe("events from real requests", () => {
 
   it("ends a missed run with wrong and the score before the miss, and logs run_end", async () => {
     const h = harness();
-    const { runId } = await play(h, { missAt: 3 });
+    const { runId, guess } = await play(h, { missAt: 3 });
     expect(h.points.map((p) => p.blobs[0])).toEqual(["start", "answer", "answer", "answer", "end"]);
     expect(h.points.at(-1)).toEqual({
       indexes: [bodyOf(runId)],
@@ -300,6 +328,7 @@ describe("events from real requests", () => {
     });
     expect(h.lines.at(-1)).toEqual({
       level: "info",
+      message: "run_end",
       event: "run_end",
       route: ROUND_PATH,
       mode: "friendly",
@@ -309,14 +338,22 @@ describe("events from real requests", () => {
       country: "GB",
       reason: "wrong",
       score: 2,
+      ...(await finalFields(runId, 3, guess)),
     });
   });
 
   it("ends a run played to the end with its reason and score, and marks the final question", async () => {
     const h = harness();
-    const { runId, last, answered } = await play(h);
+    const { runId, last, answered, guess } = await play(h);
     const end = (last as EndResponse).end;
     expect(end === "won" ? answered === 20 : end === "deck-exhausted").toBe(true);
+    // The final question is logged on a win too: the stat, the guess and both players.
+    expect(h.lines.at(-1)).toMatchObject({
+      message: "run_end",
+      reason: end,
+      score: answered,
+      ...(await finalFields(runId, answered, guess)),
+    });
     expect(h.points.at(-1)).toEqual({
       indexes: [bodyOf(runId)],
       blobs: ["end", "friendly", "fresh", VERSION, "GB", end],
@@ -401,11 +438,17 @@ describe("the index", () => {
 describe("privacy", () => {
   it("writes and logs no hidden value, IP, user agent, cookie, secret, seed or signed id", async () => {
     const h = harness({ images: true });
-    const runs: { runId: string; last: AnswerResponse }[] = [];
+    const runs: Awaited<ReturnType<typeof play>>[] = [];
     for (const missAt of [1, 3, 6, 9, undefined]) {
       runs.push(await play(h, missAt === undefined ? {} : { missAt }));
     }
     const everything = JSON.stringify([h.points, h.lines]);
+    // Everything but run_end's final round, which the ending response revealed.
+    const revealed = new Set(["endStat", "guess", "players"]);
+    const lines = h.lines.map((line) =>
+      Object.fromEntries(Object.entries(line).filter(([field]) => !revealed.has(field))),
+    );
+    const unrevealed = JSON.stringify([h.points, lines]);
 
     for (const needle of [IP, USER_AGENT, "session=not-ours", SECRET]) {
       expect(everything).not.toContain(needle);
@@ -417,9 +460,20 @@ describe("privacy", () => {
       expect(everything).not.toContain(await friendlySeed(SECRET, run.origin));
       expect(everything).not.toContain((last as EndResponse).challenge.sig);
     }
+    // A player appears in one place only: run_end's `players`, the two in the
+    // round that ended the run, whose figures the ending response revealed.
+    // Never the next round's pair, dealt but never shown.
+    const ends = h.lines.filter((l) => l.event === "run_end");
+    expect(ends).toHaveLength(runs.length);
+    for (const [i, { runId, answered, guess }] of runs.entries()) {
+      const { endStat, guess: guessed, players } = ends[i]!;
+      expect({ endStat, guess: guessed, players }).toEqual(
+        await finalFields(runId, answered, guess),
+      );
+    }
     for (const player of SAMPLE_DECK) {
-      expect(everything).not.toContain(`"${player.id}"`);
-      expect(everything).not.toContain(player.name);
+      expect(unrevealed).not.toContain(`"${player.id}"`);
+      expect(unrevealed).not.toContain(player.name);
     }
 
     // Values: every number is one of the declared doubles, each in its range,
@@ -447,7 +501,7 @@ describe("privacy", () => {
       expect(line.score).toBeLessThanOrEqual(20);
     }
     const lineText = JSON.stringify(
-      h.lines.map((line) => ({
+      lines.map((line) => ({
         ...line,
         run: undefined,
         deckVersion: undefined,
@@ -455,6 +509,127 @@ describe("privacy", () => {
       })),
     );
     expect(scanForLeakedValues(lineText, SAMPLE_DECK, TODAY, "log lines")).toEqual([]);
+  });
+});
+
+describe("the feedback line", () => {
+  const TOKEN = "token-from-the-widget";
+
+  function feedbackHarness(): { h: Harness; env: Env } {
+    const h = harness();
+    const app = createApp({
+      deck: SAMPLE_DECK,
+      images: {},
+      clock: () => TODAY,
+      uuid: () => uuidFrom(7),
+      fetch: async () => Response.json({ success: true }),
+      emailMessage: (from, to) => ({ from, to }),
+      log: (line) => h.lines.push(line),
+    });
+    const env: Env = {
+      ...h.env,
+      TURNSTILE_SECRET: "1x0000000000000000000000000000000AA",
+      FEEDBACK_TO: "owner@example.com",
+    };
+    return { h: { ...h, app }, env };
+  }
+
+  async function submit(body: unknown, country: string | null = "GB"): Promise<LogLine[]> {
+    const { h, env } = feedbackHarness();
+    const res = await h.app.fetch(post(FEEDBACK_PATH, body, country), env);
+    expect(res.status).toBe(200);
+    return h.lines;
+  }
+
+  function expectNothingPersonal(lines: LogLine[]): void {
+    const logged = JSON.stringify(lines);
+    for (const needle of [IP, USER_AGENT, "session=not-ours", TOKEN, "owner@", "1x0", SECRET]) {
+      expect(logged).not.toContain(needle);
+    }
+  }
+
+  it("logs an accepted suggestion with its name and note", async () => {
+    const lines = await submit({
+      kind: "suggest",
+      name: "Gianfranco Zola",
+      note: "Chelsea \u0007legend\nand Parma",
+      turnstileToken: TOKEN,
+    });
+    expect(lines).toEqual([
+      {
+        level: "info",
+        message: "Legend suggested",
+        event: "feedback",
+        route: FEEDBACK_PATH,
+        kind: "suggest",
+        country: "GB",
+        submitted: { name: "Gianfranco Zola", note: "Chelsea legend\nand Parma" },
+      },
+    ]);
+    expectNothingPersonal(lines);
+  });
+
+  it("logs an accepted problem report with its note and page", async () => {
+    const lines = await submit(
+      { kind: "problem", note: "Share does nothing", page: "/about", turnstileToken: TOKEN },
+      null,
+    );
+    expect(lines).toEqual([
+      {
+        level: "info",
+        message: "Problem reported",
+        event: "feedback",
+        route: FEEDBACK_PATH,
+        kind: "problem",
+        country: "XX",
+        submitted: { note: "Share does nothing", page: "/about" },
+      },
+    ]);
+    expectNothingPersonal(lines);
+  });
+
+  it("logs an accepted correction with the round as shown, and the run key only", async () => {
+    const { h, env } = feedbackHarness();
+    const { runId, answered, guess } = await play(h, { missAt: 2 });
+    h.lines.length = 0;
+    const res = await h.app.fetch(
+      post(FEEDBACK_PATH, {
+        kind: "correction",
+        runId,
+        round: answered,
+        note: "That fee is wrong",
+        turnstileToken: TOKEN,
+      }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    const { endStat, players } = await finalFields(runId, answered, guess);
+    expect(h.lines).toEqual([
+      {
+        level: "info",
+        message: "Card error reported",
+        event: "feedback",
+        route: FEEDBACK_PATH,
+        kind: "correction",
+        country: "GB",
+        submitted: {
+          note: "That fee is wrong",
+          run: bodyOf(runId),
+          round: answered,
+          stat: endStat,
+          players: players.map(({ role, name, display, qualifier }) => ({
+            role,
+            name,
+            display,
+            ...(qualifier !== undefined ? { qualifier } : {}),
+          })),
+        },
+      },
+    ]);
+    const logged = JSON.stringify(h.lines);
+    expect(logged).not.toContain(runId);
+    expect(logged).not.toContain(runId.slice(runId.indexOf(".") + 1));
+    expectNothingPersonal(h.lines);
   });
 });
 
@@ -503,10 +678,11 @@ describe("a failing or missing binding", () => {
     expect(failures).toEqual([
       {
         level: "error",
+        message: "analytics_failed · Error",
         event: "analytics_failed",
         route: ROUND_PATH,
         reason: "Error",
-        message: "Analytics Engine is down",
+        cause: "Analytics Engine is down",
       },
     ]);
   });
@@ -531,6 +707,7 @@ describe("warn and error lines", () => {
     expect(h.lines).toEqual([
       {
         level: "warn",
+        message: 'bad_request · mode must be "friendly"',
         event: "bad_request",
         route: ROUND_PATH,
         status: 400,
@@ -545,10 +722,10 @@ describe("warn and error lines", () => {
     await h.app.fetch(post(ROUND_PATH, { mode: "friendly" }), { ...h.env, RUN_STARTS: deny });
     await h.app.fetch(post(ROUND_PATH, { mode: "friendly" }), { ...h.env, ROUND_FLOOD: deny });
     await h.app.fetch(post(FEEDBACK_PATH, {}), { ...h.env, FEEDBACK_SENDS: deny });
-    expect(h.lines.map((l) => [l.level, l.event, l.route, l.status, l.reason])).toEqual([
-      ["warn", "rate_limited", ROUND_PATH, 429, "starts"],
-      ["warn", "rate_limited", ROUND_PATH, 429, "flood"],
-      ["warn", "rate_limited", FEEDBACK_PATH, 429, "feedback"],
+    expect(h.lines.map((l) => [l.level, l.message, l.event, l.route, l.status, l.reason])).toEqual([
+      ["warn", "rate_limited · starts", "rate_limited", ROUND_PATH, 429, "starts"],
+      ["warn", "rate_limited · flood", "rate_limited", ROUND_PATH, 429, "flood"],
+      ["warn", "rate_limited · feedback", "rate_limited", FEEDBACK_PATH, 429, "feedback"],
     ]);
   });
 
@@ -557,7 +734,13 @@ describe("warn and error lines", () => {
     await h.app.fetch(new Request(`https://biggerthangame.com${ROUND_PATH}`), h.env);
     await h.app.fetch(new Request("https://biggerthangame.com/api/nope"), h.env);
     expect(h.lines).toEqual([
-      { level: "warn", event: "method_not_allowed", route: ROUND_PATH, status: 405 },
+      {
+        level: "warn",
+        message: "method_not_allowed",
+        event: "method_not_allowed",
+        route: ROUND_PATH,
+        status: 405,
+      },
     ]);
   });
 
@@ -575,6 +758,7 @@ describe("warn and error lines", () => {
     expect(lines).toEqual([
       {
         level: "error",
+        message: "unavailable · the deck cannot deal a round",
         event: "unavailable",
         route: ROUND_PATH,
         status: 503,
@@ -600,11 +784,12 @@ describe("warn and error lines", () => {
     expect(lines).toEqual([
       {
         level: "error",
+        message: "internal · TypeError",
         event: "internal",
         route: ROUND_PATH,
         status: 500,
         reason: "TypeError",
-        message: "no randomness",
+        cause: "no randomness",
       },
     ]);
   });
@@ -615,11 +800,12 @@ describe("warn and error lines", () => {
     expect(h.lines).toEqual([
       {
         level: "error",
+        message: "internal · not_configured",
         event: "internal",
         route: ROUND_PATH,
         status: 500,
         reason: "not_configured",
-        message: "RUN_SECRET missing",
+        cause: "RUN_SECRET missing",
       },
     ]);
   });
@@ -643,8 +829,8 @@ describe("warn and error lines", () => {
     ],
     ["Siteverify down", "not json", "error", "unavailable", 502, { reason: "turnstile" }],
   ])(
-    "logs %s on feedback, and none of the user's text",
-    async (_name, verdict, level, event, status, extra) => {
+    "logs %s on feedback, with none of the user's text in that line",
+    async (_name, verdict, level, event, status, extra: { reason?: string }) => {
       const lines: LogLine[] = [];
       const app = createApp({
         deck: SAMPLE_DECK,
@@ -677,9 +863,17 @@ describe("warn and error lines", () => {
         },
       );
       expect(res.status).toBe(status);
-      expect(lines).toEqual([{ level, event, route: FEEDBACK_PATH, status, ...extra }]);
+      const message = extra.reason === undefined ? event : `${event} · ${extra.reason}`;
+      const failures = lines.filter((l) => l.event !== "feedback");
+      expect(failures).toEqual([{ level, message, event, route: FEEDBACK_PATH, status, ...extra }]);
+      // Accepted once Turnstile passed, so a failed send still has its feedback line first.
+      const accepted = lines.filter((l) => l.event === "feedback");
+      expect(accepted.map((l) => l.kind)).toEqual(event === "send_failed" ? ["suggest"] : []);
+      expect(lines.indexOf(failures[0]!)).toBe(accepted.length);
+      const failure = JSON.stringify(failures);
+      for (const needle of ["Zola", "Please add him"]) expect(failure).not.toContain(needle);
       const logged = JSON.stringify(lines);
-      for (const needle of ["Zola", "Please add him", "token-from-the-widget", "owner@", "1x0"]) {
+      for (const needle of ["token-from-the-widget", "owner@", "1x0", IP, USER_AGENT]) {
         expect(logged).not.toContain(needle);
       }
     },

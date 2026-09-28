@@ -13,14 +13,15 @@
  * Observability (ARCHITECTURE.md §19): every refusal and failure is one
  * structured log line (log.ts) — `warn` for a 4xx or 429, `error` for ours —
  * and the round handler's game events go to Analytics Engine, with a log line
- * for each run's start and end (analytics.ts). Neither can change a response.
+ * for each run's start and end (analytics.ts). An accepted feedback message is
+ * one `info` line with what was sent (feedback.ts). None can change a response.
  */
 
 import type { ApiError, Player } from "@bt/core";
 import { countryOf, toDataPoint, toLogLine } from "./analytics.js";
 import type { AnalyticsDataset, EventContext, GameEvent } from "./analytics.js";
-import { handleFeedback } from "./feedback.js";
-import { describeError, log } from "./log.js";
+import { feedbackLogLine, handleFeedback } from "./feedback.js";
+import { describeError, log, problemMessage } from "./log.js";
 import type { Logger } from "./log.js";
 import { buildPlainTextMime, isPlainAddress } from "./mail.js";
 import type { ImageLookup } from "./payload.js";
@@ -104,7 +105,8 @@ interface Refusal {
   readonly detail?: string;
   /** In the log line only; defaults to `detail`. */
   readonly reason?: string;
-  readonly message?: string;
+  /** In the log line only: more about the reason, e.g. an exception's message. */
+  readonly cause?: string;
   readonly headers?: Record<string, string>;
 }
 
@@ -148,11 +150,14 @@ export function createApp(deps: AppDeps): {
         if (analyticsFailureLogged) return;
         analyticsFailureLogged = true;
         try {
+          const { reason, cause } = describeError(err);
           logger({
             level: "error",
+            message: problemMessage("analytics_failed", reason),
             event: "analytics_failed",
             route: ROUND_PATH,
-            ...describeError(err),
+            reason,
+            ...(cause !== undefined ? { cause } : {}),
           });
         } catch {
           // As above.
@@ -166,15 +171,16 @@ export function createApp(deps: AppDeps): {
     route: Route,
     status: number,
     code: ApiError["error"],
-    { detail, reason = detail, message, headers = {} }: Refusal = {},
+    { detail, reason = detail, cause, headers = {} }: Refusal = {},
   ): Response {
     logger({
       level: status >= 500 ? "error" : "warn",
+      message: problemMessage(code, reason),
       event: code,
       route,
       status,
       ...(reason !== undefined ? { reason } : {}),
-      ...(message !== undefined ? { message } : {}),
+      ...(cause !== undefined ? { cause } : {}),
     });
     return error(status, code, detail, headers);
   }
@@ -209,7 +215,7 @@ export function createApp(deps: AppDeps): {
       // Names only, never values.
       return refuse(route, 500, "internal", {
         reason: "not_configured",
-        message: `${missing.join(", ")} missing or invalid`,
+        cause: `${missing.join(", ")} missing or invalid`,
       });
     }
 
@@ -236,6 +242,13 @@ export function createApp(deps: AppDeps): {
         to,
         uuid,
         verifyTurnstile: (token) => verifyTurnstile(token, turnstileSecret, fetchFn),
+        accepted: (accepted) => {
+          try {
+            logger(feedbackLogLine(accepted, countryOf(request), route));
+          } catch {
+            // A log line is never worth a lost message.
+          }
+        },
         send: async (mail) => {
           const message = emailMessage(mail.from, mail.to, buildPlainTextMime(mail));
           await env.FEEDBACK_EMAIL.send(message);
@@ -270,7 +283,7 @@ export function createApp(deps: AppDeps): {
     if (secret === undefined || secret === "") {
       return refuse(route, 500, "internal", {
         reason: "not_configured",
-        message: "RUN_SECRET missing",
+        cause: "RUN_SECRET missing",
       });
     }
 
