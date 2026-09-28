@@ -79,20 +79,23 @@ not a code problem — read the error before changing code.
 ARCHITECTURE.md §19 has the schema, the log events and the SQL. Nothing personal is recorded
 anywhere: no IP, user agent, cookie or header, country only. Never log a secret, seed, signature,
 full run id (the run key — the body before the "." — is fine), Turnstile token, `FEEDBACK_TO` or
-an unrevealed stat value. Two deliberate exceptions: `run_end` carries the final round's two
-players and figures (revealed by then), and the `feedback` line carries what the sender submitted.
+an unrevealed stat value. Deliberate exceptions: `run_end` carries the final round's two players
+and figures (revealed by then), `run_leave` the round on screen with only the figures shown by
+then, and the `feedback` line what the sender submitted.
 Use `log()` from `worker/src/log.ts`, never a bare `console.*` string, and give every line a
 `message`.
 
 **Cloudflare's invocation logs are off on purpose** (`invocation_logs = false` in `wrangler.toml`):
 they record every request's IP, location, user agent and headers. Don't turn them back on.
 
-**Watching runs live** — every run writes a `run_start` and a `run_end` line (`info`), each
-accepted feedback message a `feedback` line (`info`); refusals are `warn` and failures `error`.
+**Watching runs live** — every run writes a `run_start` and a `run_end` line (`info`), a
+`run_leave` line when its page is hidden or closed mid-run, and each accepted feedback message a
+`feedback` line (`info`); refusals are `warn` and failures `error`.
 
 - Dashboard: **Workers & Pages → biggerthangame → Observability → Logs** (switch on live to
   stream). Filter on the logged fields: `message` equals `run_start` or `run_end`; add `reason`
-  equals `wrong` or `won`; `endStat.id` equals a stat to see where runs end; `event` equals
+  equals `wrong` or `won`; `endStat.id` equals a stat to see where runs end; `message` equals
+  `run_leave` (with `phase`, `round` or `trigger`) to see where players leave; `event` equals
   `feedback`, with `kind` equals `suggest`, `problem` or `correction`; `level` equals `error` for
   failures. Kept 3 days.
 - Terminal: `npx wrangler tail biggerthangame --format pretty` streams everything live;
@@ -101,7 +104,9 @@ accepted feedback message a `feedback` line (`info`); refusals are `warn` and fa
 
 **Gameplay analytics** — `pnpm stats` prints the start/end summary (runs started, finished,
 abandoned, score spread, win rate) for the last 7 days. Name queries to see more:
-`pnpm stats streaks friendly stats distance bands dropoff replays latest`, or `pnpm stats all`;
+`pnpm stats streaks friendly stats distance bands dropoff leaves replays latest`, or `pnpm stats all`;
+`pnpm stats run <runKey>` lists one run's answers with the gaps between them (the run key is in
+its `run_start`/`run_end` log lines);
 `--days 30` (up to 92), `--deck legends-107-e68a4e1b` for one deck version, `--list` for the
 names. It reads `CF_ACCOUNT_ID` and `CF_ANALYTICS_TOKEN` from `.env` at the repo root (gitignored):
 the token is a Cloudflare API token with **read-only Account › Account Analytics › Read**

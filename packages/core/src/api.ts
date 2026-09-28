@@ -1,5 +1,6 @@
 /**
- * The round endpoint's wire format: `POST /api/round/next`.
+ * The round endpoint's wire format: `POST /api/round/next`, and the beacon a
+ * run sends when the player leaves, `POST /api/run/leave`.
  *
  * Shared by the Worker, which builds these, and the web app, which reads them.
  * Types only — no runtime code — so importing it costs the client nothing.
@@ -55,6 +56,30 @@ export interface ChallengeStartRequest {
 }
 
 export type NextRoundRequest = StartRequest | ChallengeStartRequest | AnswerRequest;
+
+/**
+ * Where a run was when the player left: the title card and the cards sliding
+ * in (`intro`), a question waiting for an answer (`question`), the answer
+ * shown (`reveal`), or between those, dealing or spinning (`other`).
+ */
+export type LeavePhase = "intro" | "question" | "reveal" | "other";
+
+/** What told the page the player was going: the tab hidden, or the page closed. */
+export type LeaveTrigger = "hidden" | "pagehide";
+
+/**
+ * `POST /api/run/leave`, sent as a beacon when the page is hidden or closed
+ * mid-run. Telemetry only: the answer is an empty 204 and changes nothing about
+ * the run. The server looks the round up for itself; nothing else is sent.
+ */
+export interface LeaveRequest {
+  readonly mode: "friendly";
+  readonly runId: string;
+  /** The round on screen, 1-based; 0 during the title card and the intro. */
+  readonly round: number;
+  readonly phase: LeavePhase;
+  readonly trigger: LeaveTrigger;
+}
 
 export interface StatPayload {
   readonly key: StatKey;

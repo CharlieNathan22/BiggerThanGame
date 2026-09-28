@@ -51,6 +51,7 @@
   import type { SharePlatform } from "../../game/share-actions";
   import { TIMINGS, readTimings } from "../../game/timing";
   import type { Timings } from "../../game/timing";
+  import { LEAVE_ENDPOINT, createLeaveReporter } from "../../game/leave";
   import { createTurnstileLoader } from "../../game/turnstile";
   import type { ScriptDocument, Turnstile, TurnstileHost } from "../../game/turnstile";
   import {
@@ -177,6 +178,21 @@
     document.addEventListener("click", onLinkClick);
     window.addEventListener("hashchange", onHashChange);
 
+    // Leaving mid-run: a beacon saying where the run was (game/leave.ts).
+    const leaves = createLeaveReporter((body) => {
+      try {
+        navigator.sendBeacon(LEAVE_ENDPOINT, new Blob([body], { type: "application/json" }));
+      } catch {
+        // Telemetry only: a browser without beacons loses nothing.
+      }
+    });
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") leaves.report(game, mode, "hidden");
+    };
+    const onPageHide = () => leaves.report(game, mode, "pagehide");
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+
     // A challenge link in the URL frames the first run; a plainly broken one
     // starts a fresh run with a note, as a forged one would.
     const param = readChallenge(location.search, mode);
@@ -219,6 +235,8 @@
     return () => {
       document.removeEventListener("click", onLinkClick);
       window.removeEventListener("hashchange", onHashChange);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
       removeDevPanel?.();
       unsubscribe();
       c.destroy();

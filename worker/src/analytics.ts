@@ -4,15 +4,16 @@
  *
  * The round handler (round.ts) records what happened as a `GameEvent`, after
  * the server has judged it; app.ts adds the country and the deck version and
- * writes it here. Three events: `start` when a run is begun, `answer` for every
- * answered round, `end` when an answer ends the run. A run with a start and no
- * end was abandoned.
+ * writes it here. Four events: `start` when a run is begun, `answer` for every
+ * answered round, `end` when an answer ends the run, and `leave` when the page
+ * reports the player going mid-run (leave.ts). A run with a start and no end
+ * was abandoned; its leaves say where.
  *
  * Every data point shares one layout, so a column means the same thing in
  * every event:
  *
  *   index1  the run key: the run id's body, before the "." (never the signature)
- *   blob1   event        "start" | "answer" | "end"
+ *   blob1   event        "start" | "answer" | "end" | "leave"
  *   blob2   mode         "friendly"
  *   blob3   run kind     "fresh" | "replay"
  *   blob4   deck version "legends-107-3f9c21e0"
@@ -21,13 +22,17 @@
  *           double1 round, double2 correct (1 | 0), double3 streak after the answer,
  *           double4 relaxation step (0–3), double5 rank distance of the pair (0–1)
  *   end:    blob6 end reason ("wrong" | "won" | "deck-exhausted"); double1 final score
+ *   leave:  blob6 phase ("intro" | "question" | "reveal" | "other"), blob7 trigger
+ *           ("hidden" | "pagehide"), blob8 stat id ("" on the intro); double1 round (0 on
+ *           the intro)
  *
  * Privacy (§19): nothing personal — no IP, not even hashed, no user agent, no
  * cookie, nothing kept in the browser. Country only. No stat value in a data
  * point: the rank distance is a position in the deck, of two figures both
  * already revealed, and never reaches the client. The `run_end` log line does
  * carry the final round's two figures, which the ending response has just
- * revealed.
+ * revealed, and a `run_leave` line the figures the player had been shown: the
+ * anchor's from the question on, the challenger's only once revealed.
  *
  * Fire-and-forget: `writeDataPoint` doesn't block, and a missing or throwing
  * binding (local dev, tests, an outage) is swallowed. The response and its
@@ -35,7 +40,19 @@
  */
 
 import { STATS, bandForRound, isFinalRound, percentiles, rankDistance, valueOf } from "@bt/core";
-import type { Band, Guess, Mode, Player, Relaxation, Round, RunEnd, StatKey, Tier } from "@bt/core";
+import type {
+  Band,
+  Guess,
+  LeavePhase,
+  LeaveTrigger,
+  Mode,
+  Player,
+  Relaxation,
+  Round,
+  RunEnd,
+  StatKey,
+  Tier,
+} from "@bt/core";
 import type { LogLine } from "./log.js";
 import { figureFor } from "./payload.js";
 
@@ -99,7 +116,39 @@ export type FinalRound = {
   readonly players: readonly [RevealedPlayer, RevealedPlayer];
 };
 
-export type GameEvent = StartEvent | AnswerEvent | EndEvent;
+/**
+ * The page reported the player leaving mid-run (`POST /api/run/leave`). The
+ * round is looked up by the server; the page only says which one.
+ */
+export interface LeaveEvent extends RunFacts {
+  readonly type: "leave";
+  /** The round on screen; 0 on the title card and the intro. */
+  readonly round: number;
+  readonly phase: LeavePhase;
+  readonly trigger: LeaveTrigger;
+  /** The round on screen as the player had seen it. None for round 0. */
+  readonly shown?: ShownRound;
+}
+
+/**
+ * A player in the round on screen when the player left: always who, and the
+ * figure only once it had been shown.
+ */
+export type ShownPlayer = {
+  readonly role: "anchor" | "challenger";
+  readonly id: string;
+  readonly name: string;
+  readonly value?: number;
+  readonly display?: string;
+  readonly qualifier?: string;
+};
+
+export type ShownRound = {
+  readonly stat: StatKey;
+  readonly players: readonly [ShownPlayer, ShownPlayer];
+};
+
+export type GameEvent = StartEvent | AnswerEvent | EndEvent | LeaveEvent;
 
 /** Added by app.ts: facts about the request and the build, not the run. */
 export interface EventContext {
@@ -173,6 +222,28 @@ export function finalRound(round: Round, now: Date, guess: Guess): FinalRound {
   };
 }
 
+/**
+ * The round on screen when the player left, rebuilt by the server. The
+ * anchor's figure is on screen once the question is asked (`question` and
+ * `reveal`), not while the cards are dealt or the wheel spins; the
+ * challenger's only in `reveal`. Nothing hidden is ever in it.
+ */
+export function shownRound(round: Round, now: Date, phase: LeavePhase): ShownRound {
+  const player = (role: ShownPlayer["role"], p: Player, shown: boolean): ShownPlayer => ({
+    role,
+    id: p.id,
+    name: p.name,
+    ...(shown ? figureFor(p, round.stat, now) : {}),
+  });
+  return {
+    stat: round.stat,
+    players: [
+      player("anchor", round.anchor, phase === "question" || phase === "reveal"),
+      player("challenger", round.challenger, phase === "reveal"),
+    ],
+  };
+}
+
 /** The event as one Analytics Engine data point, in the layout above. */
 export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
   const common = [event.type, event.mode, event.runKind, ctx.deckVersion, ctx.country];
@@ -202,14 +273,21 @@ export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
     }
     case "end":
       return { indexes, blobs: [...common, event.end], doubles: [event.score] };
+    case "leave":
+      return {
+        indexes,
+        blobs: [...common, event.phase, event.trigger, event.shown?.stat ?? ""],
+        doubles: [event.round],
+      };
   }
 }
 
 /**
- * The `info` line for a run's start or end, so runs can be watched live in
- * Workers Logs and `wrangler tail`. The end adds the round that ended the run:
- * `endStat`, `guess` and both `players` with their figures. Answers get no
- * line: that's what the dataset is for.
+ * The `info` line for a run's start, end or leave, so runs can be watched live
+ * in Workers Logs and `wrangler tail`. The end adds the round that ended the
+ * run: `endStat`, `guess` and both `players` with their figures. A leave adds
+ * the round on screen, `stat` and `players`, with only the figures shown by
+ * then (`shownRound`). Answers get no line: that's what the dataset is for.
  */
 export function toLogLine(event: GameEvent, ctx: EventContext, route: string): LogLine | undefined {
   const common = {
@@ -238,6 +316,21 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
               guess: final.guess,
               players: final.players,
             }
+          : {}),
+      };
+    }
+    case "leave": {
+      const { shown } = event;
+      return {
+        level: "info",
+        message: "run_leave",
+        event: "run_leave",
+        ...common,
+        round: event.round,
+        phase: event.phase,
+        trigger: event.trigger,
+        ...(shown !== undefined
+          ? { stat: { id: shown.stat, label: STATS[shown.stat].label }, players: shown.players }
           : {}),
       };
     }

@@ -6,12 +6,13 @@
  * mode, blob3 run kind, blob4 deck version, blob5 country; for an answer blob6
  * stat, blob7 tier, blob8 band, blob9 final question, double1 round, double2
  * correct, double3 streak, double4 relaxation step, double5 rank distance; for
- * an end blob6 end reason and double1 final score. Counts are
+ * an end blob6 end reason and double1 final score; for a leave blob6 phase,
+ * blob7 trigger, blob8 stat and double1 round. Counts are
  * `SUM(_sample_interval)`, never `count()`, so they stay right if Analytics
  * Engine samples.
  *
- * ARCHITECTURE.md prints each query as it runs for 7 days and every deck, and
- * a test holds the two together.
+ * ARCHITECTURE.md prints each query as it runs for 7 days and every deck (the
+ * `run` query with `EXAMPLE_RUN_KEY`), and a test holds the two together.
  */
 
 import { DATASET } from "../worker/src/analytics.js";
@@ -21,6 +22,8 @@ export interface QueryOptions {
   readonly days: number;
   /** One deck version only (`legends-107-e68a4e1b`), or every deck. */
   readonly deck?: string;
+  /** One run, by its run key (`YYYYMMDD-<uuid>`): for the `run` query. */
+  readonly run?: string;
 }
 
 export type Row = Record<string, string | number | null>;
@@ -32,6 +35,10 @@ export interface SavedQuery {
   readonly sql: (opts: QueryOptions) => string;
   /** Columns worked out from the rows, where the SQL dialect can't. */
   readonly post?: (rows: Row[]) => Row[];
+  /** Lines printed under the table, from the rows after `post`. */
+  readonly summary?: (rows: readonly Row[]) => string;
+  /** Needs a run key (`pnpm stats run <runKey>`), so `all` leaves it out. */
+  readonly needsRunKey?: boolean;
 }
 
 /** Analytics Engine keeps three months. */
@@ -39,6 +46,26 @@ export const MAX_DAYS = 92;
 export const DEFAULT_DAYS = 7;
 
 const DECK_VERSION = /^[a-z0-9-]{1,64}$/;
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+/** A run key, as run-id.ts writes it: `YYYYMMDD-<uuid>`, or a replay's `…~<uuid>`. */
+const RUN_KEY = new RegExp(`^\\d{8}-${UUID}(?:~${UUID})?$`);
+
+/** The key ARCHITECTURE.md prints the `run` query with. */
+export const EXAMPLE_RUN_KEY = "20260928-00000000-0000-4000-8000-000000000000";
+
+/**
+ * The run key as it goes into the SQL. A whole run id is accepted too, its
+ * signature dropped; anything else is refused, so nothing can be spliced in.
+ */
+export function runKey(value: string | undefined): string {
+  const key = value?.split(".")[0] ?? "";
+  if (!RUN_KEY.test(key)) {
+    throw new Error('run needs a run key, like 20260928-<uuid> (the run id before the ".")');
+  }
+  return key;
+}
 
 /** The time window and deck filter every query ends its WHERE with. */
 function timeWindow({ days, deck }: QueryOptions): string {
@@ -203,6 +230,49 @@ ORDER BY mode, round`,
         return { ...r, left: next === undefined ? "" : num(r.correct) - num(next.reached) };
       }),
   },
+  leaves: {
+    title: "Leaves by round and phase",
+    about:
+      "Runs whose page was hidden (switched away, locked) or closed mid-run, by the round on " +
+      "screen (0 is the title card and intro) and what was showing. Each is at most once per " +
+      "run, and closing a page is usually both, so the columns don't add up.",
+    sql: (o) => `SELECT
+  blob2 AS mode,
+  double1 AS round,
+  blob6 AS phase,
+  sumIf(_sample_interval, blob7 = 'hidden') AS hidden,
+  sumIf(_sample_interval, blob7 = 'pagehide') AS closed
+FROM ${DATASET}
+WHERE blob1 = 'leave'
+  AND ${timeWindow(o)}
+GROUP BY mode, round, phase
+ORDER BY mode, round, phase`,
+  },
+  run: {
+    title: "Answers in one run",
+    about:
+      "Every answer the server judged for one run key, in time order, with the seconds since " +
+      "the one before. A round listed twice was answered again (Friendly is stateless).",
+    needsRunKey: true,
+    sql: (o) => `SELECT
+  timestamp,
+  double1 AS round,
+  blob6 AS stat,
+  double2 AS correct,
+  double3 AS streak
+FROM ${DATASET}
+WHERE blob1 = 'answer'
+  AND index1 = '${runKey(o.run)}'
+  AND ${timeWindow(o)}
+ORDER BY timestamp, round
+LIMIT 1000`,
+    post: (rows) =>
+      rows.map((r, i) => {
+        const before = i > 0 ? rows[i - 1] : undefined;
+        return { ...r, gap_s: before === undefined ? "" : round1(secondsBetween(before, r)) };
+      }),
+    summary: runSummary,
+  },
   replays: {
     title: "Challenge replays",
     about: "Runs started from a challenge link, as a share of all runs started.",
@@ -243,6 +313,11 @@ export type QueryName = keyof typeof QUERIES;
 
 export const QUERY_NAMES = Object.keys(QUERIES) as QueryName[];
 
+/** What `pnpm stats all` runs: every query that doesn't need a run key. */
+export const ALL_QUERIES: readonly QueryName[] = QUERY_NAMES.filter(
+  (name) => !(QUERIES[name] as SavedQuery).needsRunKey,
+);
+
 /** What plain `pnpm stats` shows: the start/end summary. */
 export const DEFAULT_QUERIES: readonly QueryName[] = ["summary", "scores"];
 
@@ -256,6 +331,59 @@ function num(value: string | number | null | undefined): number {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
+}
+
+/**
+ * A row's time in ms. The SQL API writes `2026-09-28 06:11:33`, in UTC with
+ * no zone; an ISO string with a zone reads as it is.
+ */
+export function timestampMs(value: string | number | null | undefined): number {
+  if (typeof value === "number") return value;
+  const text = String(value ?? "")
+    .trim()
+    .replace(" ", "T");
+  return Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(text) ? text : `${text}Z`);
+}
+
+function secondsBetween(a: Row, b: Row): number {
+  return (timestampMs(b.timestamp) - timestampMs(a.timestamp)) / 1000;
+}
+
+function duration(seconds: number): string {
+  if (seconds < 60) return `${round1(seconds)} s`;
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)} min ${whole % 60} s`;
+}
+
+/**
+ * Under the `run` table: how many answers, which rounds were answered more
+ * than once, the fastest gap between two answers, and first answer to last.
+ */
+export function runSummary(rows: readonly Row[]): string {
+  if (rows.length === 0) return "  No answers for that run key in the window.";
+  const times = new Map<number, number>();
+  for (const r of rows) times.set(num(r.round), (times.get(num(r.round)) ?? 0) + 1);
+  const repeats = [...times].filter(([, n]) => n > 1).sort(([a], [b]) => a - b);
+  let fastest: { gap: number; from: Row; to: Row } | undefined;
+  for (let i = 1; i < rows.length; i++) {
+    const gap = secondsBetween(rows[i - 1]!, rows[i]!);
+    if (fastest === undefined || gap < fastest.gap) {
+      fastest = { gap, from: rows[i - 1]!, to: rows[i]! };
+    }
+  }
+  const total = secondsBetween(rows[0]!, rows.at(-1)!);
+  return [
+    `  Answers: ${rows.length}`,
+    `  Rounds answered more than once: ${
+      repeats.length === 0 ? "none" : repeats.map(([round, n]) => `${round} (×${n})`).join(", ")
+    }`,
+    `  Fastest gap between answers: ${
+      fastest === undefined
+        ? "n/a (one answer)"
+        : `${duration(fastest.gap)} (round ${num(fastest.from.round)} to round ${num(fastest.to.round)})`
+    }`,
+    `  Total duration, first answer to last: ${duration(total)}`,
+  ].join("\n");
 }
 
 /**

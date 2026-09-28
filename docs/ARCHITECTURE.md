@@ -628,6 +628,24 @@ what was sent (§19), and stores nothing else.
 Corrections land in the deck repo and take effect at the next update (for Ranked, the next rollover),
 never mid-game.
 
+**`POST /api/run/leave`** — a beacon from the game page when it is hidden or closed mid-run
+(`navigator.sendBeacon`, `game/leave.ts`). Telemetry only: handler in `worker/src/leave.ts`.
+
+```jsonc
+→ { "mode": "friendly", "runId": "…", "round": 7, "phase": "question", "trigger": "hidden" }
+← 204 (no body)
+← 400 { "error": "bad_request", "detail": "…" }
+```
+
+- **Strict.** Exactly those five keys and a body of at most 512 bytes; `round` 0–20, with 0 (and
+  only 0) for `phase: "intro"`; `phase` one of `intro`, `question`, `reveal`, `other`;
+  `trigger` `hidden` or `pagehide`. The run id must be one the server signed and still
+  answers (§7), and a round above 0 one the run has.
+- **Changes nothing.** Friendly keeps no state, and the handler only records: a `run_leave` log
+  line and a `leave` data point (§19), with the round rebuilt from the seed and only the figures
+  the player had been shown. Behind the flood limit (§12) like every round request.
+- **Once per trigger per run**, only while a run is in progress (after Start, before it ends).
+
 **`GET /api/board/:mode/:gameNo`** — served from KV.
 
 ### Disconnection
@@ -1371,8 +1389,9 @@ Nothing personal and nothing hidden, in either instrument:
 - no hidden stat value. The data points carry none, the player's own score apart; the **rank
   distance** is a position in the deck, written only after the answer, when both figures have been
   shown, and never sent to the client. The `run_end` line carries the final round's two players
-  and figures, which the response ending the run has just revealed. Nothing else names a player or
-  a value.
+  and figures, which the response ending the run has just revealed. A `run_leave` line names the
+  two players on screen and carries only the figures the player had seen: the anchor's from the
+  question on, the challenger's only once revealed. Nothing else names a player or a value.
 
 Feedback text is the one exception to "nothing the player typed": an accepted message's `feedback`
 line holds what was sent (below), kept in Workers Logs for 3 days, with the country and nothing
@@ -1382,7 +1401,8 @@ Country is the only thing about the player: Cloudflare's `request.cf.country`, `
 Tests hold all of this: `worker/src/__tests__/observability.test.ts` walks complete runs and checks
 every data point and log line for IPs, user agents, secrets, seeds and signed ids; checks that no
 player id or name appears outside `run_end`'s final round, and that round against the deck; and
-runs the deck's leak scanner over the rest.
+runs the deck's leak scanner over the rest. `leave.test.ts` holds a `run_leave` line to the
+figures shown, and never the challenger's during a question.
 
 ### Log lines
 
@@ -1391,7 +1411,7 @@ indexes every field, nested ones included (a string would only be searchable as 
 has `level`, `message`, `event` and `route`; most have a `reason`. `message` is what the dashboard
 lists as the line:
 
-- `run_start` or `run_end` for the run lines, exactly;
+- `run_start`, `run_end` or `run_leave` for the run lines, exactly;
 - `Legend suggested`, `Problem reported` or `Card error reported` for an accepted feedback message;
 - `<event> · <reason>` for a refusal or failure, e.g. `bad_request · invalid_json`, or the event
   alone when there's no reason.
@@ -1400,6 +1420,7 @@ lists as the line:
 | ------- | --------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `info`  | `run_start`           | a run starts (fresh or replay)                 | —                                                                                               |
 | `info`  | `run_end`             | an answer ends a run                           | the end: `wrong`, `won` or `deck-exhausted`                                                     |
+| `info`  | `run_leave`           | the game page is hidden or closed mid-run      | —                                                                                               |
 | `info`  | `feedback`            | a feedback message is accepted                 | —                                                                                               |
 | `warn`  | `bad_request`         | a 400 from either endpoint                     | the response's `detail`                                                                         |
 | `warn`  | `rate_limited`        | a 429                                          | the limit: `flood`, `starts`, `answers` or `feedback`                                           |
@@ -1435,6 +1456,40 @@ there is always one). That's `endStat` (the stat's id and label), `guess` (`high
 and `players`, each with the figure its card showed (`display`, plus `qualifier` for a stat that
 has one) and its raw `value`.
 
+**The leave line**, when the game page reports being hidden (`visibilitychange`) or closed
+(`pagehide`) mid-run: after Start, before the run ends, at most once per trigger per run
+(`game/leave.ts`). The page sends its run id, the round on screen and what was showing; the
+Worker rebuilds that round from the seed.
+
+```jsonc
+{
+  "level": "info",
+  "message": "run_leave",
+  "event": "run_leave",
+  "route": "/api/run/leave",
+  "mode": "friendly",
+  "run": "20260928-<uuid>",
+  "runKind": "fresh",
+  "deckVersion": "legends-107-e68a4e1b",
+  "country": "GB",
+  "round": 7,
+  "phase": "question",
+  "trigger": "hidden",
+  "stat": { "id": "caps", "label": "International caps" },
+  "players": [
+    { "role": "anchor", "id": "…", "name": "…", "value": 108, "display": "108" },
+    { "role": "challenger", "id": "…", "name": "…" },
+  ],
+}
+```
+
+`phase` is `intro` (the title card and the cards sliding in; `round` is 0 and there's no `stat`
+or `players`), `question` (waiting for an answer, or for it to come back), `reveal` (the answer
+on screen) or `other` (dealing, or the wheel spinning). The anchor's figure is there in
+`question` and `reveal`, not while the cards are dealt or the wheel spins; the challenger's only
+in `reveal`. `trigger` is `hidden` (the tab switched away, the phone locked) or `pagehide` (the
+page closed or navigated away); closing a page usually sends both.
+
 **The feedback line**, one per message accepted (valid, and Turnstile passed), whether or not the
 email then sends. A failed send still logs its `send_failed` line after it.
 
@@ -1459,6 +1514,7 @@ showed it, with the run key and never the run id. A note left blank is left out.
 live to stream):
 
 - runs: `message` equals `run_start` or `run_end`; add `reason` equals `wrong` or `won`
+- where players leave: `message` equals `run_leave`; add `phase`, `round` or `trigger`
 - where runs end: `endStat.id` (or `endStat.label`) equals a stat; `players.name` finds a player
 - feedback: `event` equals `feedback`, with `kind` equals `suggest`, `problem` or `correction`
 - failures: `level` equals `error`
@@ -1475,27 +1531,30 @@ happening, sample the `rate_limited` lines rather than dropping them.
 One layout for every event, so a column means the same thing everywhere. Blobs are strings,
 doubles numbers; unused columns are empty.
 
-| Column    | `start`      | `answer`                          | `end`                                        |
-| --------- | ------------ | --------------------------------- | -------------------------------------------- |
-| `index1`  | run key      | run key                           | run key                                      |
-| `blob1`   | `start`      | `answer`                          | `end`                                        |
-| `blob2`   | mode         | mode                              | mode                                         |
-| `blob3`   | run kind     | run kind                          | run kind                                     |
-| `blob4`   | deck version | deck version                      | deck version                                 |
-| `blob5`   | country      | country                           | country                                      |
-| `blob6`   |              | stat id (`caps`)                  | end reason: `wrong`, `won`, `deck-exhausted` |
-| `blob7`   |              | tier: `basic`, `uncommon`, `rare` |                                              |
-| `blob8`   |              | band: `0.45+`, `0.30-0.80`, …     |                                              |
-| `blob9`   |              | final question: `1` or `0`        |                                              |
-| `double1` |              | round, 1–20                       | final score                                  |
-| `double2` |              | correct: 1 or 0                   |                                              |
-| `double3` |              | streak after the answer           |                                              |
-| `double4` |              | relaxation step, 0–3              |                                              |
-| `double5` |              | rank distance of the pair, 0–1    |                                              |
+| Column    | `start`      | `answer`                          | `end`                                        | `leave`                                       |
+| --------- | ------------ | --------------------------------- | -------------------------------------------- | --------------------------------------------- |
+| `index1`  | run key      | run key                           | run key                                      | run key                                       |
+| `blob1`   | `start`      | `answer`                          | `end`                                        | `leave`                                       |
+| `blob2`   | mode         | mode                              | mode                                         | mode                                          |
+| `blob3`   | run kind     | run kind                          | run kind                                     | run kind                                      |
+| `blob4`   | deck version | deck version                      | deck version                                 | deck version                                  |
+| `blob5`   | country      | country                           | country                                      | country                                       |
+| `blob6`   |              | stat id (`caps`)                  | end reason: `wrong`, `won`, `deck-exhausted` | phase: `intro`, `question`, `reveal`, `other` |
+| `blob7`   |              | tier: `basic`, `uncommon`, `rare` |                                              | trigger: `hidden`, `pagehide`                 |
+| `blob8`   |              | band: `0.45+`, `0.30-0.80`, …     |                                              | stat id; empty on the intro                   |
+| `blob9`   |              | final question: `1` or `0`        |                                              |                                               |
+| `double1` |              | round, 1–20                       | final score                                  | round on screen, 0–20 (0 the intro)           |
+| `double2` |              | correct: 1 or 0                   |                                              |                                               |
+| `double3` |              | streak after the answer           |                                              |                                               |
+| `double4` |              | relaxation step, 0–3              |                                              |                                               |
+| `double5` |              | rank distance of the pair, 0–1    |                                              |                                               |
 
 - **When.** `start` once a run's first round is dealt. `answer` once the server has judged the
   guess and built the response — a request that fails after the judgement records nothing. `end`
   straight after the answer that ends the run. A run with a start and no end was **abandoned**.
+  `leave` when the game page reports being hidden or closed mid-run (`POST /api/run/leave`, §8),
+  at most once per trigger per run; it says where an abandoned run stopped, and that a run which
+  carried on had been put down for a while.
 - **Run key** (`index1`): the run id's body, `YYYYMMDD-<uuid>` or a replay's
   `YYYYMMDD-<uuid>~<uuid>`. The longest is a replay's, 82 bytes, inside Analytics Engine's 96; the
   run id grammar (§7) allows nothing longer, and a test holds it.
@@ -1672,6 +1731,48 @@ WHERE blob1 = 'answer'
   AND timestamp > NOW() - INTERVAL '7' DAY
 GROUP BY mode, round
 ORDER BY mode, round
+```
+
+**Leaves by round and phase** (`leaves`): runs whose page was hidden (switched away from, the
+phone locked) or closed mid-run, by the round on screen (0 is the title card and the intro) and
+what was showing. Each trigger counts at most once per run, and closing a page usually fires both,
+so the two columns overlap rather than add up.
+
+```sql
+SELECT
+  blob2 AS mode,
+  double1 AS round,
+  blob6 AS phase,
+  sumIf(_sample_interval, blob7 = 'hidden') AS hidden,
+  sumIf(_sample_interval, blob7 = 'pagehide') AS closed
+FROM biggerthan_game_events
+WHERE blob1 = 'leave'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode, round, phase
+ORDER BY mode, round, phase
+```
+
+**Answers in one run** (`run`, as `pnpm stats run <runKey>`; not part of `all`): every answer the
+server judged for one run key, oldest first, and `gap_s`, the seconds since the answer before. The
+script prints a summary under it: how many answers, any round answered more than once (Friendly is
+stateless, so a resent answer is judged again, §7), the fastest gap between two answers and the
+time from the first answer to the last. The key is the run id before the "."; a whole run id works
+too, and anything that isn't a run key is refused before a request is made. Shown here with an
+example key.
+
+```sql
+SELECT
+  timestamp,
+  double1 AS round,
+  blob6 AS stat,
+  double2 AS correct,
+  double3 AS streak
+FROM biggerthan_game_events
+WHERE blob1 = 'answer'
+  AND index1 = '20260928-00000000-0000-4000-8000-000000000000'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+ORDER BY timestamp, round
+LIMIT 1000
 ```
 
 **Challenge replays** (`replays`): the share of runs started from a challenge link.

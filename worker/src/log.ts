@@ -8,8 +8,9 @@
  *
  * What gets a line: every 4xx the API refuses (`warn`, apart from unknown
  * `/api/` paths, which scanners hit), every 429 (`warn`), every failure of
- * ours (`error`), the start and end of each run (`info`), and each feedback
- * form accepted (`info`). Nothing else — no successful answer.
+ * ours (`error`), the start and end of each run and a page left mid-run
+ * (`info`), and each feedback form accepted (`info`). Nothing else — no
+ * successful answer.
  *
  * Cloudflare's own invocation logs are off (wrangler.toml): they record every
  * request's IP, location, user agent and headers. These lines are all there is.
@@ -17,8 +18,9 @@
  * Never put in a line: `RUN_SECRET` or any secret, a seed, an HMAC or
  * signature, a full run id (the run key, its body before the ".", is fine),
  * an IP, a user agent, a Turnstile token or `FEEDBACK_TO`. A stat value only
- * once it has been revealed: `run_end`'s final round, and the figures a
- * correction report was sent about. Feedback text only in the `feedback` line.
+ * once it has been revealed: `run_end`'s final round, the figures shown when a
+ * page was left (`run_leave`), and the figures a correction report was sent
+ * about. Feedback text only in the `feedback` line.
  * A request body is `unknown`, so it can't be passed in whole.
  */
 
@@ -31,11 +33,11 @@ export type LogValue =
 export interface LogLine {
   readonly level: LogLevel;
   /**
-   * The line as the dashboard lists it: `run_start` or `run_end`, a sentence
+   * The line as the dashboard lists it: `run_start`, `run_end` or `run_leave`, a sentence
    * for feedback, `<event> · <reason>` for a refusal or failure.
    */
   readonly message: string;
-  /** What happened: an `ApiError` code, `run_start` / `run_end`, or `feedback`. */
+  /** What happened: an `ApiError` code, `run_start` / `run_end` / `run_leave`, or `feedback`. */
   readonly event: string;
   /** The endpoint, e.g. `/api/round/next`. */
   readonly route: string;

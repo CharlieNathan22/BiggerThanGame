@@ -1,6 +1,6 @@
 /**
- * HTTP routing around the pure handlers: `/api/round/next` (round.ts) and
- * `/api/feedback` (feedback.ts).
+ * HTTP routing around the pure handlers: `/api/round/next` (round.ts),
+ * `/api/feedback` (feedback.ts) and `/api/run/leave` (leave.ts).
  *
  * `/api/*` runs here (`run_worker_first` in wrangler.toml); everything else is
  * the static site, served from the ASSETS binding. Every `/api/*` response is
@@ -21,6 +21,7 @@ import type { ApiError, Player } from "@bt/core";
 import { countryOf, toDataPoint, toLogLine } from "./analytics.js";
 import type { AnalyticsDataset, EventContext, GameEvent } from "./analytics.js";
 import { feedbackLogLine, handleFeedback } from "./feedback.js";
+import { handleLeave } from "./leave.js";
 import { describeError, log, problemMessage } from "./log.js";
 import type { Logger } from "./log.js";
 import { buildPlainTextMime, isPlainAddress } from "./mail.js";
@@ -87,6 +88,7 @@ export interface AppDeps {
 
 export const ROUND_PATH = "/api/round/next";
 export const FEEDBACK_PATH = "/api/feedback";
+export const LEAVE_PATH = "/api/run/leave";
 
 /** Requests are two tiny flat objects; anything bigger is not a real client. */
 const MAX_BODY_BYTES = 1024;
@@ -98,7 +100,10 @@ const MAX_BODY_BYTES = 1024;
  */
 export const MAX_FEEDBACK_BYTES = 16 * 1024;
 
-type Route = typeof ROUND_PATH | typeof FEEDBACK_PATH;
+/** A leave beacon is five short fields; a real one is about 170 bytes. */
+export const MAX_LEAVE_BYTES = 512;
+
+type Route = typeof ROUND_PATH | typeof FEEDBACK_PATH | typeof LEAVE_PATH;
 
 interface Refusal {
   /** In the response body. */
@@ -129,15 +134,15 @@ export function createApp(deps: AppDeps): {
   let analyticsFailureLogged = false;
 
   /**
-   * The round handler's `record`: the event to Analytics Engine, and a log
-   * line for a run's start or end. Fire-and-forget — `writeDataPoint` doesn't
-   * block, and nothing here can throw into the handler.
+   * The round and leave handlers' `record`: the event to Analytics Engine,
+   * and a log line for a run's start, end or leave. Fire-and-forget —
+   * `writeDataPoint` doesn't block, and nothing here can throw into the handler.
    */
-  function recorder(request: Request, env: Env): (event: GameEvent) => void {
+  function recorder(request: Request, env: Env, route: Route): (event: GameEvent) => void {
     const ctx: EventContext = { country: countryOf(request), deckVersion };
     return (event) => {
       try {
-        const line = toLogLine(event, ctx, ROUND_PATH);
+        const line = toLogLine(event, ctx, route);
         if (line !== undefined) logger(line);
       } catch {
         // A log line is never worth a failed answer.
@@ -155,7 +160,7 @@ export function createApp(deps: AppDeps): {
             level: "error",
             message: problemMessage("analytics_failed", reason),
             event: "analytics_failed",
-            route: ROUND_PATH,
+            route,
             reason,
             ...(cause !== undefined ? { cause } : {}),
           });
@@ -309,10 +314,62 @@ export function createApp(deps: AppDeps): {
           start: () => checkRateLimit(limiters, "starts", ip),
           answer: (run) => checkRateLimit(limiters, "answers", run),
         },
-        record: recorder(request, env),
+        record: recorder(request, env, route),
       });
       if (result.status === 200) return json(200, result.body);
       if (result.status === 429) return rateLimited(route, result.retryAfter, result.limit);
+      return refuse(
+        route,
+        result.status,
+        result.body.error,
+        result.body.detail !== undefined ? { detail: result.body.detail } : {},
+      );
+    } catch (err) {
+      return refuse(route, 500, "internal", describeError(err));
+    }
+  }
+
+  /**
+   * The leave beacon (leave.ts). Behind the flood limit like every round
+   * request; always an empty 204 once it checks out, and it changes nothing.
+   */
+  async function leave(request: Request, env: Env): Promise<Response> {
+    const route = LEAVE_PATH;
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+    const flood = await checkRateLimit(limitersOf(env), "flood", ip);
+    if (!flood.ok) return rateLimited(route, flood.retryAfter, "flood");
+
+    if (request.method !== "POST") {
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "POST" } });
+    }
+    const secret = env.RUN_SECRET;
+    if (secret === undefined || secret === "") {
+      return refuse(route, 500, "internal", {
+        reason: "not_configured",
+        cause: "RUN_SECRET missing",
+      });
+    }
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > MAX_LEAVE_BYTES) {
+      return refuse(route, 400, "bad_request", { detail: "body too large" });
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return refuse(route, 400, "bad_request", { detail: "body must be JSON" });
+    }
+
+    try {
+      const result = await handleLeave(body, {
+        deck: deps.deck,
+        secret,
+        clock,
+        record: recorder(request, env, route),
+      });
+      if (result.status === 204) {
+        return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+      }
       return refuse(
         route,
         result.status,
@@ -330,6 +387,7 @@ export function createApp(deps: AppDeps): {
       if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
       if (pathname === FEEDBACK_PATH) return feedback(request, env);
       if (pathname === ROUND_PATH) return round(request, env);
+      if (pathname === LEAVE_PATH) return leave(request, env);
       // Not logged: scanners probe paths all day, and the log quota is daily.
       return error(404, "not_found");
     },

@@ -9,7 +9,16 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { DATASET } from "../../worker/src/analytics.js";
-import { DEFAULT_QUERIES, QUERIES, QUERY_NAMES, formatTable } from "../stats-queries.js";
+import {
+  DEFAULT_QUERIES,
+  EXAMPLE_RUN_KEY,
+  QUERIES,
+  QUERY_NAMES,
+  formatTable,
+  runKey,
+  runSummary,
+  timestampMs,
+} from "../stats-queries.js";
 import type { Row } from "../stats-queries.js";
 import { SQL_API, parseArgs, runStats } from "../stats.js";
 
@@ -45,7 +54,7 @@ describe("arguments", () => {
       options: { days: 30 },
       list: false,
     });
-    expect(parseArgs(["all"]).queries).toEqual(QUERY_NAMES);
+    expect(parseArgs(["all"]).queries).toEqual(QUERY_NAMES.filter((name) => name !== "run"));
     expect(parseArgs(["--", "--deck", "legends-107-e68a4e1b"]).options).toEqual({
       days: 7,
       deck: "legends-107-e68a4e1b",
@@ -76,7 +85,7 @@ describe("the saved queries", () => {
   it.each(QUERY_NAMES)(
     "%s reads the dataset, in the window, counting by sample interval",
     (name) => {
-      const sql = QUERIES[name].sql({ days: 7 });
+      const sql = QUERIES[name].sql({ days: 7, run: EXAMPLE_RUN_KEY });
       expect(sql).toContain(`FROM ${DATASET}\n`);
       expect(sql).toContain("timestamp > NOW() - INTERVAL '7' DAY");
       expect(sql).not.toMatch(/count\(/i);
@@ -95,7 +104,7 @@ describe("the saved queries", () => {
     const doc = readFileSync(resolve(root, "docs", "ARCHITECTURE.md"), "utf8");
     for (const name of QUERY_NAMES) {
       expect(doc, `ARCHITECTURE.md is missing or has a stale "${name}" query`).toContain(
-        "```sql\n" + QUERIES[name].sql({ days: 7 }) + "\n```",
+        "```sql\n" + QUERIES[name].sql({ days: 7, run: EXAMPLE_RUN_KEY }) + "\n```",
       );
     }
   });
@@ -126,6 +135,109 @@ describe("the saved queries", () => {
       { event: "start", end_reason: "", score: "" },
       { event: "end", end_reason: "won", score: 20 },
     ]);
+  });
+});
+
+describe("pnpm stats run <runKey>", () => {
+  const KEY = "20260928-3baefd0b-3d61-45a4-abfb-09f5f735975c";
+  const REPLAY = `${KEY}~0d4c1a2e-5f60-4b7a-8c9d-0e1f2a3b4c5d`;
+
+  function answer(timestamp: string, round: number, correct = 1): Row {
+    return { timestamp, round, stat: "caps", correct, streak: correct ? round : round - 1 };
+  }
+
+  it("takes the run key after the query name, alongside other options", () => {
+    expect(parseArgs(["run", KEY, "--days", "30"])).toEqual({
+      queries: ["run"],
+      options: { days: 30, run: KEY },
+      list: false,
+    });
+    expect(parseArgs(["all"]).queries).not.toContain("run");
+  });
+
+  it("filters on the run key, answers only, in time order", () => {
+    const sql = QUERIES.run.sql({ days: 7, run: KEY });
+    expect(sql).toContain(`WHERE blob1 = 'answer'\n  AND index1 = '${KEY}'\n`);
+    expect(sql).toContain("ORDER BY timestamp, round");
+  });
+
+  it("accepts a replay's key, and a whole run id with its signature dropped", () => {
+    expect(runKey(REPLAY)).toBe(REPLAY);
+    expect(runKey(`${KEY}.AAAAAAAAAAAAAAAAAAAAAA`)).toBe(KEY);
+  });
+
+  it.each([
+    ["no key", undefined],
+    ["an empty key", ""],
+    ["a key with SQL in it", `${KEY}' OR 1=1 --`],
+    ["a key in capitals", KEY.toUpperCase()],
+    ["a date alone", "20260928"],
+  ])("refuses %s before any request", async (_name, key) => {
+    expect(() => runKey(key)).toThrow(/run needs a run key/);
+    const fetchSpy = vi.fn();
+    const { printed, deps: d } = deps(fetchSpy);
+    expect(await runStats(key === undefined ? ["run"] : ["run", key], d)).toBe(1);
+    expect(printed.join("\n")).toMatch(/run needs a run key/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reads the SQL API's timestamps as UTC", () => {
+    expect(timestampMs("2026-09-28 06:11:33")).toBe(Date.UTC(2026, 8, 28, 6, 11, 33));
+    expect(timestampMs("2026-09-28T06:11:33Z")).toBe(Date.UTC(2026, 8, 28, 6, 11, 33));
+    expect(timestampMs("2026-09-28T07:11:33+01:00")).toBe(Date.UTC(2026, 8, 28, 6, 11, 33));
+  });
+
+  it("adds the seconds since the previous answer", () => {
+    const rows = QUERIES.run.post([
+      answer("2026-09-28 06:00:00", 1),
+      answer("2026-09-28 06:00:12", 2),
+      answer("2026-09-28 06:00:12.4", 2),
+    ]);
+    expect(rows.map((r) => r.gap_s)).toEqual(["", 12, 0.4]);
+  });
+
+  it("sums a run up: answers, rounds answered again, the fastest gap and the whole time", () => {
+    const rows = QUERIES.run.post([
+      answer("2026-09-28 06:00:00", 1),
+      answer("2026-09-28 06:00:09", 2),
+      answer("2026-09-28 06:00:10.5", 2),
+      answer("2026-09-28 06:00:30", 3),
+      answer("2026-09-28 06:02:05", 3, 0),
+    ]);
+    expect(runSummary(rows)).toBe(
+      [
+        "  Answers: 5",
+        "  Rounds answered more than once: 2 (×2), 3 (×2)",
+        "  Fastest gap between answers: 1.5 s (round 2 to round 2)",
+        "  Total duration, first answer to last: 2 min 5 s",
+      ].join("\n"),
+    );
+  });
+
+  it("says so when a run has one answer, or none in the window", () => {
+    expect(runSummary([answer("2026-09-28 06:00:00", 1)])).toContain(
+      "Fastest gap between answers: n/a (one answer)",
+    );
+    expect(runSummary([])).toBe("  No answers for that run key in the window.");
+  });
+
+  it("prints the table, then the summary, from the API's rows", async () => {
+    const fetchSpy = vi.fn(async () =>
+      sqlResponse(
+        ["timestamp", "round", "stat", "correct", "streak"],
+        [answer("2026-09-28 06:00:00", 1), answer("2026-09-28 06:00:08", 2)],
+      ),
+    );
+    const { printed, deps: d } = deps(fetchSpy);
+    expect(await runStats(["run", KEY], d)).toBe(0);
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(init.body)).toContain(`index1 = '${KEY}'`);
+    const out = printed.join("\n");
+    expect(out).toContain("Answers in one run");
+    expect(out).toMatch(/gap_s/);
+    expect(out).toContain("  Answers: 2");
+    expect(out).toContain("  Fastest gap between answers: 8 s (round 1 to round 2)");
+    expect(out).not.toContain(TOKEN);
   });
 });
 

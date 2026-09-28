@@ -8,6 +8,7 @@
  *   pnpm stats all                      every query
  *   pnpm stats --days 30                a longer window (up to 92)
  *   pnpm stats --deck legends-107-e68a4e1b   one deck version only
+ *   pnpm stats run 20260928-<uuid>      every answer in one run, with the gaps
  *
  * Reads CF_ACCOUNT_ID and CF_ANALYTICS_TOKEN from the environment, loading
  * `.env` first when there is one. The token is a Cloudflare API token with
@@ -18,6 +19,7 @@
 
 import { existsSync } from "node:fs";
 import {
+  ALL_QUERIES,
   DEFAULT_DAYS,
   DEFAULT_QUERIES,
   QUERIES,
@@ -40,6 +42,7 @@ export function parseArgs(argv: readonly string[]): Args {
   const queries: QueryName[] = [];
   let days = DEFAULT_DAYS;
   let deck: string | undefined;
+  let run: string | undefined;
   let list = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -47,13 +50,21 @@ export function parseArgs(argv: readonly string[]): Args {
     if (arg === "--list") list = true;
     else if (arg === "--days") days = Number(argv[++i]);
     else if (arg === "--deck") deck = argv[++i];
-    else if (arg === "all") queries.push(...QUERY_NAMES);
-    else if (isQueryName(arg)) queries.push(arg);
+    else if (arg === "all") queries.push(...ALL_QUERIES);
+    else if (arg === "run") {
+      // The run key follows; stats-queries.ts checks it before it reaches the SQL.
+      queries.push("run");
+      run = argv[++i];
+    } else if (isQueryName(arg)) queries.push(arg);
     else throw new Error(`unknown query or option "${arg}" (pnpm stats --list)`);
   }
   return {
     queries: queries.length > 0 ? [...new Set(queries)] : DEFAULT_QUERIES,
-    options: { days, ...(deck !== undefined ? { deck } : {}) },
+    options: {
+      days,
+      ...(deck !== undefined ? { deck } : {}),
+      ...(run !== undefined ? { run } : {}),
+    },
     list,
   };
 }
@@ -82,7 +93,11 @@ export async function runStats(argv: readonly string[], deps: StatsDeps): Promis
   }
 
   if (args.list) {
-    for (const name of QUERY_NAMES) deps.print(`  ${name.padEnd(9)} ${QUERIES[name].title}`);
+    for (const name of QUERY_NAMES) {
+      const query: SavedQuery = QUERIES[name];
+      const usage = query.needsRunKey ? `${name} <runKey>` : name;
+      deps.print(`  ${usage.padEnd(15)} ${query.title}`);
+    }
     return 0;
   }
 
@@ -128,6 +143,7 @@ export async function runStats(argv: readonly string[], deps: StatsDeps): Promis
     for (const r of rows)
       for (const key of Object.keys(r)) if (!columns.includes(key)) columns.push(key);
     deps.print(`\n${query.title}\n  ${query.about}\n\n${formatTable(columns, rows)}`);
+    if (query.summary) deps.print(`\n${query.summary(rows)}`);
   }
   return 0;
 }
