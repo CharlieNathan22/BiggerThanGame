@@ -42,23 +42,29 @@ const LONG_SCHEDULE: readonly BandRow[] = [
 ];
 
 /**
- * Friendly's schedule: twenty questions (`WIN_ROUNDS`). Uncapped for the eight
- * rounds that prefer iconic challengers (`ICONIC_ROUNDS`), then a gentle climb
- * that **never gets easier**: from round 9 each band is at least as hard as the
- * one before (floor and ceiling never rise). Round 20, the **final question**,
- * is the hardest band in the run — tough, but no knife edge, so a win is not a
- * coin flip. DESIGN.md §8.
+ * Friendly's schedule: twenty questions (`WIN_ROUNDS`). Uncapped for the five
+ * rounds that prefer iconic challengers (`ICONIC_ROUNDS`) and the five after,
+ * then capped and **never easier**: from round 5 each band is at least as hard
+ * as the one before (floor and ceiling never rise). Rounds 18–20 also carry the
+ * final stretch's ratio floor (`FINAL_STRETCH`). Round 20, the **final
+ * question**, is the hardest band in the run. DESIGN.md §8.
  *
- * Tuned against simulation.md on the 107-player legends deck for a win rate
- * of about 10%; re-tune once the deck is complete and real play (M5c) replaces
- * the modelled player.
+ * The last rows are narrow because the ratio floor already rules out the
+ * closest pairs: for dense stats (appearances, age, caps) no pair 10% apart
+ * fits a narrow band, and relaxation lifts the ceiling, so a wide band there
+ * only lets in easier pairs for the stats that can go close.
+ *
+ * Tuned against simulation.md on the 131-player legends deck with the `fan`
+ * player model, for a win rate of 3–5%; re-tune when observed accuracy from
+ * real play replaces the model's calibration points.
  */
 const FRIENDLY_SCHEDULE: readonly BandRow[] = [
-  { upTo: 8, band: { floor: 0.45, ceiling: null } },
-  { upTo: 13, band: { floor: 0.4, ceiling: null } },
-  { upTo: 17, band: { floor: 0.3, ceiling: 0.8 } },
-  { upTo: 19, band: { floor: 0.25, ceiling: 0.7 } },
-  { upTo: Infinity, band: { floor: 0.15, ceiling: 0.5 } },
+  { upTo: 5, band: { floor: 0.45, ceiling: null } },
+  { upTo: 10, band: { floor: 0.35, ceiling: null } },
+  { upTo: 13, band: { floor: 0.06, ceiling: 0.16 } },
+  { upTo: 17, band: { floor: 0.02, ceiling: 0.08 } },
+  { upTo: 19, band: { floor: 0.02, ceiling: 0.04 } },
+  { upTo: Infinity, band: { floor: 0.01, ceiling: 0.03 } },
 ];
 
 /**
@@ -79,6 +85,25 @@ export const BAND_SCHEDULES: Readonly<Record<Mode, readonly BandRow[]>> = {
  */
 export const VOLATILE_FLOOR = 1.0;
 
+/**
+ * Friendly's final stretch: from round `from`, the two values must also be at
+ * least `minRatio` apart as a ratio (0.1: the larger at least 1.10 times the
+ * smaller). Rank distance alone can pair two figures a few percent apart, and
+ * the last questions of a won run should be hard, not a coin flip. Unlike the
+ * volatility floor this is **never relaxed** (`strictMinRatio`); it applies on
+ * top of the volatility floor and tie exclusion. Null for a mode without one.
+ */
+export interface FinalStretch {
+  readonly from: number;
+  readonly minRatio: number;
+}
+
+export const FINAL_STRETCH: Readonly<Record<Mode, FinalStretch | null>> = {
+  friendly: { from: 18, minRatio: 0.1 },
+  endless: null,
+  ranked: null,
+};
+
 /** 1-based round number and mode in, band out. */
 export function bandForRound(round: number, mode: Mode): Band {
   const schedule = BAND_SCHEDULES[mode];
@@ -88,13 +113,18 @@ export function bandForRound(round: number, mode: Mode): Band {
 
 /**
  * The band actually applied to a given stat at a given round: the round's band,
- * plus the volatility floor for a volatile stat. Everything that asks "is this
- * pair dealable" — the engine and viability.md alike — goes through this, so
- * they can't disagree.
+ * plus the volatility floor for a volatile stat and the final stretch's ratio
+ * floor in its rounds. Everything that asks "is this pair dealable" — the
+ * engine and viability.md alike — goes through this, so they can't disagree.
  */
 export function bandFor(stat: StatKey, round: number, mode: Mode): Band {
-  const base = bandForRound(round, mode);
-  return STATS[stat].volatile === true ? { ...base, minRatio: VOLATILE_FLOOR } : base;
+  let band = bandForRound(round, mode);
+  if (STATS[stat].volatile === true) band = { ...band, minRatio: VOLATILE_FLOOR };
+  const stretch = FINAL_STRETCH[mode];
+  if (stretch !== null && round >= stretch.from) {
+    band = { ...band, strictMinRatio: stretch.minRatio };
+  }
+  return band;
 }
 
 /**
@@ -183,12 +213,13 @@ export function withinBand(distance: number, band: Band): boolean {
 /**
  * The single test for "may these two values be paired in this band": not
  * tied, rank distance within the band, and far enough apart as a ratio when
- * the band carries a `minRatio`.
+ * the band carries a `minRatio` or a `strictMinRatio`.
  */
 export function pairFits(table: Percentiles, a: number, b: number, band: Band): boolean {
   if (a === b) return false; // tie — never relaxed
   if (!withinBand(rankDistance(table, a, b), band)) return false;
   if (band.minRatio !== undefined && gap(a, b) < band.minRatio) return false;
+  if (band.strictMinRatio !== undefined && gap(a, b) < band.strictMinRatio) return false;
   return true;
 }
 
@@ -198,11 +229,12 @@ export function pairFits(table: Percentiles, a: number, b: number, band: Band): 
  * Ceiling first — a too-easy question beats a repeated player. Then the floor,
  * in steps. The volatility floor holds through every step but the last, which
  * drops it so a pair can always be dealt. Shortening the recently-seen queue is
- * the engine's next move after this list is exhausted, and tie exclusion is
- * never relaxed.
+ * the engine's next move after this list is exhausted. Tie exclusion and the
+ * final stretch's `strictMinRatio` are never relaxed.
  */
 export function relaxations(band: Band): Band[] {
-  const keep = band.minRatio !== undefined ? { minRatio: band.minRatio } : {};
+  const strict = band.strictMinRatio !== undefined ? { strictMinRatio: band.strictMinRatio } : {};
+  const keep = band.minRatio !== undefined ? { minRatio: band.minRatio, ...strict } : strict;
   const out: Band[] = [band];
   if (band.ceiling !== null) {
     out.push({ floor: band.floor, ceiling: Math.min(band.ceiling * 2, 1), ...keep });
@@ -213,6 +245,6 @@ export function relaxations(band: Band): Band[] {
     floor = floor * 0.6;
     out.push({ floor, ceiling: null, ...keep });
   }
-  out.push({ floor: 0, ceiling: null });
+  out.push({ floor: 0, ceiling: null, ...strict });
   return out;
 }

@@ -47,7 +47,8 @@ If a change seems to require breaking one of these, stop and ask.
 pnpm dev          # builds the deck, then wrangler dev on :8787 and astro dev together; /api proxied
 pnpm dev:api      # builds the deck, then the Worker on :8787 (wrangler dev, secret from .dev.vars)
 pnpm test         # unit tests (vitest) — core, deck and Worker
-pnpm simulate     # 10k-run difficulty simulation → simulation.md
+pnpm simulate     # 20k-run difficulty simulation → simulation.md; --model rank, --calibration <file.json>,
+                  # --runs <n> (fan model by default)
 pnpm deck:import  # players.csv (+ image-log.csv, focus.csv) → players/*.yaml; --dry-run, --prune
 pnpm stats        # gameplay analytics from Analytics Engine; needs .env (see "Logs and analytics")
 pnpm build        # validates deck, emits artifacts, builds site, leak-scans and search-checks it

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BAND_SCHEDULES,
+  FINAL_STRETCH,
   VOLATILE_FLOOR,
   bandFor,
   bandForRound,
@@ -77,25 +78,68 @@ describe("bandForRound, Friendly's twenty rounds", () => {
     expect(band(1)).toEqual(bandForRound(1, "ranked"));
   });
 
-  it("keeps rounds 1–8 on the opening band", () => {
-    for (const r of rounds.slice(0, 8)) expect(band(r)).toEqual({ floor: 0.45, ceiling: null });
+  it("keeps rounds 1–5 on the opening band and 6–10 uncapped", () => {
+    for (const r of rounds.slice(0, 5)) expect(band(r)).toEqual({ floor: 0.45, ceiling: null });
+    for (const r of rounds.slice(5, 10)) expect(band(r)).toEqual({ floor: 0.35, ceiling: null });
   });
 
-  it("never gets easier from round 9 on", () => {
-    for (const r of rounds.slice(8)) {
+  it("never gets easier from round 5 on", () => {
+    for (const r of rounds.slice(4)) {
       expect(band(r).floor).toBeLessThanOrEqual(band(r - 1).floor);
       expect(band(r).ceiling ?? 1).toBeLessThanOrEqual(band(r - 1).ceiling ?? 1);
     }
   });
 
-  it("makes the final question the hardest band in the run, capped and not a knife edge", () => {
+  it("makes the final question strictly the hardest band in the run, and capped", () => {
     const last = band(WIN_ROUNDS.friendly!);
     expect(last.ceiling).not.toBeNull();
     for (const r of rounds.slice(0, -1)) {
       expect(last.floor).toBeLessThan(band(r).floor);
       expect(last.ceiling!).toBeLessThan(band(r).ceiling ?? 1);
     }
-    expect(last.floor).toBeGreaterThan(bandForRound(43, "ranked").floor);
+  });
+
+  it("stays within the 0–1 scale of rank distance", () => {
+    for (const r of rounds) {
+      expect(band(r).floor).toBeGreaterThan(0);
+      expect(band(r).ceiling ?? 1).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe("the final stretch", () => {
+  it("is Friendly's rounds 18–20, at least 10% apart", () => {
+    expect(FINAL_STRETCH).toEqual({
+      friendly: { from: 18, minRatio: 0.1 },
+      endless: null,
+      ranked: null,
+    });
+  });
+
+  it("adds a strict ratio floor to Friendly's rounds 18–20 only", () => {
+    for (let r = 1; r <= 20; r++) {
+      expect(bandFor("caps", r, "friendly").strictMinRatio).toBe(r >= 18 ? 0.1 : undefined);
+    }
+  });
+
+  it("is on top of the volatility floor, not instead of it", () => {
+    expect(bandFor("ig", 20, "friendly")).toEqual({
+      ...bandForRound(20, "friendly"),
+      minRatio: VOLATILE_FLOOR,
+      strictMinRatio: 0.1,
+    });
+  });
+
+  it("never touches Endless or Ranked", () => {
+    for (const mode of ["endless", "ranked"] as const) {
+      for (const r of [1, 18, 19, 20, 43]) {
+        expect(bandFor("caps", r, mode)).toEqual(bandForRound(r, mode));
+        expect(bandFor("ig", r, mode)).toEqual({
+          ...bandForRound(r, mode),
+          minRatio: VOLATILE_FLOOR,
+        });
+      }
+    }
   });
 });
 
@@ -110,10 +154,9 @@ describe("bandFor", () => {
   it("adds the volatility floor to volatile stats at every round, in every mode", () => {
     for (const mode of ["friendly", "endless", "ranked"] as const) {
       for (const r of [1, 11, 20, 43]) {
-        expect(bandFor("ig", r, mode)).toEqual({
-          ...bandForRound(r, mode),
-          minRatio: VOLATILE_FLOOR,
-        });
+        const band = bandFor("ig", r, mode);
+        expect(band).toMatchObject(bandForRound(r, mode));
+        expect(band.minRatio).toBe(VOLATILE_FLOOR);
       }
     }
   });
@@ -246,6 +289,18 @@ describe("pairFits", () => {
     expect(pairFits(table, 10, 15, band)).toBe(false);
     expect(pairFits(table, 10, 40, band)).toBe(true);
   });
+
+  it("also demands the strict ratio floor when the band carries one", () => {
+    const close = new Map([
+      [100, 0],
+      [105, 0.5],
+      [112, 1],
+    ]);
+    const band = { floor: 0, ceiling: null, strictMinRatio: 0.1 };
+    expect(pairFits(close, 100, 105, band)).toBe(false); // 5% apart
+    expect(pairFits(close, 100, 112, band)).toBe(true); // 12% apart
+    expect(pairFits(close, 100, 105, { floor: 0, ceiling: null })).toBe(true);
+  });
 });
 
 describe("relaxations", () => {
@@ -273,6 +328,23 @@ describe("relaxations", () => {
     expect(ladder[ladder.length - 1]).toEqual({ floor: 0, ceiling: null });
     // Every step before the last keeps the volatility floor.
     for (const band of ladder.slice(0, -1)) expect(band.minRatio).toBe(VOLATILE_FLOOR);
+  });
+
+  it("keeps the strict ratio floor at every step, the last included", () => {
+    const ladder = relaxations({ floor: 0.01, ceiling: 0.04, strictMinRatio: 0.1 });
+    expect(ladder[ladder.length - 1]).toEqual({ floor: 0, ceiling: null, strictMinRatio: 0.1 });
+    for (const band of ladder) expect(band.strictMinRatio).toBe(0.1);
+  });
+
+  it("drops the volatility floor at the last step but keeps the strict one", () => {
+    const ladder = relaxations({
+      floor: 0.01,
+      ceiling: 0.04,
+      minRatio: VOLATILE_FLOOR,
+      strictMinRatio: 0.1,
+    });
+    for (const band of ladder.slice(0, -1)) expect(band.minRatio).toBe(VOLATILE_FLOOR);
+    expect(ladder[ladder.length - 1]).toEqual({ floor: 0, ceiling: null, strictMinRatio: 0.1 });
   });
 
   it("never widens above the requested floor", () => {

@@ -123,7 +123,7 @@ are not.
 pnpm install
 pnpm dev          # Friendly Mode against the sample deck
 pnpm test         # unit tests
-pnpm simulate     # 10k-run difficulty simulation
+pnpm simulate     # 20k-run difficulty simulation
 pnpm build
 ```
 

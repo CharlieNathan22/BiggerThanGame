@@ -1,32 +1,28 @@
 # Simulation
 
-10,000 runs per mode over 107 players, generated 2026-09-27. Every mode uses the same seeds, so the columns differ only by what the mode changes.
+20,000 runs per mode over 131 players, generated 2026-09-29. Every mode uses the same seeds, so the columns differ only by what the mode changes.
 
-> Streaks come from a **modelled** player: correct with probability rising from
-> 0.5 for two players at the same point in the deck's spread to 0.95 for opposite
-> ends, measured in rank distance like the bands. **That model is an assumption**,
-> to be replaced by the accuracy curve observed in real play (M5c). The shape is
-> informative; the absolute numbers are not, until then.
+> Streaks come from a **modelled** player, `fan`: a keen football fan, accurate 0.55 at 0, 0.65 at 0.03, 0.78 at 0.08, 0.88 at 0.15, 0.95 at 0.3, 0.99 at 0.5 (rank distance), linear in between and flat beyond the last point. **That model is an assumption** (see Player models below), to be replaced by the accuracy curve observed in real play.
 
 ## Streak distribution
 
 | Measure | friendly | endless | ranked |
 |---|---|---|---|
-| Mean | 8.1 | 8.2 | 8.2 |
-| Median | 7 | 7 | 7 |
-| 75th percentile | 13 | 12 | 12 |
-| 90th percentile | 19 | 18 | 18 |
-| 99th percentile | 20 | 29 | 29 |
-| Best | 20 | 43 | 43 |
+| Mean | 12.3 | 23.6 | 23.6 |
+| Median | 12 | 23 | 23 |
+| 75th percentile | 15 | 32 | 32 |
+| 90th percentile | 17 | 39 | 39 |
+| 99th percentile | 20 | 48 | 48 |
+| Best | 20 | 60 | 60 |
 
 | Streak | friendly | endless | ranked |
 |---|---|---|---|
-| 0 | 9.5% | 9.5% | 9.5% |
-| 1–4 | 28.3% | 28.3% | 28.3% |
-| 5–9 | 25.4% | 24.9% | 24.9% |
-| 10–19 | 27.2% | 29.5% | 29.5% |
-| 20–29 | 9.6% | 6.9% | 6.9% |
-| 30+ | 0.0% | 0.9% | 0.9% |
+| 0 | 1.0% | 1.0% | 1.0% |
+| 1–4 | 4.3% | 4.3% | 4.3% |
+| 5–9 | 7.7% | 5.4% | 5.4% |
+| 10–19 | 82.3% | 26.2% | 26.2% |
+| 20–29 | 4.8% | 32.7% | 32.7% |
+| 30+ | 0.0% | 30.4% | 30.4% |
 
 ## Friendly: the 20-question challenge
 
@@ -34,22 +30,87 @@ A run that answers all 20 rounds correctly is won. Share of runs:
 
 | Streak | Runs |
 |---|---|
-| 0 | 9.5% |
-| 1–4 | 28.3% |
-| 5–9 | 25.4% |
-| 10–14 | 16.1% |
-| 15–19 | 11.1% |
-| **20 (won)** | 9.6% |
+| 0 | 1.0% |
+| 1–4 | 4.3% |
+| 5–9 | 7.7% |
+| 10–14 | 61.6% |
+| 15–19 | 20.7% |
+| **20 (won)** | 4.8% |
 
 Reached at least:
 
 | Streak | 5 | 10 | 15 | 18 | 20 |
 |---|---|---|---|---|---|
-| Runs | 62.2% | 36.9% | 20.7% | 13.7% | 9.6% |
+| Runs | 94.7% | 87.0% | 25.4% | 9.5% | 4.8% |
 
-**Win rate: 9.6%.**
+**Win rate: 4.8%.**
 
-Reached the final question (round 20): 11.8% of runs, and 81.6% of those won.
+Reached the final question (round 20): 6.7% of runs, and 70.6% of those won.
+
+By question: the round's scheduled band, the share of runs dealt the question,
+and the share of those that answered it right.
+
+| Question | Band | Reached | Correct |
+|---|---|---|---|
+| 1 | ≥0.45 | 100.0% | 99.0% |
+| 2 | ≥0.45 | 99.0% | 99.0% |
+| 3 | ≥0.45 | 98.0% | 98.8% |
+| 4 | ≥0.45 | 96.8% | 98.9% |
+| 5 | ≥0.45 | 95.8% | 98.9% |
+| 6 | ≥0.35 | 94.7% | 98.3% |
+| 7 | ≥0.35 | 93.1% | 98.3% |
+| 8 | ≥0.35 | 91.5% | 98.4% |
+| 9 | ≥0.35 | 90.0% | 98.3% |
+| 10 | ≥0.35 | 88.5% | 98.3% |
+| 11 | 0.06–0.16 | 87.0% | 83.2% |
+| 12 | 0.06–0.16 | 72.4% | 82.3% |
+| 13 | 0.06–0.16 | 59.6% | 82.1% |
+| 14 | 0.02–0.08 | 48.9% | 72.2% |
+| 15 | 0.02–0.08 | 35.3% | 72.0% |
+| 16 | 0.02–0.08 | 25.4% | 71.2% |
+| 17 | 0.02–0.08 | 18.1% | 70.7% |
+| 18 | 0.02–0.04, ≥10% apart | 12.8% | 74.6% |
+| 19 | 0.02–0.04, ≥10% apart | 9.5% | 70.5% |
+| 20 | 0.01–0.03, ≥10% apart | 6.7% | 70.6% |
+
+## Friendly under each player model
+
+The same runs and the same skill draws, scored by each model. The first column
+is the model that played the runs above.
+
+| Measure | `fan` | `rank` |
+|---|---|---|
+| Mean streak | 12.3 | 6.7 |
+| Median streak | 12 | 6 |
+| Reached question 18 | 12.8% | 1.7% |
+| Reached question 19 | 9.5% | 1.1% |
+| Reached question 20 | 6.7% | 0.7% |
+| Correct on question 18 | 74.6% | 66.4% |
+| Correct on question 19 | 70.5% | 66.2% |
+| Correct on question 20 | 70.6% | 66.9% |
+| **Win rate** | **4.8%** | **0.5%** |
+
+## Player models
+
+A modelled player answers each round correctly with a probability set by how far
+apart the pair sits in the deck, in rank distance like the bands.
+
+- **`fan`** (used above): a keen football fan, accurate 0.55 at 0, 0.65 at 0.03, 0.78 at 0.08, 0.88 at 0.15, 0.95 at 0.3, 0.99 at 0.5 (rank distance), linear in between and flat beyond the last point.
+- `rank`: the original, weaker curve: 0.5 at no gap rising to 0.95 at opposite ends of the deck, along d / (d + 0.2) scaled to reach it.
+
+`fan` is the default and the model Friendly is tuned with. `rank` was the only
+model until Friendly's retune; it is far weaker than a real football fan, so bands
+tuned with it proved too soft in real play. Endless and Ranked were tuned with it.
+
+- `pnpm simulate` uses `fan`; `pnpm simulate --model rank` uses `rank`.
+- `pnpm simulate --calibration <file.json>` replaces the fan's points with a list
+  of `{ "rankDistance": 0.1, "accuracy": 0.8 }` points (any order, each from 0 to
+  1), interpolated linearly and flat beyond the first and last. Build it from real
+  play: `pnpm stats distance` gives correct rate by rank distance.
+- `--runs <n>` sets the runs per mode (default 20,000).
+
+**Every model is an assumption** until a calibration file from real play replaces
+it. The shape of the results is informative; the absolute numbers are indicative.
 
 ## Stat firing rates
 
@@ -59,17 +120,17 @@ tier weights are tuned to land within about two points of it.
 
 | Stat | Tier | Target | friendly | endless | ranked |
 |---|---|---|---|---|---|
-| Club goals | basic | 15% | 14.1% | 14.0% | 14.0% |
-| International caps | basic | 15% | 12.8% | 12.9% | 12.9% |
-| Club appearances | basic | 15% | 12.9% | 12.9% | 12.9% |
-| Instagram followers | basic | 15% | 14.7% | 14.6% | 14.6% |
-| Highest transfer fee | uncommon | 10% | 9.4% | 9.4% | 9.4% |
-| International goals | uncommon | 10% | 9.4% | 9.3% | 9.3% |
-| Club trophies | rare | 5% | 7.0% | 7.1% | 7.1% |
-| International trophies | rare | 5% | 7.0% | 7.0% | 7.0% |
-| Clubs played for | rare | 5% | 6.8% | 6.8% | 6.8% |
-| Age | rare | 5% | 5.8% | 5.8% | 5.8% |
-| _Rounds on the opening stat_ |  |  | 21.1% | 20.6% | 20.6% |
+| Club goals | basic | 15% | 14.2% | 13.7% | 13.7% |
+| International caps | basic | 15% | 12.7% | 12.5% | 12.5% |
+| Club appearances | basic | 15% | 12.8% | 12.6% | 12.6% |
+| Instagram followers | basic | 15% | 13.8% | 14.1% | 14.1% |
+| Highest transfer fee | uncommon | 10% | 9.1% | 8.9% | 8.9% |
+| International goals | uncommon | 10% | 9.2% | 9.0% | 9.0% |
+| Club trophies | rare | 5% | 7.7% | 7.5% | 7.5% |
+| International trophies | rare | 5% | 6.1% | 7.4% | 7.4% |
+| Clubs played for | rare | 5% | 7.4% | 7.6% | 7.6% |
+| Age | rare | 5% | 6.9% | 6.7% | 6.7% |
+| _Rounds on the opening stat_ |  |  | 15.0% | 8.1% | 8.1% |
 
 The opening stat — basic or uncommon, never rare — always holds for rounds 1 and
 2, and most runs are short, so it covers a large share of all rounds. That is why
@@ -84,18 +145,18 @@ under about 30% in every range.
 
 | Stat | Tier | Rounds 1–5 | Rounds 6–10 | Rounds 11–20 | Rounds 21+ |
 |---|---|---|---|---|---|
-| Club goals | basic | 14.6% | 13.2% | 14.4% | 0.0% |
-| International caps | basic | 13.6% | 12.3% | 11.8% | 0.0% |
-| Club appearances | basic | 13.5% | 12.4% | 12.4% | 0.0% |
-| Instagram followers | basic | 15.7% | 14.2% | 13.5% | 0.0% |
-| Highest transfer fee | uncommon | 10.1% | 9.0% | 8.8% | 0.0% |
-| International goals | uncommon | 9.9% | 9.1% | 8.8% | 0.0% |
-| Club trophies | rare | 6.1% | 7.7% | 8.1% | 0.0% |
-| International trophies | rare | 6.1% | 7.9% | 7.7% | 0.0% |
-| Clubs played for | rare | 5.8% | 7.7% | 7.6% | 0.0% |
-| Age | rare | 4.7% | 6.5% | 7.1% | 0.0% |
-| **Rare, together** |  | 22.7% | 29.8% | 30.4% | 0.0% |
-| _Rounds played_ |  | 41580 | 25604 | 22983 | 0 |
+| Club goals | basic | 14.2% | 13.3% | 15.4% | 0.0% |
+| International caps | basic | 13.0% | 12.5% | 12.4% | 0.0% |
+| Club appearances | basic | 13.2% | 12.6% | 12.5% | 0.0% |
+| Instagram followers | basic | 15.6% | 14.0% | 11.2% | 0.0% |
+| Highest transfer fee | uncommon | 9.5% | 8.8% | 9.1% | 0.0% |
+| International goals | uncommon | 9.5% | 9.3% | 8.8% | 0.0% |
+| Club trophies | rare | 6.4% | 7.4% | 9.9% | 0.0% |
+| International trophies | rare | 6.5% | 7.6% | 3.9% | 0.0% |
+| Clubs played for | rare | 6.6% | 7.7% | 8.0% | 0.0% |
+| Age | rare | 5.5% | 6.7% | 8.8% | 0.0% |
+| **Rare, together** |  | 25.0% | 29.5% | 30.6% | 0.0% |
+| _Rounds played_ |  | 97909 | 91567 | 75172 | 0 |
 
 ## Iconic preference
 
@@ -106,11 +167,11 @@ fallback rate means the deck is short of iconic players at the opening band.
 
 | Measure | friendly | endless | ranked |
 |---|---|---|---|
-| Window | rounds 1–8 | rounds 1–5 | rounds 1–5 |
-| Rounds dealt in window | 58482 | 41580 | 41580 |
-| Iconic challenger | 99.9% | 100.0% | 100.0% |
-| Fell back | 0.1% | 0.0% | 0.0% |
-| … to the whole deck | 0.1% | 0.0% | 0.0% |
+| Window | rounds 1–5 | rounds 1–5 | rounds 1–5 |
+| Rounds dealt in window | 97909 | 97909 | 97909 |
+| Iconic challenger | 100.0% | 100.0% | 100.0% |
+| Fell back | 0.0% | 0.0% | 0.0% |
+| … to the whole deck | 0.0% | 0.0% | 0.0% |
 | … and widened the band | 0.0% | 0.0% | 0.0% |
 | … and ignored the seen queue | 0.0% | 0.0% | 0.0% |
 
@@ -124,20 +185,21 @@ used — the deck is simply too small. They need different fixes.
 
 | Cause | friendly | endless | ranked |
 |---|---|---|---|
-| none | 99.9% | 100.0% | 100.0% |
+| none | 98.2% | 100.0% | 100.0% |
 | iconic | 0.0% | 0.0% | 0.0% |
-| band | 0.0% | 0.0% | 0.0% |
+| band | 1.8% | 0.0% | 0.0% |
 | seen | 0.0% | 0.0% | 0.0% |
 
 Any relaxation, by round:
 
 | Rounds | friendly | endless | ranked |
 |---|---|---|---|
-| 1–10 | 0.1% | 0.0% | 0.0% |
-| 11–20 | 0.0% | 0.0% | 0.0% |
+| 1–10 | 0.0% | 0.0% | 0.0% |
+| 11–20 | 6.3% | 0.0% | 0.0% |
 | 21–30 | — | 0.0% | 0.0% |
-| 31–40 | — | 0.0% | 0.0% |
-| 41–50 | — | 0.0% | 0.0% |
+| 31–40 | — | 0.1% | 0.1% |
+| 41–50 | — | 1.8% | 1.8% |
+| 51–60 | — | 0.8% | 0.8% |
 
 ## Engine reach
 

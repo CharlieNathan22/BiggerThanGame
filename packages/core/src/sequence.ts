@@ -69,14 +69,14 @@ export const OPENING_DWELL = 2;
 /**
  * For rounds 1..N of a run, the challenger is drawn from iconic players
  * whenever one can be dealt within the round's band. When none can, the whole
- * deck is used before any other relaxation (engine.ts). Friendly is the mode a
- * newcomer meets through a shared link, so it holds the preference longest.
+ * deck is used before any other relaxation (engine.ts). Friendly's window
+ * matches its opening band (rounds 1–5, `BAND_SCHEDULES`).
  *
  * Changing a value changes every run of that mode — and every golden
  * fingerprint for it.
  */
 export const ICONIC_ROUNDS: Readonly<Record<Mode, number>> = {
-  friendly: 8,
+  friendly: 5,
   endless: 5,
   ranked: 5,
 };

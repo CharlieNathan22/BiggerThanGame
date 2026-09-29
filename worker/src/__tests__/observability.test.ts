@@ -206,7 +206,7 @@ describe("the data point layout", () => {
     );
     expect(point).toEqual({
       indexes: ["20260919-run"],
-      blobs: ["answer", "friendly", "fresh", VERSION, "GB", "ct", STATS.ct.tier, "0.15-0.50", "1"],
+      blobs: ["answer", "friendly", "fresh", VERSION, "GB", "ct", STATS.ct.tier, "0.01-0.03", "1"],
       doubles: [20, 0, 19, 2, 0.375],
     });
   });
@@ -221,14 +221,16 @@ describe("the data point layout", () => {
 
   it.each([
     [1, "0.45+"],
-    [8, "0.45+"],
-    [9, "0.40+"],
-    [13, "0.40+"],
-    [14, "0.30-0.80"],
-    [17, "0.30-0.80"],
-    [18, "0.25-0.70"],
-    [19, "0.25-0.70"],
-    [20, "0.15-0.50"],
+    [5, "0.45+"],
+    [6, "0.35+"],
+    [10, "0.35+"],
+    [11, "0.06-0.16"],
+    [13, "0.06-0.16"],
+    [14, "0.02-0.08"],
+    [17, "0.02-0.08"],
+    [18, "0.02-0.04"],
+    [19, "0.02-0.04"],
+    [20, "0.01-0.03"],
   ])("labels Friendly round %i's band %s", (round, label) => {
     expect(bandLabel(round, "friendly")).toBe(label);
   });

@@ -41,6 +41,7 @@ export type { EligibilityMap } from "./eligibility.js";
 
 export {
   BAND_SCHEDULES,
+  FINAL_STRETCH,
   VOLATILE_FLOOR,
   bandFor,
   bandForRound,
@@ -51,7 +52,7 @@ export {
   relaxations,
   withinBand,
 } from "./ramp.js";
-export type { BandRow, Percentiles } from "./ramp.js";
+export type { BandRow, FinalStretch, Percentiles } from "./ramp.js";
 
 export { SEEN_DEPTH, candidates, remember, selectChallenger, valueOf } from "./engine.js";
 export type { Match, MatchContext } from "./engine.js";

@@ -51,7 +51,7 @@ describe("golden fingerprints", () => {
 
   it("a friendly run is stable", () => {
     expect(fingerprint("friendly:1", "friendly")).toMatchInlineSnapshot(
-      `"1:igoals:hotel>lima|2:igoals:lima>alpha|3:age:alpha>foxtrot|4:age:foxtrot>charlie|5:age:charlie>bravo|6:apps:bravo>echo|7:apps:echo>juliet|8:apps:juliet>delta|9:apps:delta>kilo|10:igoals:kilo>golf|11:igoals:golf>india|12:igoals:india>alpha|13:igoals:alpha>india|14:igoals:india>bravo|15:igoals:bravo>foxtrot|16:igoals:foxtrot>golf|17:igoals:golf>foxtrot|18:igoals:foxtrot>golf|19:igoals:golf>alpha|20:igoals:alpha>hotel"`,
+      `"1:igoals:hotel>lima|2:igoals:lima>alpha|3:age:alpha>foxtrot|4:age:foxtrot>charlie|5:age:charlie>bravo|6:apps:bravo>india|7:apps:india>juliet|8:apps:juliet>delta|9:apps:delta>golf|10:igoals:golf>kilo|11:igoals:kilo>alpha|12:igoals:alpha>kilo|13:ig:kilo>echo|14:ig:echo>kilo|15:ig:kilo>echo|16:ig:echo>kilo|17:ig:kilo>echo|18:ig:echo>india|19:ig:india>bravo|20:ig:bravo>foxtrot"`,
     );
   });
 

@@ -10,19 +10,23 @@
  * (`ICONIC_ROUNDS`), the band schedule (`BAND_SCHEDULES`) and, for Friendly,
  * the twenty rounds that win the run (`WIN_ROUNDS`).
  *
- * **The streak distribution rests on a model of player skill**, and that model
- * is an assumption, not data. See `pCorrect` below. Treat the shape of the
- * distribution as informative and the absolute numbers as indicative until real
- * play replaces them (M5c).
+ * **The streak distribution rests on a model of player skill** (`PlayerModel`),
+ * and that model is an assumption, not data. Two are built in: `fan`, the
+ * default, calibrated to a keen football fan, and `rank`, the original and much
+ * weaker curve. A calibration file of observed accuracy by rank distance can
+ * replace the fan's points (`calibratedModel`, `parseCalibration`). Treat the
+ * absolute numbers as indicative until real play supplies that file (M5c).
  */
 
 import {
+  FINAL_STRETCH,
   ICONIC_ROUNDS,
   STATS,
   STREAK_TITLES,
   STAT_KEYS,
   TIER_TARGET,
   WIN_ROUNDS,
+  bandForRound,
   buildRun,
   createRng,
   percentiles,
@@ -58,7 +62,7 @@ function emptyRelaxationCounts(): Record<Relaxation, number> {
 }
 
 /**
- * Modelled probability that a player answers a round correctly.
+ * The `rank` model's probability that a player answers a round correctly.
  *
  * Measured in **rank distance** (ramp.ts), the same scale the bands use: two
  * players at the same point in the deck's spread are a coin flip (0.5);
@@ -86,6 +90,126 @@ export function pCorrect(distance: number): number {
   return 0.5 + (SKILL_CEILING - 0.5) * share * (1 + HALF_GAP);
 }
 
+/**
+ * A modelled player: the probability of answering a round correctly, given how
+ * far apart the pair sits in the deck (rank distance, ramp.ts).
+ */
+export interface PlayerModel {
+  /** Short name, as `--model` takes it and the report's columns show it. */
+  readonly id: string;
+  /** One sentence for the report. */
+  readonly summary: string;
+  readonly pCorrect: (distance: number) => number;
+}
+
+/** One point of an accuracy curve: accuracy at a given rank distance. */
+export interface CalibrationPoint {
+  readonly rankDistance: number;
+  readonly accuracy: number;
+}
+
+/**
+ * The `fan` model's curve: a keen football fan, who knows the famous figures
+ * and gets most mid-range gaps right. An **assumption**, set well above the
+ * `rank` model because real players won Friendly on their first or second run
+ * against bands tuned with it. Replace it with observed accuracy by rank
+ * distance from real play via `--calibration`.
+ */
+export const FAN_POINTS: readonly CalibrationPoint[] = [
+  { rankDistance: 0, accuracy: 0.55 },
+  { rankDistance: 0.03, accuracy: 0.65 },
+  { rankDistance: 0.08, accuracy: 0.78 },
+  { rankDistance: 0.15, accuracy: 0.88 },
+  { rankDistance: 0.3, accuracy: 0.95 },
+  { rankDistance: 0.5, accuracy: 0.99 },
+];
+
+/**
+ * Accuracy at `distance`, interpolated linearly between the points either side
+ * of it and flat beyond the first and last. `points` must be sorted by rank
+ * distance, as `parseCalibration` leaves them.
+ */
+export function interpolate(points: readonly CalibrationPoint[], distance: number): number {
+  const first = points[0];
+  if (first === undefined) throw new Error("interpolate: no calibration points");
+  if (!(distance > first.rankDistance)) return first.accuracy; // also catches NaN
+  for (let i = 1; i < points.length; i++) {
+    const hi = points[i]!;
+    if (distance <= hi.rankDistance) {
+      const lo = points[i - 1]!;
+      const t = (distance - lo.rankDistance) / (hi.rankDistance - lo.rankDistance);
+      return lo.accuracy + (hi.accuracy - lo.accuracy) * t;
+    }
+  }
+  return points[points.length - 1]!.accuracy;
+}
+
+/**
+ * Validates a calibration file's contents: a non-empty list of
+ * `{ rankDistance, accuracy }`, both from 0 to 1, with no rank distance given
+ * twice. Returns the points sorted by rank distance; throws on anything else,
+ * naming the offending entry.
+ */
+export function parseCalibration(json: unknown): CalibrationPoint[] {
+  if (!Array.isArray(json) || json.length === 0) {
+    throw new Error("calibration: expected a non-empty list of { rankDistance, accuracy }");
+  }
+  const unit = (v: unknown): v is number =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+  const points = json.map((entry: unknown, i): CalibrationPoint => {
+    const { rankDistance, accuracy } = (entry ?? {}) as Record<string, unknown>;
+    if (typeof entry !== "object" || !unit(rankDistance) || !unit(accuracy)) {
+      throw new Error(
+        `calibration: entry ${i} must be { rankDistance, accuracy }, both from 0 to 1`,
+      );
+    }
+    return { rankDistance, accuracy };
+  });
+  points.sort((a, b) => a.rankDistance - b.rankDistance);
+  for (let i = 1; i < points.length; i++) {
+    if (points[i]!.rankDistance === points[i - 1]!.rankDistance) {
+      throw new Error(`calibration: rank distance ${points[i]!.rankDistance} is given twice`);
+    }
+  }
+  return points;
+}
+
+/** A model that follows an accuracy curve given as points, in any order. */
+export function calibratedModel(
+  id: string,
+  summary: string,
+  points: readonly CalibrationPoint[],
+): PlayerModel {
+  const sorted = parseCalibration(points);
+  return { id, summary, pCorrect: (d) => interpolate(sorted, d) };
+}
+
+/** `points` as the report and a model summary show them: "0.55 at 0, 0.65 at 0.03, …". */
+export function describePoints(points: readonly CalibrationPoint[]): string {
+  return points.map((p) => `${p.accuracy} at ${p.rankDistance}`).join(", ");
+}
+
+export const FAN_MODEL: PlayerModel = calibratedModel(
+  "fan",
+  `a keen football fan, accurate ${describePoints(FAN_POINTS)} (rank distance), ` +
+    "linear in between and flat beyond the last point",
+  FAN_POINTS,
+);
+
+export const RANK_MODEL: PlayerModel = {
+  id: "rank",
+  summary:
+    `the original, weaker curve: 0.5 at no gap rising to ${SKILL_CEILING} at opposite ends of ` +
+    `the deck, along d / (d + ${HALF_GAP}) scaled to reach it`,
+  pCorrect,
+};
+
+/** The built-in models, by `--model` name. `fan` is the default. */
+export const PLAYER_MODELS: Readonly<Record<string, PlayerModel>> = {
+  fan: FAN_MODEL,
+  rank: RANK_MODEL,
+};
+
 export interface SimOptions {
   readonly deck: readonly Player[];
   readonly now: Date;
@@ -94,14 +218,33 @@ export interface SimOptions {
   /** Defaults to the mode's own cap (`roundCap`): 20 for Friendly. */
   readonly maxRounds?: number;
   readonly seedPrefix?: string;
+  /** Plays every run; its rounds played drive the deal statistics. Defaults to `fan`. */
+  readonly model?: PlayerModel;
+  /** Further models scored on the same rounds and skill draws, for comparison only. */
+  readonly compare?: readonly PlayerModel[];
+}
+
+/** How one player model fared over a simulation's runs. */
+export interface ModelOutcome {
+  readonly model: PlayerModel;
+  /** Streak lengths, ascending. */
+  readonly streaks: readonly number[];
+  /** Runs that reached the mode's win target (`WIN_ROUNDS`); 0 for a mode without one. */
+  readonly wins: number;
+  /** Per question, index 0 for question 1: runs that were dealt it. */
+  readonly reached: readonly number[];
+  /** Per question: runs that answered it correctly. */
+  readonly correct: readonly number[];
 }
 
 export interface SimResult {
   readonly mode: Mode;
   readonly runs: number;
-  /** Streak lengths, ascending. */
+  /** The playing model's outcome first, then each `compare` model's. */
+  readonly outcomes: readonly ModelOutcome[];
+  /** The playing model's streaks, ascending. */
   readonly streaks: readonly number[];
-  /** Runs that reached the mode's win target (`WIN_ROUNDS`); 0 for a mode without one. */
+  /** The playing model's wins. */
   readonly wins: number;
   readonly statCounts: Readonly<Record<string, number>>;
   readonly relaxationCounts: Readonly<Record<Relaxation, number>>;
@@ -142,13 +285,46 @@ function distanceOf(round: Round, deck: readonly Player[], now: Date): number {
   return rankDistance(percentiles(deck, round.stat, now), a, b);
 }
 
+/** Mutable tallies behind a `ModelOutcome`. */
+interface Tally {
+  readonly model: PlayerModel;
+  readonly streaks: number[];
+  wins: number;
+  readonly reached: number[];
+  readonly correct: number[];
+}
+
+/**
+ * Plays one run's rounds, given as each pair's rank distance, and returns the
+ * streak. Draws from its own skill stream so the model cannot perturb the
+ * sequence; every model gets the same stream for a seed, so models are
+ * compared on the same luck as well as the same rounds.
+ */
+function play(seed: string, distances: readonly number[], tally: Tally): number {
+  const rng = createRng(`${seed}:skill`);
+  let streak = 0;
+  for (const [i, distance] of distances.entries()) {
+    tally.reached[i] = (tally.reached[i] ?? 0) + 1;
+    if (!(rng.next() < tally.model.pCorrect(distance))) break;
+    tally.correct[i] = (tally.correct[i] ?? 0) + 1;
+    streak += 1;
+  }
+  return streak;
+}
+
 export function simulate(opts: SimOptions): SimResult {
-  const runs = opts.runs ?? 10_000;
+  const runs = opts.runs ?? 20_000;
   const maxRounds = opts.maxRounds ?? roundCap(opts.mode);
   const target = WIN_ROUNDS[opts.mode];
   const prefix = opts.seedPrefix ?? "sim";
+  const tallies: Tally[] = [opts.model ?? FAN_MODEL, ...(opts.compare ?? [])].map((model) => ({
+    model,
+    streaks: [],
+    wins: 0,
+    reached: Array.from({ length: maxRounds }, () => 0),
+    correct: Array.from({ length: maxRounds }, () => 0),
+  }));
 
-  const streaks: number[] = [];
   const statCounts: Record<string, number> = {};
   const relaxationCounts = emptyRelaxationCounts();
   const iconicWindow = emptyRelaxationCounts();
@@ -164,7 +340,6 @@ export function simulate(opts: SimOptions): SimResult {
     for (const key of STAT_KEYS) statCountsByRange[label]![key] = 0;
   }
   let exhausted = 0;
-  let wins = 0;
   let maxConstructible = 0;
 
   for (let i = 0; i < runs; i++) {
@@ -172,12 +347,18 @@ export function simulate(opts: SimOptions): SimResult {
     const rounds = buildRun({ deck: opts.deck, seed, mode: opts.mode, now: opts.now, maxRounds });
     maxConstructible = Math.max(maxConstructible, rounds.length);
 
-    // A separate stream for the skill model, so it cannot perturb the sequence.
-    const rng = createRng(`${seed}:skill`);
-    let streak = 0;
+    const distances = rounds.map((round) => distanceOf(round, opts.deck, opts.now));
+    for (const tally of tallies) {
+      const n = play(seed, distances, tally);
+      tally.streaks.push(n);
+      if (target !== null && n >= target) tally.wins += 1;
+    }
+    // The deal statistics follow the playing model: every round it answered,
+    // and the one it missed.
+    const streak = tallies[0]!.streaks.at(-1)!;
     let stillOpening = true;
 
-    for (const round of rounds) {
+    for (const round of rounds.slice(0, streak + 1)) {
       roundsDealt += 1;
       if (round.statChanged) stillOpening = false;
       if (stillOpening) openingStatRounds += 1;
@@ -192,21 +373,12 @@ export function simulate(opts: SimOptions): SimResult {
       entry.total += 1;
       if (round.relaxation !== "none") entry.relaxed += 1;
       bucketTotals.set(bucket, entry);
-
-      if (rng.next() < pCorrect(distanceOf(round, opts.deck, opts.now))) {
-        streak += 1;
-      } else {
-        break;
-      }
     }
 
     const won = target !== null && streak >= target;
-    if (won) wins += 1;
     // The run used every round the engine could build, so the engine ran out
     // rather than the player failing — or winning.
     if (!won && streak === rounds.length && rounds.length < maxRounds) exhausted += 1;
-
-    streaks.push(streak);
   }
 
   const relaxationByBucket: Record<string, number> = {};
@@ -214,11 +386,20 @@ export function simulate(opts: SimOptions): SimResult {
     relaxationByBucket[bucket] = total === 0 ? 0 : relaxed / total;
   }
 
+  const outcomes: ModelOutcome[] = tallies.map((t) => ({
+    model: t.model,
+    streaks: t.streaks.slice().sort((a, b) => a - b),
+    wins: t.wins,
+    reached: t.reached,
+    correct: t.correct,
+  }));
+
   return {
     mode: opts.mode,
     runs,
-    streaks: streaks.slice().sort((a, b) => a - b),
-    wins,
+    outcomes,
+    streaks: outcomes[0]!.streaks,
+    wins: outcomes[0]!.wins,
     statCounts,
     relaxationCounts,
     iconicWindow,
@@ -237,6 +418,29 @@ function pct(n: number, d: number): string {
 
 function mean(values: readonly number[]): number {
   return values.reduce((a, b) => a + b, 0) / Math.max(values.length, 1);
+}
+
+/**
+ * Round `round`'s scheduled band in `mode`, as the report shows it: `≥0.45` or
+ * `0.20–0.60`, plus the final stretch's ratio floor where it applies.
+ */
+export function bandText(round: number, mode: Mode): string {
+  const band = bandForRound(round, mode);
+  const range = band.ceiling === null ? `≥${band.floor}` : `${band.floor}–${band.ceiling}`;
+  const stretch = FINAL_STRETCH[mode];
+  return stretch !== null && round >= stretch.from
+    ? `${range}, ≥${Math.round(stretch.minRatio * 100)}% apart`
+    : range;
+}
+
+/** Share of runs that answered question `q` right, of those dealt it. */
+export function accuracyAt(o: ModelOutcome, q: number): number {
+  return (o.correct[q - 1] ?? 0) / Math.max(o.reached[q - 1] ?? 0, 1);
+}
+
+/** Share of runs that were dealt question `q`: answered the `q - 1` before it. */
+export function reachedShare(o: ModelOutcome, q: number, runs: number): number {
+  return (o.reached[q - 1] ?? 0) / Math.max(runs, 1);
 }
 
 /**
@@ -280,7 +484,77 @@ function challengeSection(r: SimResult, goal: number): string[] {
       `and ${pct(r.wins, reachedFinal)} of those won.`,
   );
   lines.push("");
+  lines.push("By question: the round's scheduled band, the share of runs dealt the question,");
+  lines.push("and the share of those that answered it right.");
+  lines.push("");
+  const o = r.outcomes[0]!;
+  lines.push("| Question | Band | Reached | Correct |", "|---|---|---|---|");
+  for (let q = 1; q <= goal; q++) {
+    lines.push(
+      `| ${q} | ${bandText(q, r.mode)} | ${pct(o.reached[q - 1] ?? 0, r.runs)} | ` +
+        `${(accuracyAt(o, q) * 100).toFixed(1)}% |`,
+    );
+  }
+  lines.push("");
   return lines;
+}
+
+/**
+ * The same runs scored by every model the simulation carried: same rounds, same
+ * skill draws, so the columns differ only by the model.
+ */
+function modelComparison(r: SimResult, goal: number): string[] {
+  const name = r.mode.charAt(0).toUpperCase() + r.mode.slice(1);
+  const cells = ["Measure", ...r.outcomes.map((o) => `\`${o.model.id}\``)];
+  const row = (label: string, cell: (o: ModelOutcome) => string): string =>
+    `| ${[label, ...r.outcomes.map(cell)].join(" | ")} |`;
+  const share = (x: number): string => `${(x * 100).toFixed(1)}%`;
+  const lastThree = [goal - 2, goal - 1, goal].filter((q) => q >= 1);
+  return [
+    `## ${name} under each player model`,
+    "",
+    "The same runs and the same skill draws, scored by each model. The first column",
+    "is the model that played the runs above.",
+    "",
+    `| ${cells.join(" | ")} |`,
+    `|${cells.map(() => "---").join("|")}|`,
+    row("Mean streak", (o) => mean(o.streaks).toFixed(1)),
+    row("Median streak", (o) => quantile(o.streaks, 0.5).toFixed(0)),
+    ...lastThree.map((q) => row(`Reached question ${q}`, (o) => share(reachedShare(o, q, r.runs)))),
+    ...lastThree.map((q) => row(`Correct on question ${q}`, (o) => share(accuracyAt(o, q)))),
+    row("**Win rate**", (o) => `**${pct(o.wins, r.runs)}**`),
+    "",
+  ];
+}
+
+/** What the report says about the models: the one used, the others, and how to switch. */
+function modelsSection(results: readonly SimResult[]): string[] {
+  const used = results[0]?.outcomes[0]?.model ?? FAN_MODEL;
+  const others = Object.values(PLAYER_MODELS).filter((m) => m.id !== used.id);
+  return [
+    "## Player models",
+    "",
+    "A modelled player answers each round correctly with a probability set by how far",
+    "apart the pair sits in the deck, in rank distance like the bands.",
+    "",
+    `- **\`${used.id}\`** (used above): ${used.summary}.`,
+    ...others.map((m) => `- \`${m.id}\`: ${m.summary}.`),
+    "",
+    "`fan` is the default and the model Friendly is tuned with. `rank` was the only",
+    "model until Friendly's retune; it is far weaker than a real football fan, so bands",
+    "tuned with it proved too soft in real play. Endless and Ranked were tuned with it.",
+    "",
+    "- `pnpm simulate` uses `fan`; `pnpm simulate --model rank` uses `rank`.",
+    "- `pnpm simulate --calibration <file.json>` replaces the fan's points with a list",
+    '  of `{ "rankDistance": 0.1, "accuracy": 0.8 }` points (any order, each from 0 to',
+    "  1), interpolated linearly and flat beyond the first and last. Build it from real",
+    "  play: `pnpm stats distance` gives correct rate by rank distance.",
+    "- `--runs <n>` sets the runs per mode (default 20,000).",
+    "",
+    "**Every model is an assumption** until a calibration file from real play replaces",
+    "it. The shape of the results is informative; the absolute numbers are indicative.",
+    "",
+  ];
 }
 
 function windowTotal(r: SimResult): number {
@@ -312,11 +586,12 @@ export function simulationReport(
       `columns differ only by what the mode changes.`,
   );
   lines.push("");
-  lines.push("> Streaks come from a **modelled** player: correct with probability rising from");
-  lines.push("> 0.5 for two players at the same point in the deck's spread to 0.95 for opposite");
-  lines.push("> ends, measured in rank distance like the bands. **That model is an assumption**,");
-  lines.push("> to be replaced by the accuracy curve observed in real play (M5c). The shape is");
-  lines.push("> informative; the absolute numbers are not, until then.");
+  const used = results[0]?.outcomes[0]?.model ?? FAN_MODEL;
+  lines.push(
+    `> Streaks come from a **modelled** player, \`${used.id}\`: ${used.summary}. ` +
+      "**That model is an assumption** (see Player models below), to be replaced by the " +
+      "accuracy curve observed in real play.",
+  );
   lines.push("");
 
   lines.push("## Streak distribution");
@@ -346,8 +621,12 @@ export function simulationReport(
 
   for (const r of results) {
     const goal = WIN_ROUNDS[r.mode];
-    if (goal !== null) lines.push(...challengeSection(r, goal));
+    if (goal === null) continue;
+    lines.push(...challengeSection(r, goal));
+    if (r.outcomes.length > 1) lines.push(...modelComparison(r, goal));
   }
+
+  lines.push(...modelsSection(results));
 
   lines.push("## Stat firing rates");
   lines.push("");

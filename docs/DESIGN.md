@@ -119,7 +119,7 @@ It is never the only signal: the live region starts each question with "Question
 title bar carries the score in text. Round 20 is the **final question**: its segment is gold, and
 while it is asked the plaque and the track carry a gold "Final question" tag, announced as "Final
 question — question 20 of 20". Friendly has its own, compressed difficulty ramp (§8), its
-own streak titles (§13) and holds the iconic preference for eight rounds (§10). Endless and Ranked
+own streak titles (§13) and holds the iconic preference for five rounds (§10). Endless and Ranked
 keep the plain streak, no cap, no track and the long ramp; all of it is driven from per-mode
 settings in `@bt/core` (`WIN_ROUNDS`, `BAND_SCHEDULES`, `STREAK_TITLES`, `ICONIC_ROUNDS`).
 
@@ -419,27 +419,47 @@ available pair (a squad player against someone with sixty million followers), no
 clearing the floor.
 
 That table is Endless and Ranked's. **Friendly's twenty questions** have their own ramp. It opens
-on the same uncapped band for the eight rounds that prefer iconic names, then climbs gently and
-**never gets easier**: from round 9 each band is at least as hard as the one before — its floor and
-ceiling never rise — and round 20, the **final question**, is the hardest band in the run:
+on the same uncapped band for the five rounds that prefer iconic names, stays uncapped a little
+lower for five more, then tightens quickly and **never gets easier**: from round 5 each band is at
+least as hard as the one before — its floor and ceiling never rise — and round 20, the **final
+question**, is strictly the hardest band in the run:
 
-| Rounds | Band (rank distance)  | Feel                                                       |
-| ------ | --------------------- | ---------------------------------------------------------- |
-| 1–8    | ≥0.45, **no ceiling** | Nearly free — the rounds that prefer iconic names.         |
-| 9–13   | ≥0.40, **no ceiling** | Still generous; blowouts still allowed.                    |
-| 14–17  | 0.30–0.80             | Capped: the easiest gifts are gone.                        |
-| 18–19  | 0.25–0.70             | Generous, no longer absurd.                                |
-| 20     | 0.15–0.50             | The final question: the hardest in the run, no knife edge. |
+| Rounds | Band (rank distance)  | Feel                                                         |
+| ------ | --------------------- | ------------------------------------------------------------ |
+| 1–5    | ≥0.45, **no ceiling** | Nearly free — the rounds that prefer iconic names.           |
+| 6–10   | ≥0.35, **no ceiling** | Still generous; blowouts still allowed.                      |
+| 11–13  | 0.06–0.16             | Capped: a fan gets most of these, not all.                   |
+| 14–17  | 0.02–0.08             | Close figures; real knowledge.                               |
+| 18–19  | 0.02–0.04, ≥10% apart | The final stretch.                                           |
+| 20     | 0.01–0.03, ≥10% apart | The final question: the hardest in the run, not a coin flip. |
+
+**The final stretch is not a coin flip.** In rounds 18–20 the two figures must also differ by at
+least 10% — the larger at least 1.10 times the smaller — on top of tie exclusion and Instagram's
+volatility floor (`FINAL_STRETCH` in `packages/core`). Rank distance alone can pair two figures a
+few percent apart. The floor is never relaxed: when nothing fits, the band relaxes in the usual
+order (below) but never below 10% and never into a tie.
+
+The final stretch's bands are narrow because the ratio floor does part of their work. For a dense
+stat — appearances, age, caps, clubs — no pair 10% apart sits within a few hundredths of the deck,
+so the band relaxes to an easier pair; for a stat that can go close — club goals, transfer fees,
+international goals — the pair is genuinely close. A wider band would only make the second kind
+easier. That is also why the final question's floor sits below Endless's knife edge: the ratio
+floor, not the rank floor, is what keeps it answerable.
 
 The final question is marked in the game: the track's last segment is gold, and on round 20 the
 plaque and the track carry a gold "Final question" tag, which the live region also announces
 ("Final question — question 20 of 20").
 
-`simulation.md` reports Friendly's win rate, how many runs reach the final question and how many of
-those win it. On the 107-player deck the modelled player wins about 10% of runs (9.6%); about 12%
-reach round 20 and roughly four in five of those win it. The modelled player's accuracy runs from
-0.5 for two players at the same point in the deck to 0.95 at opposite ends; it is an assumption —
-re-tune against real play (M5c) and the finished deck.
+`simulation.md` reports Friendly's win rate, how many runs reach each question and how many of
+those answer it right. Friendly is tuned with the **`fan` model**, a keen football fan: accuracy
+0.55 for two players at the same point in the deck, 0.65 at 0.03, 0.78 at 0.08, 0.88 at 0.15, 0.95
+at 0.30 and 0.99 from 0.50, linear in between. The earlier ramp was tuned with a much weaker model
+(0.5 rising to 0.95), and real players won it on their first or second run. On the 131-player
+deck, over 20,000 runs, the fan model wins **4.8%** of runs; 12.8% reach question 18, and it
+answers questions 18, 19 and 20 right 74.6%, 70.5% and 70.6% of the time. Its mean streak is 12.3,
+most of it from rounds 1–10, which it gets right 98–99% of the time. The weaker model wins 0.5%.
+Both are assumptions: re-tune once observed accuracy from real play replaces the fan's points
+(`pnpm simulate --calibration`).
 
 ### Every stat is banded
 
@@ -461,7 +481,7 @@ When the candidate pool falls below a threshold, relax in this order:
 2. **Then the ceiling** — a too-easy question beats a repeated player.
 3. **Then the floor.**
 4. **Then shorten the recently-seen queue.**
-5. **Never relax tie exclusion.**
+5. **Never relax tie exclusion**, nor Friendly's final-stretch ratio floor (below).
 
 The recently-seen queue (the last ~12 players, excluded from selection) matters more here than it
 did with floors, because bands and the queue shrink the pool at the same time.
@@ -534,10 +554,10 @@ Rules the pair-selection logic must enforce:
   drawn from iconic players whenever one is valid: eligible, not tied, within the round's band and
   not in the recently-seen queue. When none is, the whole deck is used at the same band — the
   preference is the first thing to give and never costs a wider band or a repeated player (§8).
-  N is set per mode in `ICONIC_ROUNDS` in `packages/core`: **Friendly 8, Endless 5, Ranked 5.**
-  Friendly holds it longest because it is the mode a newcomer meets through a shared link; eight
-  is its opening band's length (§8), so the preference and the uncapped band end together. The run
-  is a pure function of seed and mode; `simulation.md` reports how often each mode fell back.
+  N is set per mode in `ICONIC_ROUNDS` in `packages/core`: **Friendly 5, Endless 5, Ranked 5.**
+  Friendly held it for eight rounds until its difficulty retune; five is its opening band's length
+  (§8), so the preference and the widest band end together. The run is a pure function of seed and
+  mode; `simulation.md` reports how often each mode fell back.
 - **Seeded PRNG, never `Math.random`.** Runs must be reproducible for testing, for the daily
   sequence, and for server-side verification.
 
@@ -791,8 +811,9 @@ a property of the format, not of the anti-cheat. Hence two boards with two diffe
 
 - **Ramp validation.** The bands in section 8 are a considered guess. `simulation.md` must confirm
   the streak distribution, and in particular whether the knife-edge band is populated at all once
-  the recently-seen queue and tie exclusion have taken their cut. Its skill model — accuracy rising
-  with rank distance — is an assumption until real play data replaces it (M5c).
+  the recently-seen queue and tie exclusion have taken their cut. Its skill models — `fan`, which
+  Friendly is tuned with, and the weaker `rank`, which Endless and Ranked were — are assumptions
+  until a calibration from real play (`--calibration`) replaces them.
 - **Whether "clubs played for" survives** the first playtest. Retained for now, banded like every
   other stat.
 - **Endless submission rate limit** numbers. Agreed in principle; set when the endpoint is built.

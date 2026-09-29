@@ -221,7 +221,7 @@ describe("iconic preference", () => {
     }
   });
 
-  it("changes the run when the mode's window differs", () => {
+  it("changes the run when the mode's window or schedule differs", () => {
     const differs = seeds.some(
       (seed) =>
         JSON.stringify(ladderRun(seed, "friendly").map((r) => r.challenger.id)) !==
@@ -256,6 +256,21 @@ describe("a run's length and bands, per mode", () => {
     expect(
       roundAt({ deck: fixtureDeck, seed: "cap", mode: "friendly", now: NOW }, 21),
     ).toBeUndefined();
+  });
+
+  it("deals Friendly's final stretch at least 10% apart, and never a tie", () => {
+    let stretch = 0;
+    for (let i = 0; i < 40; i++) {
+      for (const r of run(`stretch-${i}`, 20, "friendly")) {
+        const a = valueOf(r.anchor, r.stat, NOW)!;
+        const b = valueOf(r.challenger, r.stat, NOW)!;
+        expect(a).not.toBe(b);
+        if (r.index < 18) continue;
+        stretch += 1;
+        expect(Math.max(a, b)).toBeGreaterThanOrEqual(1.1 * Math.min(a, b));
+      }
+    }
+    expect(stretch).toBeGreaterThan(0);
   });
 
   it("still lets a shorter maxRounds stop a run early", () => {

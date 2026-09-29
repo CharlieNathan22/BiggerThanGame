@@ -8,15 +8,24 @@
  * See ARCHITECTURE.md §6.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildCredits, buildFullDeck, buildImages, buildIndexes } from "./artifacts.js";
 import { checkManifest, loadManifest } from "./manifest.js";
 import { DECK, MIN_PRIVATE_DECK, fallbackNotice, loadDeck, manifestPathFor } from "./load.js";
 import type { LoadedDeck } from "./load.js";
-import { SIM_MODES, simulate, simulationReport } from "./simulate.js";
+import {
+  PLAYER_MODELS,
+  SIM_MODES,
+  calibratedModel,
+  describePoints,
+  parseCalibration,
+  simulate,
+  simulationReport,
+} from "./simulate.js";
+import type { PlayerModel } from "./simulate.js";
 import { formatProblems, validateDeck } from "./validate.js";
 import { viabilityReport } from "./viability.js";
 
@@ -36,11 +45,69 @@ export interface BuildOptions {
   /** Skip the simulation, which is the slow part. */
   readonly skipSimulation?: boolean;
   readonly simulationRuns?: number;
+  /** Plays the simulated runs. Defaults to `fan`. */
+  readonly model?: PlayerModel;
   /**
    * Fail rather than fall back to the sample. Production builds pass this
    * (`--require-private`) so invented players can never go live.
    */
   readonly requirePrivate?: boolean;
+}
+
+/** The simulation flags, parsed: a model and a run count, or a message saying what's wrong. */
+export type SimArgs =
+  { readonly model: PlayerModel; readonly runs?: number } | { readonly error: string };
+
+/**
+ * `--model fan|rank`, `--calibration <file.json>` and `--runs <n>`. A
+ * calibration file replaces the fan model's points, so it can't be combined
+ * with `--model`. `read` loads the file; tests pass their own.
+ */
+export function parseSimArgs(argv: readonly string[], read: (path: string) => string): SimArgs {
+  const value = (flag: string): string | undefined | null => {
+    const i = argv.indexOf(flag);
+    if (i === -1) return undefined;
+    const v = argv[i + 1];
+    return v === undefined || v.startsWith("--") ? null : v;
+  };
+  const modelName = value("--model");
+  const calibration = value("--calibration");
+  const runsText = value("--runs");
+  if (modelName === null) return { error: "--model needs a name: fan or rank" };
+  if (calibration === null) return { error: "--calibration needs a file" };
+  if (runsText === null) return { error: "--runs needs a number" };
+  if (modelName !== undefined && calibration !== undefined) {
+    return { error: "--calibration replaces the fan model's points; drop --model" };
+  }
+
+  let runs: number | undefined;
+  if (runsText !== undefined) {
+    runs = Number(runsText);
+    if (!Number.isInteger(runs) || runs < 1) return { error: `--runs: ${runsText} is not a count` };
+  }
+
+  if (calibration !== undefined) {
+    try {
+      const points = parseCalibration(JSON.parse(read(calibration)));
+      const model = calibratedModel(
+        "calibrated",
+        `accurate ${describePoints(points)} (rank distance, from ${basename(calibration)}), ` +
+          "linear in between and flat beyond the first and last points",
+        points,
+      );
+      return runs === undefined ? { model } : { model, runs };
+    } catch (e) {
+      return { error: `--calibration ${calibration}: ${(e as Error).message}` };
+    }
+  }
+
+  const model = PLAYER_MODELS[modelName ?? "fan"];
+  if (model === undefined) {
+    return {
+      error: `--model: no model "${modelName}"; choose ${Object.keys(PLAYER_MODELS).join(" or ")}`,
+    };
+  }
+  return runs === undefined ? { model } : { model, runs };
 }
 
 /** The `--require-private` refusal, or undefined when the build may proceed. */
@@ -120,10 +187,25 @@ export function runBuild(opts: BuildOptions = {}): number {
   if (opts.skipSimulation === true) {
     console.log("deck: simulation skipped");
   } else {
-    const runs = opts.simulationRuns ?? 10_000;
-    console.log(`deck: simulating ${runs.toLocaleString("en-GB")} runs per mode`);
+    const runs = opts.simulationRuns ?? 20_000;
+    const model = opts.model ?? PLAYER_MODELS.fan!;
+    // Friendly is also scored by every other model, on the same runs, for the
+    // report's comparison table. Scoring is cheap; dealing the rounds is not.
+    const compare = Object.values(PLAYER_MODELS).filter((m) => m.id !== model.id);
+    console.log(
+      `deck: simulating ${runs.toLocaleString("en-GB")} runs per mode, model ${model.id}`,
+    );
     const started = Date.now();
-    const results = SIM_MODES.map((mode) => simulate({ deck: loaded.players, now, mode, runs }));
+    const results = SIM_MODES.map((mode) =>
+      simulate({
+        deck: loaded.players,
+        now,
+        mode,
+        runs,
+        model,
+        ...(mode === "friendly" ? { compare } : {}),
+      }),
+    );
     console.log(`  ${((Date.now() - started) / 1000).toFixed(1)}s`);
     write(
       join(packageRoot, "simulation.md"),
@@ -141,8 +223,16 @@ const invokedDirectly =
   resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (invokedDirectly) {
-  process.exitCode = runBuild({
-    ...(process.argv.includes("--no-sim") ? { skipSimulation: true } : {}),
-    ...(process.argv.includes("--require-private") ? { requirePrivate: true } : {}),
-  });
+  const sim = parseSimArgs(process.argv.slice(2), (path) => readFileSync(path, "utf8"));
+  if ("error" in sim) {
+    console.error(`deck: ${sim.error}`);
+    process.exitCode = 1;
+  } else {
+    process.exitCode = runBuild({
+      ...(process.argv.includes("--no-sim") ? { skipSimulation: true } : {}),
+      ...(process.argv.includes("--require-private") ? { requirePrivate: true } : {}),
+      model: sim.model,
+      ...(sim.runs !== undefined ? { simulationRuns: sim.runs } : {}),
+    });
+  }
 }

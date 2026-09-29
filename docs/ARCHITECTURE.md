@@ -301,7 +301,7 @@ image blocks the import wrote.
 | `credits.json`             | read by `/credits` at build | player name, author, licence, licence URL (absent for PD) and source per image; read with `fs`, never bundled |
 | `data/legends/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                                                          |
 | `viability.md`             | repo, committed             | per stat and gap band, how many valid pairs exist                                                             |
-| `simulation.md`            | repo, committed             | per mode: streak distribution, stat firing rates and iconic-preference fallback over 10k runs                 |
+| `simulation.md`            | repo, committed             | per mode: streak distribution, stat firing rates and iconic-preference fallback over 20k runs                 |
 
 **The deck version** (`deckVersion`, in `deck.full.json` as `version`) names the deck's content:
 `<deck>-<players>-<hash>`, e.g. `legends-107-e68a4e1b`, the hash being the first 8 hex characters
@@ -368,7 +368,7 @@ promise a pair the engine won't deal. It counts the long schedule's bands and th
 Friendly uses, and lists where each falls in both schedules; a test holds it to every band of
 every mode. Read it after every deck change.
 
-`simulation.md` runs the real engine 10,000 times per mode over the compiled deck, on the same
+`simulation.md` runs the real engine 20,000 times per mode over the compiled deck, on the same
 seeds for every mode, and reports the streak histogram, each stat's share of rounds played against
 its `TIER_TARGET`, the opening stat's share, the same mix by round range for Friendly (rounds 1–5,
 6–10, 11–20, 21+, with the rare tier's total — overall rates hide how concentrated later rounds
@@ -376,8 +376,13 @@ are), how often the early-round iconic preference had to fall back to the whole 
 Friendly its **win rate** — the share of runs reaching twenty — with the streaks bucketed at its
 titles. Each mode is simulated to its own cap (`roundCap`: 20 for Friendly, 60 otherwise). This is
 how the ramp and tier weights get tuned — not by guessing.
-Its streaks come from a **modelled player** whose accuracy rises with rank distance; that model is
-an assumption until real play data replaces it (M5c). `viability.md` adds the static side: per
+Its streaks come from a **modelled player** whose accuracy rises with rank distance. `fan`, the
+default and the model Friendly is tuned with, interpolates a keen fan's accuracy between points
+(0.55 at no gap to 0.99 from 0.50); `--model rank` selects the original, weaker curve (0.5 to 0.95),
+which Endless and Ranked were tuned with; `--calibration <file.json>` replaces the fan's points with
+a list of `{ rankDistance, accuracy }`, for when real play supplies one. For Friendly the report
+also scores the same runs with every other model, and lists each question's band and accuracy.
+Every model is an assumption until then. `--runs <n>` sets the run count. `viability.md` adds the static side: per
 stat, how many anchors have any iconic challenger in the opening band.
 
 ---
@@ -1301,7 +1306,7 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   exclusion.
 - **Determinism:** the same seed must produce an identical sequence in the browser, the Worker and
   Node. Assert this explicitly; it is the foundation of Daily Ranked.
-- **Simulation:** 10,000-run harness producing `simulation.md`. Run it on every deck change.
+- **Simulation:** 20,000-run harness producing `simulation.md`. Run it on every deck change.
 - **Worker, Phase 3:** vitest in Node. Handler logic is pure functions (request → response, given
   deck, secret and clock), and routing is tested through `createApp` with mocked bindings. The
   **response-shape test** walks many complete runs and asserts no response carries a hidden value or
@@ -1683,8 +1688,9 @@ ORDER BY mode, answers DESC
 ```
 
 **Correct rate by rank distance** (`distance`): in buckets 0.1 wide. This is the real player
-behind the modelled one in `simulation.md` (`pCorrect`, from 0.5 at a distance of 0 to 0.95 at 1):
-refit the model to it once there are a few thousand answers.
+behind the modelled one in `simulation.md` (the `fan` model, 0.55 at a distance of 0 to 0.99 from
+0.50): once there are a few thousand answers, write it as a calibration file and run
+`pnpm simulate --calibration <file.json>`.
 
 ```sql
 SELECT

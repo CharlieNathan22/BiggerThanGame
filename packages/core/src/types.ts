@@ -93,6 +93,11 @@ export interface Band {
    * for volatile stats only — the volatility floor.
    */
   readonly minRatio?: number;
+  /**
+   * Smallest ratio gap (`max / min - 1`) that **no relaxation removes**, unlike
+   * `minRatio`. Set for Friendly's final stretch only (`FINAL_STRETCH`).
+   */
+  readonly strictMinRatio?: number;
 }
 
 export type Relaxation = "none" | "iconic" | "band" | "seen";
