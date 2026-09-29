@@ -3,7 +3,7 @@ import { WIN_ROUNDS } from "../sequence.js";
 import { STREAK_TITLES, challengeOutcome, streakTitle } from "../titles.js";
 import type { Mode } from "../types.js";
 
-describe("streak titles, Endless and Ranked", () => {
+describe("streak titles, Ranked", () => {
   it.each([
     [0, undefined],
     [4, undefined],
@@ -18,8 +18,30 @@ describe("streak titles, Endless and Ranked", () => {
     [45, "goat"],
     [60, "goat"],
   ])("gives a streak of %d the title %s", (streak, id) => {
-    expect(streakTitle(streak, "endless")?.id).toBe(id);
     expect(streakTitle(streak, "ranked")?.id).toBe(id);
+  });
+});
+
+describe("streak titles, Endless", () => {
+  it.each([
+    [0, undefined],
+    [4, undefined],
+    [5, "squad"],
+    [9, "squad"],
+    [10, "starter"],
+    [14, "starter"],
+    [15, "favourite"],
+    [19, "favourite"],
+    [20, "captain"],
+    [29, "captain"],
+    [30, "clubLegend"],
+    [39, "clubLegend"],
+    [40, "worldClass"],
+    [49, "worldClass"],
+    [50, "immortal"],
+    [150, "immortal"],
+  ])("gives a streak of %d the title %s", (streak, id) => {
+    expect(streakTitle(streak, "endless")?.id).toBe(id);
   });
 });
 

@@ -2,19 +2,34 @@
   The game island (client:load). Renders `GameState` from the controller and
   forwards the player's input to it; no game rules live here. All text comes
   from ../../i18n.
+
+  One island for both modes on the Legends deck, driven by per-mode settings
+  in @bt/core: Friendly's twenty questions with a progress track, and
+  Endless's streak against a clock, with a Turnstile check on Start and
+  challenge links.
 -->
 <script lang="ts">
-  import { WIN_ROUNDS } from "@bt/core";
+  import { CHALLENGES, WIN_ROUNDS } from "@bt/core";
   import type { Guess, SitePage } from "@bt/core";
   import type { PitchCard } from "../../game/view";
   import { onMount, tick } from "svelte";
   import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
   import { statLabel, t } from "../../i18n";
-  import { FRIENDLY_PATH, isLegendsPath } from "../../lib/paths";
+  import { FRIENDLY_PATH, LEADERBOARD_PATH, isLegendsPath } from "../../lib/paths";
   import { TIER_COLOUR } from "../../lib/tiers";
-  import { createApi } from "../../game/api";
-  import type { Fetch } from "../../game/api";
+  import { createApi, createEndlessApi } from "../../game/api";
+  import type { EndlessApi, Fetch, GameApi } from "../../game/api";
   import { bestKey, browserStorage, readBest, saveBest } from "../../game/best";
+  import {
+    deviceId,
+    publishedKey,
+    recordRun,
+    runsKey,
+    saveStandings,
+    standingsOf,
+  } from "../../game/device";
+  import { publishRun, rankText } from "../../game/publish";
+  import type { PublishOutcome } from "../../game/publish";
   import type { BestDeck } from "../../game/best";
   import { readChallenge, withoutChallenge } from "../../game/challenge";
   import { GameController } from "../../game/controller";
@@ -29,12 +44,14 @@
   import { initialState, shouldSpin } from "../../game/machine";
   import { NO_NOTICE, TimedNotice } from "../../game/notice";
   import type { NoticeState } from "../../game/notice";
-  import type { Challenge, GameState } from "../../game/machine";
+  import type { Challenge, GameMode, GameState } from "../../game/machine";
   import { createPreloader } from "../../game/photos";
   import {
     challengeHeading,
     challengeIntro,
     challengeResult,
+    challengeText,
+    endingNames,
     gridCells,
     gridLabel,
     outcomeText,
@@ -52,12 +69,13 @@
   import { TIMINGS, readTimings } from "../../game/timing";
   import type { Timings } from "../../game/timing";
   import { LEAVE_ENDPOINT, createLeaveReporter } from "../../game/leave";
-  import { createTurnstileLoader } from "../../game/turnstile";
-  import type { ScriptDocument, Turnstile, TurnstileHost } from "../../game/turnstile";
+  import { createHumanCheck, createTurnstileLoader, loadWhenIdle } from "../../game/turnstile";
+  import type { IdleHost, ScriptDocument, Turnstile, TurnstileHost } from "../../game/turnstile";
   import {
     anchorFading,
     anchorFigure,
     announcement,
+    bankedText,
     bestOutcome,
     canSkipTitle,
     challengeNotice,
@@ -74,6 +92,7 @@
     scoreBadge,
     scoreFigure,
     titleCard,
+    titleChip,
     trackSteps,
     verdictLabel,
   } from "../../game/view";
@@ -82,6 +101,7 @@
   import FeedbackModal from "./FeedbackModal.svelte";
   import Figure from "./Figure.svelte";
   import Plaque from "./Plaque.svelte";
+  import PublishModal from "./PublishModal.svelte";
   import Side from "./Side.svelte";
   import Track from "./Track.svelte";
 
@@ -89,10 +109,12 @@
     /**
      * The deck and mode being played, which name the local best
      * (`bt:best:legends:friendly`). The mode also sets how a score reads: out
-     * of its win target, with the progress track, where it has one (`WIN_ROUNDS`).
+     * of its win target, with the progress track, where it has one (`WIN_ROUNDS`);
+     * whether questions have a clock (`QUESTION_LIMITS`); and whether runs
+     * offer challenge links (`CHALLENGES`).
      */
     deck: BestDeck;
-    mode: "friendly";
+    mode: GameMode;
     /** The game page's path, for the title bar: "Legends" under /legends, and the current page. */
     path: string;
   }
@@ -107,6 +129,8 @@
   let higherButton: HTMLButtonElement | undefined = $state();
   let againButton: HTMLButtonElement | undefined = $state();
   let startButton: HTMLButtonElement | undefined = $state();
+  /** Where Endless's Turnstile check renders, if it ever needs the player. */
+  let turnstileBox: HTMLElement | undefined = $state();
 
   /** The open feedback form, if any; the round a report is about; the page a problem names. */
   let feedback = $state<FeedbackKind | null>(null);
@@ -115,6 +139,17 @@
   /** Where focus goes back to when the form closes. */
   let feedbackOpener: HTMLElement | null = null;
   let loadTurnstile = $state<(() => Promise<Turnstile>) | null>(null);
+
+  /** Endless: the API, which holds what proves a finished run to the boards. */
+  let endlessApi: EndlessApi | null = null;
+  /** The token that publishes the run just ended; null when there's nothing to publish. */
+  let publishable = $state<string | null>(null);
+  let publishOpen = $state(false);
+  /** After publishing: "412th of 3,208 today". */
+  let publishedLine = $state<string | null>(null);
+  /** The name last published under, offered again for the next run. */
+  let lastNickname = $state<string | undefined>(undefined);
+  let publishButton: HTMLButtonElement | undefined = $state();
 
   let platform: SharePlatform | null = $state(null);
   /** What the last share did: "Copied", "Image saved", or a problem. Announced. */
@@ -144,10 +179,15 @@
 
     platform = browserSharePlatform();
     // The DOM's own types are wider than the loader needs; it touches only these parts.
-    loadTurnstile = createTurnstileLoader(
+    const loader = createTurnstileLoader(
       document as unknown as ScriptDocument,
       window as unknown as TurnstileHost,
     );
+    loadTurnstile = loader;
+    // Endless checks on Start, so its script loads once this page is idle (or
+    // on the first press, if that comes sooner). Friendly only ever loads it
+    // for a feedback form.
+    if (mode === "endless") loadWhenIdle(window as unknown as IdleHost, loader);
 
     // The footer's feedback links. Static pages have no island, so there they
     // go to this page's #suggest and #problem, which open the form here on
@@ -194,14 +234,17 @@
     window.addEventListener("pagehide", onPageHide);
 
     // A challenge link in the URL frames the first run; a plainly broken one
-    // starts a fresh run with a note, as a forged one would.
+    // starts a plain run with a note, as a forged one would. On the Friendly
+    // page an old link is only noted: challenges have moved to Endless.
     const param = readChallenge(location.search, mode);
     const challenge: Challenge | null =
       param.kind === "link"
         ? { status: "offered", link: param.link }
         : param.kind === "broken"
           ? { status: "refused", reason: "invalid" }
-          : null;
+          : param.kind === "retired"
+            ? { status: "retired" }
+            : null;
 
     let fetchFn: Fetch = (input, init) => fetch(input, init);
     let removeDevPanel: (() => void) | undefined;
@@ -214,20 +257,41 @@
       void dev.then((d) => (removeDevPanel = d.mountDevPanel()));
     }
 
+    const schedule = (fn: () => void, ms: number): (() => void) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    };
+    if (mode === "endless") {
+      endlessApi = createEndlessApi(
+        fetchFn,
+        createHumanCheck(loader, () => turnstileBox ?? null, TURNSTILE_SITE_KEY, schedule),
+      );
+    }
+    const api: GameApi = endlessApi ?? createApi(fetchFn);
+
     const key = bestKey(deck, mode);
     const c = new GameController({
-      api: createApi(fetchFn),
+      api,
+      mode,
       preload: createPreloader(IMAGE_BASE, () => new Image()),
       timings,
       now: () => performance.now(),
-      schedule: (fn, ms) => {
-        const id = setTimeout(fn, ms);
-        return () => clearTimeout(id);
-      },
+      schedule,
       reducedMotion: () => reducedMotion,
       best: readBest(browserStorage, key),
       saveBest: (best) => void saveBest(browserStorage, key, best),
       challenge,
+      // Endless: every run goes on this device's board, published or not, and
+      // one that scored can be published.
+      onOver: (over) => {
+        if (endlessApi === null || over.end === null) return;
+        recordRun(browserStorage, runsKey(deck, mode), {
+          score: over.streak,
+          date: localDate(),
+          end: over.end,
+        });
+        publishable = over.streak > 0 ? endlessApi.publishToken() : null;
+      },
     });
     const unsubscribe = c.subscribe((s) => (game = s));
     controller = c;
@@ -291,6 +355,12 @@
   /** "3/20" at the top of the pitch after a right answer, Friendly only. */
   const badge = $derived(scoreBadge(game, mode));
   const report = $derived(reportedRound(game));
+  /** Endless: the streak title the run holds so far, at the top of the pitch. */
+  const chip = $derived(titleChip(game, mode));
+  /** A run banked after the connection dropped: "your streak of n is saved". */
+  const banked = $derived(bankedText(game, mode));
+  /** A signed challenge to share, in a mode with them, once the run is over. */
+  const canChallenge = $derived(CHALLENGES[mode] && game.link !== null);
 
   /** The small print under a card's figure. */
   function cardQualifier(card: PitchCard): string {
@@ -310,7 +380,32 @@
     }
   }
 
+  /** Today in the player's own time zone, for the local board: `2026-09-29`. */
+  function localDate(): string {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  function publish(nickname: string, turnstileToken: string): Promise<PublishOutcome> {
+    if (publishable === null) return Promise.resolve({ kind: "unpublishable" });
+    return publishRun((input, init) => fetch(input, init), {
+      token: publishable,
+      nickname,
+      deviceId: deviceId(browserStorage, () => crypto.randomUUID()),
+      turnstileToken,
+    });
+  }
+
+  function closePublish(): void {
+    publishOpen = false;
+    void tick().then(() => (publishButton?.isConnected ? publishButton : againButton)?.focus());
+  }
+
   function start(): void {
+    publishable = null;
+    publishedLine = null;
+    publishOpen = false;
     shareNotes.clear();
     copyByHand = null;
     // The link has done its job once a run starts from it; a reload shouldn't replay it.
@@ -328,7 +423,25 @@
 
   async function onShareText(): Promise<void> {
     if (platform === null) return;
-    const text = shareText(game.streak, game.history, game.end, game.link, site(), mode);
+    const text = shareText(
+      game.streak,
+      game.history,
+      game.end,
+      site(),
+      mode,
+      endingNames(game, mode),
+    );
+    await shareOut(text);
+  }
+
+  /** "Beat n" and the link: a friend's own fresh run against this score. */
+  async function onChallenge(): Promise<void> {
+    const text = challengeText(game.link, site(), mode);
+    if (text !== null) await shareOut(text);
+  }
+
+  async function shareOut(text: string): Promise<void> {
+    if (platform === null) return;
     const show = shareNotes.begin();
     const outcome = await shareResultText(text, platform);
     copyByHand = outcome === "failed" ? text : null;
@@ -431,7 +544,7 @@
   }}
 />
 
-<div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null}>
+<div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null || publishOpen}>
   <TitleBar
     scores={{ streak: game.streak, best: game.best, target, rising: onNewBest(game) }}
     legends={isLegendsPath(path)}
@@ -553,7 +666,13 @@
         final={finalQuestion}
         {lead}
         stage={plaqueStage(game)}
+        clock={game.clock}
       />
+    {/if}
+
+    {#if chip !== "" && badge === null && phase !== "idle" && phase !== "starting" && phase !== "over"}
+      <!-- Endless: the title the streak has earned so far. -->
+      <p class="chip"><span class="sr">{t("chip.label")}: </span>{chip}</p>
     {/if}
 
     {#if titleCardText !== null}
@@ -611,7 +730,15 @@
               {:else if target !== null}
                 <p>{t("start.introTarget", { target })}</p>
               {:else}
-                <p>{t("start.intro")}</p>
+                <p>{t(mode === "endless" ? "start.introEndless" : "start.intro")}</p>
+              {/if}
+              {#if mode === "endless"}
+                <p class="clockline">
+                  {t("start.clock")}
+                  {t("start.noClock")} <a href={FRIENDLY_PATH}>{t("start.playFriendly")}</a>
+                  <span aria-hidden="true">{t("over.separator")}</span>
+                  <a href={LEADERBOARD_PATH}>{t("start.leaderboard")}</a>
+                </p>
               {/if}
             </div>
             <button
@@ -626,8 +753,14 @@
                   ? t("challenge.cta")
                   : t("start.cta")}
             </button>
+            {#if mode === "endless"}
+              <!-- Turnstile's widget, shown only when it needs the player. -->
+              <div class="turnstile" bind:this={turnstileBox}></div>
+            {/if}
             {#if game.startFailed}
-              <p class="problem" role="alert">{t("start.failed")}</p>
+              <p class="problem" role="alert">
+                {game.checkFailed ? t("start.checkFailed") : t("start.failed")}
+              </p>
             {/if}
             <p class="problem" role="status" class:empty={!(phase === "starting" && resting)}>
               {phase === "starting" && resting ? t("start.slowDown") : ""}
@@ -695,11 +828,13 @@
                 {reveal.display}
                 {#if game.end === "deck-exhausted"}
                   <p class="note">{t("over.exhausted")}</p>
+                {:else if game.end === "timeout"}
+                  <p class="note">{t("over.timeout")}</p>
                 {/if}
               </div>
-            {:else if game.end === "network"}
+            {:else if banked !== ""}
               <div class="reason">
-                <p class="note">{t("over.network", { streak: game.streak })}</p>
+                <p class="note">{banked}</p>
               </div>
             {/if}
             <button class="cta" bind:this={againButton} onclick={start}>{t("over.again")}</button>
@@ -731,7 +866,35 @@
                 </svg>
                 {platform?.touch ? t("over.shareImage") : t("over.saveImage")}
               </button>
+              {#if canChallenge}
+                <button class="secondary" onclick={onChallenge}>
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z" />
+                  </svg>
+                  {t("over.challenge")}
+                </button>
+              {/if}
             </div>
+            {#if publishedLine !== null}
+              <!-- Endless, once published: where it landed today, and the board. -->
+              <p class="published">
+                {publishedLine}
+                <span aria-hidden="true">{t("over.separator")}</span>
+                <a href={LEADERBOARD_PATH}>{t("over.leaderboard")}</a>
+              </p>
+            {:else if publishable !== null}
+              <!-- Endless: opt-in. The dialog takes the nickname and sends it. -->
+              <button
+                class="secondary publish"
+                bind:this={publishButton}
+                onclick={() => (publishOpen = true)}
+              >
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 20h16M7 16V10M12 16V5M17 16v-8" />
+                </svg>
+                {t("over.publish")}
+              </button>
+            {/if}
             <p class="status" class:fading={shareNote.fading} role="status">{shareNote.text}</p>
             {#if copyByHand !== null}
               <textarea class="copy" readonly rows="6" aria-label={t("over.shareText")}
@@ -754,6 +917,23 @@
     {/if}
   </main>
 </div>
+
+{#if publishOpen && publishable !== null && loadTurnstile !== null}
+  <PublishModal
+    streak={game.streak}
+    {...lastNickname !== undefined ? { nickname: lastNickname } : {}}
+    siteKey={TURNSTILE_SITE_KEY}
+    {loadTurnstile}
+    {publish}
+    boardHref={LEADERBOARD_PATH}
+    onpublished={(response, nickname) => {
+      lastNickname = nickname;
+      publishedLine = rankText("day", response.periods.day);
+      saveStandings(browserStorage, publishedKey(deck, mode), standingsOf(response), Date.now());
+    }}
+    onclose={closePublish}
+  />
+{/if}
 
 {#if feedback !== null && loadTurnstile !== null}
   <FeedbackModal
@@ -1286,6 +1466,45 @@
   .cta:disabled {
     cursor: default;
   }
+  /* Endless's start panel: the clock, Friendly for anyone who'd rather play
+     without one, and the leaderboard. */
+  .clockline {
+    color: var(--dim);
+  }
+  .clockline a {
+    color: var(--gold);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  /* Turnstile's widget: empty, and taking no room, unless it needs the player. */
+  .turnstile:empty {
+    display: none;
+  }
+  .turnstile {
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+  }
+  /* Endless's streak title, at the top of the pitch where Friendly's track
+     and badge sit. Gives way to the score badge while that shows. */
+  .chip {
+    position: absolute;
+    top: var(--chip-top);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    padding: var(--chip-pad);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--chip-edge);
+    background: var(--chip-bg);
+    color: var(--chip-text);
+    font-size: var(--fs-chip);
+    font-variation-settings: var(--fv-caps);
+    letter-spacing: var(--chip-tracking);
+    text-transform: uppercase;
+    white-space: nowrap;
+    pointer-events: none;
+  }
   .ghost {
     margin-top: 12px;
     font-size: var(--fs-ghost);
@@ -1365,6 +1584,32 @@
     stroke-width: var(--btn2-icon-stroke);
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+  /* Endless: Publish, a row of its own under the shares, the same button. */
+  .secondary.publish {
+    flex: none;
+    width: 100%;
+    margin-top: var(--btn2-gap);
+  }
+  /* Once published: the day's rank and the board, in the row's place. */
+  .published {
+    margin-top: var(--btn2-gap);
+    min-height: var(--target-min);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0 6px;
+    font-size: var(--fs-lab);
+    color: var(--chalk);
+    font-variation-settings: var(--fv-caption);
+  }
+  .published a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-min);
+    color: var(--gold);
+    text-underline-offset: 3px;
   }
   .feedback {
     display: flex;

@@ -1,5 +1,6 @@
 /**
- * Rate limiting for `/api/round/next`, and for `/api/feedback`.
+ * Rate limiting for `/api/round/next` and the Endless endpoints, for
+ * `/api/feedback` and for `/api/run/submit`.
  *
  * This limit is the only thing between the deck and a scraper (DESIGN.md §3,
  * §15), so it is load-bearing rather than hygiene. It has to be invisible to
@@ -14,7 +15,8 @@
  *
  * `/api/feedback` has a binding of its own, keyed on the IP like run starts:
  * each message costs a Turnstile check and an email, and nobody honest sends
- * many.
+ * many. So has `/api/run/submit`: each publish costs a Turnstile check and a
+ * write, and needs a real finished run besides.
  *
  * Workers Rate Limiting bindings, configured in `wrangler.toml` (periods
  * can only be 10 or 60 seconds). The numbers live there; `RATE_LIMITS` mirrors
@@ -37,11 +39,23 @@ export const RATE_LIMITS = {
   flood: { binding: "ROUND_FLOOD", limit: 800, period: 60 },
   /** Feedback messages per IP (`/api/feedback`), checked before any other work. */
   feedback: { binding: "FEEDBACK_SENDS", limit: 10, period: 60 },
+  /**
+   * Publishes per IP (`/api/run/submit`). An honest player publishes at most
+   * once a run, and a run takes minutes; this allows a classroom publishing
+   * together, retries for a refused name included.
+   */
+  submits: { binding: "RUN_SUBMITS", limit: 60, period: 60 },
 } as const;
 
 export type RateRule = keyof typeof RATE_LIMITS;
 
-export type RateLimiters = { readonly [K in RateRule]: RateLimiter };
+/**
+ * The limiters every route can reach. Submissions have their own binding,
+ * which only `/api/run/submit` needs and checks for.
+ */
+export type SharedRule = Exclude<RateRule, "submits">;
+
+export type RateLimiters = { readonly [K in SharedRule]: RateLimiter };
 
 export type RateDecision =
   | { readonly ok: true }
@@ -54,7 +68,7 @@ export type RateDecision =
 /** One limiter, one key. Over the limit, retry after the rule's whole period. */
 export async function checkRateLimit(
   limiters: RateLimiters,
-  rule: RateRule,
+  rule: SharedRule,
   key: string,
 ): Promise<RateDecision> {
   const { success } = await limiters[rule].limit({ key });

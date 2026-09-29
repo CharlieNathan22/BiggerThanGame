@@ -14,8 +14,10 @@
  * have loaded or failed, and no more than `holdExtra` longer. A photo still
  * loading then develops in on its card when it arrives (Photo.svelte).
  *
- * Only one timer is ever pending. Starting a new run bumps a generation
- * number, so a response or timer from an abandoned run is ignored.
+ * Only one timer is ever pending. While a timed mode's question waits for the
+ * player, that timer is its clock: when it runs out, the answer goes as
+ * `timeout`. Starting a new run bumps a generation number, so a response or
+ * timer from an abandoned run is ignored.
  */
 
 import type { CardImage, Guess, RoundPayload } from "@bt/core";
@@ -34,7 +36,7 @@ import {
   spinDelay,
   verdictAt,
 } from "./machine";
-import type { Challenge, GameEvent, GameState } from "./machine";
+import type { Challenge, GameEvent, GameMode, GameState } from "./machine";
 import type { Timings } from "./timing";
 
 export interface ControllerDeps {
@@ -49,8 +51,12 @@ export interface ControllerDeps {
   readonly best?: number;
   /** Called whenever the best streak rises, to keep it (best.ts). */
   readonly saveBest?: (best: number) => void;
+  /** Called once as each run ends, however it ended: the local board records it (device.ts). */
+  readonly onOver?: (state: GameState) => void;
   /** A challenge link the first run starts from. */
   readonly challenge?: Challenge | null;
+  /** The mode being played: whether questions have a clock. Friendly by default. */
+  readonly mode?: GameMode;
   /**
    * Starts fetching a card's photo into the browser cache. The promise, if
    * any, settles when it has loaded or failed.
@@ -71,7 +77,7 @@ export class GameController {
 
   constructor(deps: ControllerDeps) {
     this.#deps = deps;
-    this.#state = initialState(deps.best ?? 0, deps.challenge ?? null);
+    this.#state = initialState(deps.best ?? 0, deps.challenge ?? null, deps.mode ?? "friendly");
   }
 
   get state(): GameState {
@@ -125,6 +131,7 @@ export class GameController {
 
     if (after.phase !== before.phase) this.#clearTimer();
     if (after.best > before.best) this.#deps.saveBest?.(after.best);
+    if (after.phase === "over" && before.phase !== "over") this.#deps.onOver?.(after);
 
     if (event.type === "answered" && "next" in event.response) {
       void this.#preload(event.response.next);
@@ -196,11 +203,24 @@ export class GameController {
 
       case "dealing":
         if (after.round === null) return;
-        this.#after(dealDelay(after.round, timings), { type: "dealt" });
+        this.#after(dealDelay(after.round, timings), () => ({
+          type: "dealt",
+          at: this.#deps.now(),
+        }));
         return;
 
       case "spinning":
-        this.#after(spinDelay(timings, reducedMotion()), { type: "spun" });
+        this.#after(spinDelay(timings, reducedMotion()), () => ({
+          type: "spun",
+          at: this.#deps.now(),
+        }));
+        return;
+
+      case "awaiting":
+        // A timed mode's clock: out of time, the answer goes as a timeout.
+        if (after.clock !== null && before.phase !== "awaiting") {
+          this.#after(after.clock.limitMs, () => ({ type: "timeout", at: this.#deps.now() }));
+        }
         return;
 
       case "revealing": {
@@ -241,7 +261,6 @@ export class GameController {
         return;
 
       case "idle":
-      case "awaiting":
       case "over":
         return;
     }

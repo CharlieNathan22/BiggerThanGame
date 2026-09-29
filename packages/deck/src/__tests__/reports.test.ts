@@ -29,7 +29,7 @@ import {
 } from "../simulate.js";
 import { parseSimArgs } from "../build.js";
 import { playerSchema, toPlayer } from "../schema.js";
-import { BAND_SCHEDULES, ICONIC_ROUNDS, WIN_ROUNDS } from "@bt/core";
+import { BAND_SCHEDULES, ICONIC_ROUNDS, WIN_ROUNDS, bandFor } from "@bt/core";
 import type { Player } from "@bt/core";
 
 const NOW = new Date("2026-09-18T00:00:00Z");
@@ -409,12 +409,10 @@ describe("the report's bands", () => {
     }
   });
 
-  it("say where each band falls in both schedules", () => {
-    expect(REPORT_BANDS[0]!.rounds).toBe(
-      `1–10; Friendly ${roundsWith("friendly", REPORT_BANDS[0]!.band)}`,
-    );
+  it("say where each band falls in every schedule", () => {
+    expect(REPORT_BANDS[0]!.rounds).toBe("1–10; Friendly 1–5; Endless 1–5");
     const knifeEdge = REPORT_BANDS.find((b) => b.label === "knife edge")!;
-    expect(roundsWith("endless", knifeEdge.band)).toBe("43+");
+    expect(roundsWith("ranked", knifeEdge.band)).toBe("43+");
     // Friendly shares only the opening band; the rest of its ramp is its own.
     expect(REPORT_BANDS.filter((b) => b.mode === "friendly").map((b) => b.rounds)).toEqual([
       "Friendly 6–10",
@@ -423,6 +421,49 @@ describe("the report's bands", () => {
       "Friendly 18–19",
       "Friendly 20",
     ]);
+  });
+
+  it("give Endless's own rows, those under its pair rules counted apart even when a band repeats", () => {
+    expect(REPORT_BANDS.filter((b) => b.mode === "endless").map((b) => b.rounds)).toEqual([
+      "Endless 6–10",
+      "Endless 11–15",
+      "Endless 16–20, pair rules",
+      "Endless 21–30, pair rules",
+      "Endless 31+, pair rules",
+    ]);
+  });
+
+  it("count a narrow stat under its value rule in Endless's late rows", () => {
+    const late = REPORT_BANDS.find((b) => b.label === "Endless 16–20")!;
+    expect(bandFor("it", late.round, late.mode).valueRule).toEqual({
+      kind: "difference",
+      min: 1,
+      max: 2,
+    });
+    // By hand: every pair of different figures 1 or 2 apart, whatever their ranks.
+    const values = players.flatMap((p) => (p.stats.it === undefined ? [] : [p.stats.it]));
+    let pairs = 0;
+    for (let i = 0; i < values.length; i++) {
+      for (let j = i + 1; j < values.length; j++) {
+        const d = Math.abs(values[i]! - values[j]!);
+        if (d >= 1 && d <= 2) pairs += 1;
+      }
+    }
+    expect(statViability(players, "it", NOW).pairsByBand[late.label]).toBe(pairs);
+  });
+});
+
+describe("simulating Endless", () => {
+  it("reports its streaks, accuracy by range, pair rules and the late rounds' stats", () => {
+    const r = simulate({ deck: players, now: NOW, mode: "endless", runs: 200 });
+    const report = simulationReport([r], players.length, NOW);
+    expect(report).toContain("## Endless: a streak with no finish line");
+    expect(report).toContain("Correct, rounds 16–20");
+    expect(report).toContain("### Stats from round 16");
+    expect(report).toContain(
+      "**Age**: different, and within 10% of each other, instead of the band.",
+    );
+    expect(Object.values(r.lateStatCounts).reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(0);
   });
 });
 

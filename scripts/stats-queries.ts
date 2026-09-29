@@ -6,7 +6,8 @@
  * mode, blob3 run kind, blob4 deck version, blob5 country; for an answer blob6
  * stat, blob7 tier, blob8 band, blob9 final question, double1 round, double2
  * correct, double3 streak, double4 relaxation step, double5 rank distance; for
- * an end blob6 end reason and double1 final score; for a leave blob6 phase,
+ * an end blob6 end reason and double1 final score; for an Endless answer also
+ * double6 the server-measured answer time in ms; for a leave blob6 phase,
  * blob7 trigger, blob8 stat and double1 round. Counts are
  * `SUM(_sample_interval)`, never `count()`, so they stay right if Analytics
  * Engine samples.
@@ -85,8 +86,8 @@ export const QUERIES = {
   summary: {
     title: "Runs",
     about:
-      "Started, finished (a wrong answer, a win or an exhausted deck) and abandoned " +
-      "(started, never finished) per mode; win % is of finished runs.",
+      "Started, finished (a wrong answer, a win, an exhausted deck, a timeout or a " +
+      "disconnect) and abandoned (started, never finished) per mode; win % is of finished runs.",
     sql: (o) => `SELECT
   blob2 AS mode,
   sumIf(_sample_interval, blob1 = 'start') AS started,
@@ -130,6 +131,42 @@ WHERE blob1 = 'end'
   AND ${timeWindow(o)}
 GROUP BY mode, score
 ORDER BY mode, score`,
+  },
+  endings: {
+    title: "How runs end",
+    about:
+      "Finished runs per mode and end reason: wrong, won, deck-exhausted, and in Endless " +
+      "timeout (out of time) and disconnected (no answer came; the streak was kept).",
+    sql: (o) => `SELECT
+  blob2 AS mode,
+  blob6 AS reason,
+  SUM(_sample_interval) AS runs,
+  round(SUM(_sample_interval * double1) / SUM(_sample_interval), 1) AS mean_score
+FROM ${DATASET}
+WHERE blob1 = 'end'
+  AND ${timeWindow(o)}
+GROUP BY mode, reason
+ORDER BY mode, runs DESC`,
+  },
+  clock: {
+    title: "Endless: answer times",
+    about:
+      "Server-measured ms from a question's token to its answer, per scheduled band: the " +
+      "animations before the question plus the thinking. A cluster of very fast, right " +
+      "answers late on is what a bot looks like.",
+    sql: (o) => `SELECT
+  blob8 AS band,
+  SUM(_sample_interval) AS answers,
+  quantileExactWeighted(0.1)(double6, _sample_interval) AS p10_ms,
+  quantileExactWeighted(0.5)(double6, _sample_interval) AS median_ms,
+  quantileExactWeighted(0.9)(double6, _sample_interval) AS p90_ms,
+  ${PCT_CORRECT} AS correct_pct
+FROM ${DATASET}
+WHERE blob1 = 'answer'
+  AND blob2 = 'endless'
+  AND ${timeWindow(o)}
+GROUP BY band
+ORDER BY band DESC`,
   },
   friendly: {
     title: "Friendly: wins and the final question",
@@ -252,14 +289,16 @@ ORDER BY mode, round, phase`,
     title: "Answers in one run",
     about:
       "Every answer the server judged for one run key, in time order, with the seconds since " +
-      "the one before. A round listed twice was answered again (Friendly is stateless).",
+      "the one before, and in Endless the server-measured answer time. A round listed twice " +
+      "was answered again (Friendly is stateless).",
     needsRunKey: true,
     sql: (o) => `SELECT
   timestamp,
   double1 AS round,
   blob6 AS stat,
   double2 AS correct,
-  double3 AS streak
+  double3 AS streak,
+  double6 AS answer_ms
 FROM ${DATASET}
 WHERE blob1 = 'answer'
   AND index1 = '${runKey(o.run)}'
@@ -274,18 +313,70 @@ LIMIT 1000`,
     summary: runSummary,
   },
   replays: {
-    title: "Challenge replays",
-    about: "Runs started from a challenge link, as a share of all runs started.",
+    title: "Challenge runs",
+    about:
+      "Runs started from a challenge link, as a share of all runs started: Endless's " +
+      "challenge runs, and Friendly's replays from before challenges moved.",
     sql: (o) => `SELECT
   blob2 AS mode,
   SUM(_sample_interval) AS started,
-  sumIf(_sample_interval, blob3 = 'replay') AS replays,
-  round(100 * sumIf(_sample_interval, blob3 = 'replay') / SUM(_sample_interval), 1) AS replay_pct
+  sumIf(_sample_interval, blob3 = 'challenge' OR blob3 = 'replay') AS challenged,
+  round(100 * sumIf(_sample_interval, blob3 = 'challenge' OR blob3 = 'replay')
+    / SUM(_sample_interval), 1) AS challenged_pct
 FROM ${DATASET}
 WHERE blob1 = 'start'
   AND ${timeWindow(o)}
 GROUP BY mode
 ORDER BY mode`,
+  },
+  endless: {
+    title: "Endless: runs, scores and publishing",
+    about:
+      "Endless runs started and finished, their score spread, and attempts to publish: " +
+      "how many were published and how many of those were shadow-flagged. The summary " +
+      "gives the publish rate (published / finished) and the shadow rate (shadowed / published).",
+    sql: (o) => `SELECT
+  blob1 AS event,
+  SUM(_sample_interval) AS events,
+  round(SUM(_sample_interval * double1) / SUM(_sample_interval), 1) AS mean_score,
+  quantileExactWeighted(0.5)(double1, _sample_interval) AS median_score,
+  quantileExactWeighted(0.9)(double1, _sample_interval) AS p90_score,
+  max(double1) AS max_score,
+  sumIf(_sample_interval, blob1 = 'submit' AND blob6 = '1') AS published,
+  sumIf(_sample_interval, blob1 = 'submit' AND blob6 = '1' AND blob7 = '1') AS shadowed
+FROM ${DATASET}
+WHERE blob2 = 'endless'
+  AND (blob1 = 'start' OR blob1 = 'end' OR blob1 = 'submit')
+  AND ${timeWindow(o)}
+GROUP BY event
+ORDER BY event`,
+    post: (rows) =>
+      rows.map((r) =>
+        r.event === "start"
+          ? {
+              ...r,
+              mean_score: "",
+              median_score: "",
+              p90_score: "",
+              max_score: "",
+              published: "",
+              shadowed: "",
+            }
+          : r.event === "end"
+            ? { ...r, published: "", shadowed: "" }
+            : r,
+      ),
+    summary: (rows) => {
+      const row = (event: string) => rows.find((r) => r.event === event);
+      const finished = num(row("end")?.events);
+      const published = num(row("submit")?.published);
+      const shadowed = num(row("submit")?.shadowed);
+      const pct = (a: number, b: number) => (b === 0 ? "–" : `${round1((100 * a) / b)}%`);
+      return (
+        `publish rate ${pct(published, finished)} (${published} of ${finished} finished runs); ` +
+        `shadow rate ${pct(shadowed, published)} (${shadowed} of ${published} published)`
+      );
+    },
   },
   latest: {
     title: "Latest 50 starts and ends",

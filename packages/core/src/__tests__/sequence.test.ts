@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   ICONIC_ROUNDS,
+  MAX_ANY_ROUND,
   MAX_ROUNDS,
   OPENING_DWELL,
+  WHEEL_VIABILITY,
   WIN_ROUNDS,
   buildRun,
   isFinalRound,
+  isViable,
   roundAt,
   roundCap,
 } from "../sequence.js";
 import { STATS, STAT_KEYS } from "../stats.js";
 import { SEEN_DEPTH, candidates, valueOf } from "../engine.js";
 import { isEligible } from "../eligibility.js";
-import { BAND_SCHEDULES, bandFor } from "../ramp.js";
+import { BAND_SCHEDULES, PAIR_RULES, bandFor, gap, meetsValueRule, relaxations } from "../ramp.js";
 import { NOW, fixtureDeck } from "../__fixtures__/deck.js";
 import type { Mode, Player } from "../types.js";
 
@@ -236,14 +239,16 @@ describe("a run's length and bands, per mode", () => {
     expect(isFinalRound(20, "friendly")).toBe(true);
     expect(isFinalRound(19, "friendly")).toBe(false);
     expect(isFinalRound(20, "endless")).toBe(false);
-    expect(isFinalRound(MAX_ROUNDS, "ranked")).toBe(false);
+    expect(isFinalRound(MAX_ROUNDS.ranked, "ranked")).toBe(false);
   });
 
-  it("caps Friendly at its win target and the other modes at MAX_ROUNDS", () => {
+  it("caps Friendly at its win target, Endless at 150 and Ranked at 60", () => {
     expect(WIN_ROUNDS).toEqual({ friendly: 20, endless: null, ranked: null });
+    expect(MAX_ROUNDS).toEqual({ friendly: 20, endless: 150, ranked: 60 });
     expect(roundCap("friendly")).toBe(20);
-    expect(roundCap("endless")).toBe(MAX_ROUNDS);
-    expect(roundCap("ranked")).toBe(MAX_ROUNDS);
+    expect(roundCap("endless")).toBe(150);
+    expect(roundCap("ranked")).toBe(60);
+    expect(MAX_ANY_ROUND).toBe(150);
   });
 
   it("never deals Friendly a round past twenty, whatever maxRounds asks for", () => {
@@ -389,5 +394,85 @@ describe("degenerate decks", () => {
     const tiny = [fixtureDeck[0]!, fixtureDeck[1]!];
     const rounds = buildRun({ deck: tiny, seed: "tiny", mode: "ranked", now: NOW, maxRounds: 50 });
     expect(rounds.length).toBeLessThanOrEqual(50);
+  });
+});
+
+describe("Endless", () => {
+  const endless = (seed: string, maxRounds = 40) =>
+    buildRun({ deck: fixtureDeck, seed, mode: "endless", now: NOW, maxRounds });
+  const rules = PAIR_RULES.endless!;
+
+  it("plays rounds 1–5 by Friendly's rules: the same bands and the same iconic window", () => {
+    expect(ICONIC_ROUNDS.endless).toBe(ICONIC_ROUNDS.friendly);
+    for (let r = 1; r <= ICONIC_ROUNDS.endless; r++) {
+      for (const key of STAT_KEYS) {
+        expect(bandFor(key, r, "endless")).toEqual(bandFor(key, r, "friendly"));
+      }
+    }
+  });
+
+  it("deals every pair from round 16 by its stat's rule, relaxed or not", () => {
+    let late = 0;
+    for (let i = 0; i < 60; i++) {
+      for (const round of endless(`rules-${i}`)) {
+        if (round.index < rules.from) continue;
+        late += 1;
+        const a = valueOf(round.anchor, round.stat, NOW)!;
+        const b = valueOf(round.challenger, round.stat, NOW)!;
+        expect(a).not.toBe(b);
+        const rule = rules.narrow[round.stat];
+        if (rule !== undefined) {
+          expect(meetsValueRule(a, b, rule)).toBe(true);
+          expect(round.band.valueRule).toEqual(rule);
+        } else {
+          // At least 10% apart, whatever step of the ladder the pair came from.
+          expect(gap(a, b)).toBeGreaterThanOrEqual(rules.wideMinRatio - 1e-9);
+          expect(round.band.strictMinRatio).toBe(rules.wideMinRatio);
+        }
+      }
+    }
+    expect(late).toBeGreaterThan(0);
+  });
+
+  it("lets the wheel switch to any stat it can deal at all, not only within the band", () => {
+    const ctx = { deck: fixtureDeck, now: NOW, seen: [] };
+    let wider = 0;
+    for (let round = 2; round <= 40; round++) {
+      for (const anchor of fixtureDeck) {
+        for (const key of STAT_KEYS) {
+          const band = bandFor(key, round, "endless");
+          const loosest = relaxations(band, "fine").at(-1)!;
+          const dealable =
+            isEligible(anchor, key, NOW) && candidates(anchor, key, loosest, ctx, true).length > 0;
+          expect(isViable(anchor, key, round, "endless", ctx)).toBe(dealable);
+          if (dealable && candidates(anchor, key, band, ctx).length === 0) wider += 1;
+        }
+      }
+    }
+    // Some stats have nothing in the band yet can still be dealt: Endless takes them.
+    expect(wider).toBeGreaterThan(0);
+  });
+
+  it("can deal every stat in every round from 2", () => {
+    const ctx = { deck: fixtureDeck, now: NOW, seen: [] };
+    for (let round = 2; round <= 150; round++) {
+      for (const key of STAT_KEYS) {
+        const somewhere = fixtureDeck.some((anchor) =>
+          isViable(anchor, key, round, "endless", ctx),
+        );
+        expect(somewhere, `${key} at round ${round}`).toBe(true);
+      }
+    }
+  });
+
+  it("keeps Friendly and Ranked on the band-only wheel", () => {
+    expect(WHEEL_VIABILITY).toEqual({ friendly: "band", endless: "any", ranked: "band" });
+  });
+
+  it("runs past round 20 and up to its cap", () => {
+    const rounds = endless("long", 150);
+    expect(rounds.length).toBeGreaterThan(20);
+    expect(rounds.length).toBeLessThanOrEqual(150);
+    rounds.forEach((r, i) => expect(r.index).toBe(i + 1));
   });
 });

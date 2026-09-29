@@ -13,7 +13,16 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { STATS, buildRun, percentiles, rankDistance, valueOf } from "@bt/core";
-import type { AnswerResponse, EndResponse, Guess, Player, Round, StartResponse } from "@bt/core";
+import type {
+  AnswerResponse,
+  EndResponse,
+  Guess,
+  GuessResponse,
+  Player,
+  Round,
+  RunStartResponse,
+  StartResponse,
+} from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
 import {
   DATASET,
@@ -24,10 +33,12 @@ import {
   toDataPoint,
 } from "../analytics.js";
 import type { DataPoint } from "../analytics.js";
-import { FEEDBACK_PATH, ROUND_PATH, createApp } from "../app.js";
+import { FEEDBACK_PATH, GUESS_PATH, ROUND_PATH, RUN_START_PATH, createApp } from "../app.js";
 import type { Env } from "../app.js";
+import { challengeLink } from "../challenge.js";
 import type { LogLine } from "../log.js";
 import { parseRunId } from "../run-id.js";
+import { fakeRuns } from "./endless-helpers.js";
 import { friendlySeed } from "../seed.js";
 import {
   SAMPLE_DECK,
@@ -85,6 +96,53 @@ function harness(
     ...(dataset !== undefined ? { GAME_EVENTS: dataset } : {}),
   };
   return { app, env, points, lines };
+}
+
+/** The app with Turnstile passing, a memory ledger per run and a clock to move. */
+function endlessHarness(): {
+  post<T>(path: string, body: unknown): Promise<T>;
+  wait(ms: number): void;
+  points: DataPoint[];
+  lines: LogLine[];
+} {
+  const points: DataPoint[] = [];
+  const lines: LogLine[] = [];
+  let now = TODAY.getTime();
+  let n = 0;
+  const app = createApp({
+    deck: SAMPLE_DECK,
+    images: {},
+    deckVersion: VERSION,
+    clock: () => new Date(now),
+    uuid: () => uuidFrom(++n),
+    log: (line) => lines.push(line),
+    fetch: async () => new Response(JSON.stringify({ success: true })),
+  });
+  const allow = { limit: vi.fn(async () => ({ success: true })) };
+  const env: Env = {
+    ASSETS: { fetch: vi.fn(async () => new Response("site")) },
+    RUN_SECRET: SECRET,
+    TURNSTILE_SECRET: "turnstile-secret",
+    RUN_ANSWERS: allow,
+    RUN_STARTS: allow,
+    ROUND_FLOOD: allow,
+    FEEDBACK_SENDS: allow,
+    FEEDBACK_EMAIL: { send: vi.fn(async () => ({})) },
+    GAME_EVENTS: { writeDataPoint: (p: DataPoint) => void points.push(p) },
+    RUNS: fakeRuns(),
+  };
+  return {
+    async post<T>(path: string, body: unknown): Promise<T> {
+      const res = await app.fetch(post(path, body), env);
+      expect(res.status, await res.clone().text()).toBe(200);
+      return (await res.json()) as T;
+    },
+    wait: (ms) => {
+      now += ms;
+    },
+    points,
+    lines,
+  };
 }
 
 /** `country: null` sends no `request.cf`, as outside Cloudflare. */
@@ -371,25 +429,53 @@ describe("events from real requests", () => {
     expect(h.lines.map((l) => l.event)).toEqual(["run_start", "run_end"]);
   });
 
-  it("writes a challenge replay as a replay, keyed on its own body", async () => {
-    const h = harness();
-    const first = await play(h, { missAt: 4 });
-    const link = (first.last as EndResponse).challenge;
-    h.points.length = 0;
-    h.lines.length = 0;
-
-    const replay = await play(h, {
-      missAt: 2,
-      start: { mode: "friendly", challenge: link.runId, score: link.score, sig: link.sig },
+  it("writes an Endless run's events: its mode, its kind and the server-measured answer time", async () => {
+    const e = endlessHarness();
+    const link = await challengeLink(SECRET, `20260919-${uuidFrom(900)}`, 7);
+    const started = await e.post<RunStartResponse>(RUN_START_PATH, {
+      mode: "endless",
+      turnstileToken: "pass",
+      challenge: link,
     });
-    const key = bodyOf(replay.runId);
-    expect(key).toContain("~");
-    expect(h.points.every((p) => p.indexes[0] === key && p.blobs[2] === "replay")).toBe(true);
-    expect(h.points.map((p) => p.blobs[0])).toEqual(["start", "answer", "answer", "end"]);
-    expect(h.lines.map((l) => [l.event, l.runKind, l.run])).toEqual([
-      ["run_start", "replay", key],
-      ["run_end", "replay", key],
+    expect(started.challenge).toEqual({ accepted: true, score: 7 });
+    let token = started.token;
+    let round = started.round;
+    for (let i = 0; i < 3; i++) {
+      e.wait(4321);
+      const pick = correctGuess(SAMPLE_DECK, started.runId, round);
+      const guess = i === 2 ? wrongGuess(pick) : pick;
+      const res = await e.post<GuessResponse>(GUESS_PATH, { token, guess });
+      if ("token" in res && "next" in res) {
+        token = res.token;
+        round = res.next;
+      }
+    }
+    const key = bodyOf(started.runId);
+    expect(e.points.map((p) => [p.blobs[0], p.blobs[1], p.blobs[2], p.indexes[0]])).toEqual([
+      ["start", "endless", "challenge", key],
+      ["answer", "endless", "challenge", key],
+      ["answer", "endless", "challenge", key],
+      ["answer", "endless", "challenge", key],
+      ["end", "endless", "challenge", key],
     ]);
+    for (const answer of e.points.filter((p) => p.blobs[0] === "answer")) {
+      expect(answer.doubles).toHaveLength(6);
+      expect(answer.doubles[5]).toBe(4321);
+    }
+    expect(e.points.at(-1)!.blobs[5]).toBe("wrong");
+    expect(e.points.at(-1)!.doubles).toEqual([2]);
+    expect(e.lines.map((l) => [l.event, l.mode, l.runKind, l.route])).toEqual([
+      ["run_start", "endless", "challenge", RUN_START_PATH],
+      ["run_end", "endless", "challenge", GUESS_PATH],
+    ]);
+  });
+
+  it("writes Friendly's answers with no answer time: it has no clock", async () => {
+    const h = harness();
+    await play(h, { missAt: 2 });
+    for (const answer of h.points.filter((p) => p.blobs[0] === "answer")) {
+      expect(answer.doubles).toHaveLength(5);
+    }
   });
 
   it("writes XX when the request has no country", async () => {
@@ -407,20 +493,14 @@ describe("events from real requests", () => {
 });
 
 describe("the index", () => {
-  it("fits the longest run key there is — a replay's — in 96 bytes", async () => {
+  it("fits the longest run key there is in 96 bytes", async () => {
     const h = harness();
-    const first = await play(h, { missAt: 1 });
-    const link = (first.last as EndResponse).challenge;
-    const replay = await send<StartResponse>(h, {
-      mode: "friendly",
-      challenge: link.runId,
-      score: link.score,
-      sig: link.sig,
-    });
-    // `YYYYMMDD-<uuid>~<uuid>`: 8 + 1 + 36 + 1 + 36. The run id grammar allows
-    // nothing longer (run-id.ts), and the signature is never part of the key.
-    const key = parseRunId(replay.runId)!.body;
-    expect(new TextEncoder().encode(key).length).toBe(82);
+    const { runId } = await play(h, { missAt: 1 });
+    // `YYYYMMDD-<uuid>`: 8 + 1 + 36. The run id grammar allows nothing longer
+    // but the retired replay form, `…~<uuid>`, at 82 (run-id.ts); the
+    // signature is never part of the key.
+    const key = parseRunId(runId)!.body;
+    expect(new TextEncoder().encode(key).length).toBe(45);
     expect(82).toBeLessThanOrEqual(MAX_INDEX_BYTES);
     for (const point of h.points) {
       expect(new TextEncoder().encode(point.indexes[0]).length).toBeLessThanOrEqual(
@@ -455,12 +535,11 @@ describe("privacy", () => {
     for (const needle of [IP, USER_AGENT, "session=not-ours", SECRET]) {
       expect(everything).not.toContain(needle);
     }
-    for (const { runId, last } of runs) {
+    for (const { runId } of runs) {
       const run = parseRunId(runId)!;
       expect(everything).not.toContain(runId);
       expect(everything).not.toContain(runId.slice(runId.indexOf(".") + 1));
       expect(everything).not.toContain(await friendlySeed(SECRET, run.origin));
-      expect(everything).not.toContain((last as EndResponse).challenge.sig);
     }
     // A player appears in one place only: run_end's `players`, the two in the
     // round that ended the run, whose figures the ending response revealed.

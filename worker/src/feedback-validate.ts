@@ -13,7 +13,7 @@
  * string), never a header or a response.
  */
 
-import { FEEDBACK_LIMITS, MAX_ROUNDS, isSitePage, textLength } from "@bt/core";
+import { FEEDBACK_LIMITS, MAX_ANY_ROUND, isSitePage, textLength } from "@bt/core";
 import type { CorrectionRequest, FeedbackRequest, ProblemRequest, SuggestRequest } from "@bt/core";
 import { parseRunId } from "./run-id.js";
 
@@ -31,6 +31,7 @@ export type FeedbackRejection =
   | "invalid_page"
   | "invalid_token"
   | "invalid_run"
+  | "invalid_mode"
   | "run_expired"
   | "invalid_round";
 
@@ -39,7 +40,7 @@ export type ParsedFeedback =
   | { readonly ok: false; readonly code: FeedbackRejection };
 
 const SUGGEST_KEYS = new Set(["kind", "name", "note", "turnstileToken"]);
-const CORRECTION_KEYS = new Set(["kind", "runId", "round", "note", "turnstileToken"]);
+const CORRECTION_KEYS = new Set(["kind", "mode", "runId", "round", "note", "turnstileToken"]);
 const PROBLEM_KEYS = new Set(["kind", "note", "page", "turnstileToken"]);
 
 export function parseFeedbackRequest(body: unknown): ParsedFeedback {
@@ -80,14 +81,22 @@ function parseCorrection(record: Record<string, unknown>): ParsedFeedback {
   const common = parseCommon(record);
   if (!common.ok) return common;
 
-  const { runId, round } = record;
+  // Absent for a Friendly run, as the form has always sent; "endless" for an Endless one.
+  const { mode, runId, round } = record;
+  if (mode !== undefined && mode !== "endless") return fail("invalid_mode");
   if (typeof runId !== "string") return fail("not_a_string");
   if (parseRunId(runId) === undefined) return fail("invalid_run");
-  if (typeof round !== "number" || !Number.isInteger(round) || round < 1 || round > MAX_ROUNDS) {
+  if (typeof round !== "number" || !Number.isInteger(round) || round < 1 || round > MAX_ANY_ROUND) {
     return fail("invalid_round");
   }
 
-  const value: CorrectionRequest = { kind: "correction", runId, round, ...common.value };
+  const value: CorrectionRequest = {
+    kind: "correction",
+    ...(mode === "endless" ? { mode } : {}),
+    runId,
+    round,
+    ...common.value,
+  };
   return { ok: true, value };
 }
 

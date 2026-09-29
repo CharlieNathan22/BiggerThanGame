@@ -42,8 +42,8 @@ Request
   │
   ├── /api/*        → Worker fetch handler
   │                     ├── Durable Object (run state)
-  │                     ├── D1 (scores, reports)
-  │                     └── KV (cached boards)
+  │                     ├── D1 (scores, board snapshots)
+  │                     └── Cache API (the boards, a minute at most)
   │
   └── everything else → ASSETS binding (Astro build output)
 ```
@@ -51,14 +51,25 @@ Request
 Astro is configured for **static output**, not SSR. Every page is prerendered at build time; the
 Worker only executes for `/api/*`. No Astro Cloudflare adapter is needed.
 
-**Bindings:** `ASSETS`, `DB` (D1), `BOARDS` (KV), `RUNS` (Durable Object namespace), `RUN_SECRET` (secret),
+**Bindings:** `ASSETS`, `DB` (D1), `RUNS` (Durable Object namespace), `RUN_SECRET` (secret),
 `TURNSTILE_SECRET` (secret), `FEEDBACK_TO` (secret), `FEEDBACK_EMAIL` (`send_email`, Email Routing),
-`RUN_ANSWERS`, `RUN_STARTS`, `ROUND_FLOOD` and `FEEDBACK_SENDS` (Workers Rate Limiting).
+`GAME_EVENTS` (Analytics Engine), and `RUN_ANSWERS`, `RUN_STARTS`, `ROUND_FLOOD`, `FEEDBACK_SENDS`
+and `RUN_SUBMITS` (Workers Rate Limiting). Two **cron triggers**, 00:00 and 01:30 UTC (§13).
 
 Phase 3 (Friendly) uses `ASSETS`, `RUN_SECRET` and the round endpoint's three rate limiters, plus
 `TURNSTILE_SECRET`, `FEEDBACK_TO`, `FEEDBACK_EMAIL` and `FEEDBACK_SENDS` for the feedback forms
-(§8). The rest arrive with Ranked and Endless. Workers Logs is on (`[observability]` in
-`wrangler.toml`).
+(§8). Phase 5 (Endless, part 1) adds `RUNS`, the Durable Object namespace — class `RunDO`,
+SQLite-backed (`new_sqlite_classes` migration, so it runs on the free plan), exported from
+`worker/index.ts` — and reuses `TURNSTILE_SECRET` for run starts. Endless part 2 adds `DB`, the
+boards' D1 database (§10), `RUN_SUBMITS` and the crons; the boards are cached with the Workers
+Cache API (`caches.default`, §11), which needs no binding. There is no KV. Workers Logs is on
+(`[observability]` in `wrangler.toml`).
+
+**Local development uses local resources only.** `pnpm dev` and every test run against
+wrangler's local D1 (Miniflare's state under `.wrangler/`); nothing in `wrangler.toml` or the
+scripts sets `remote = true` or passes `--remote`, and a test holds that. `pnpm db:migrate:local`
+(which `pnpm dev` runs first), `db:seed:local` and `db:reset:local` never take `--remote`; only
+`pnpm db:migrate:remote` and `pnpm db:owner` reach the real database, and each asks first.
 
 There is **no R2 binding**. Images are served from R2 through a custom domain
 (`img.biggerthangame.com`) and resized by Image Transformations, so the Worker never touches the
@@ -109,11 +120,23 @@ bucket — see section 9.
 │   │   ├── mail.ts        # the plain-text MIME message for send_email
 │   │   ├── analytics.ts   # game events → Analytics Engine data points (§19)
 │   │   ├── log.ts         # the structured log() helper for Workers Logs (§19)
-│   │   └── deck.ts        # the only import of packages/deck/dist
-│   ├── run-do.ts          # Durable Object (Phase 5)
-│   └── token.ts           # sign / verify progress tokens (Phase 5)
+│   │   ├── deck.ts        # the only import of packages/deck/dist
+│   │   ├── token.ts       # sign / verify progress and result tokens
+│   │   ├── run.ts         # /api/run/start and /api/round/guess (Endless)
+│   │   ├── run-ledger.ts  # the run's Durable Object's rules
+│   │   ├── submit.ts      # /api/run/submit: publishing a run
+│   │   ├── scores.ts      # every D1 statement for the boards
+│   │   ├── board.ts       # /api/board/endless/:period, through the Cache API
+│   │   ├── cron.ts        # the nightly snapshot and prune
+│   │   ├── moderation.ts  # the nickname blocklist check; blocklist-data.ts holds hashes only
+│   │   └── shadow.ts      # the timing heuristics
+│   └── run-do.ts          # Durable Object: wiring over run-ledger.ts
+├── migrations/            # D1 migrations (wrangler d1 migrations)
 ├── scripts/
-│   └── stats.ts           # pnpm stats — the saved Analytics Engine queries (§19)
+│   ├── stats.ts           # pnpm stats — the saved Analytics Engine queries (§19)
+│   ├── db.ts              # pnpm db:* — local migrate, seed and reset; remote migrate; owner tools
+│   ├── blocklist.ts       # pnpm blocklist:build — the plain blocklist (gitignored) to hashes
+│   └── load-test.ts       # pnpm load:local — Endless under load, against wrangler dev only
 ├── wrangler.toml
 └── docs/
     ├── DESIGN.md
@@ -374,12 +397,16 @@ its `TIER_TARGET`, the opening stat's share, the same mix by round range for Fri
 6–10, 11–20, 21+, with the rare tier's total — overall rates hide how concentrated later rounds
 are), how often the early-round iconic preference had to fall back to the whole deck, and for
 Friendly its **win rate** — the share of runs reaching twenty — with the streaks bucketed at its
-titles. Each mode is simulated to its own cap (`roundCap`: 20 for Friendly, 60 otherwise). This is
+titles. Each mode is simulated to its own cap (`roundCap`: 20 for Friendly, 150 for Endless, 60
+for Ranked); a run is dealt 40 rounds first and to its cap only if a model answers all 40
+(`PROBE_ROUNDS`), and the engine's reach is measured on the first 200 seeds dealt in full. For
+Endless the report adds streak percentiles, reach and accuracy by round range under every model,
+its pair rules, and each stat's share of the rounds from 16. This is
 how the ramp and tier weights get tuned — not by guessing.
 Its streaks come from a **modelled player** whose accuracy rises with rank distance. `fan`, the
 default and the model Friendly is tuned with, interpolates a keen fan's accuracy between points
 (0.55 at no gap to 0.99 from 0.50); `--model rank` selects the original, weaker curve (0.5 to 0.95),
-which Endless and Ranked were tuned with; `--calibration <file.json>` replaces the fan's points with
+which Ranked was tuned with (Friendly and Endless are tuned with `fan`); `--calibration <file.json>` replaces the fan's points with
 a list of `{ rankDistance, accuracy }`, for when real play supplies one. For Friendly the report
 also scores the same runs with every other model, and lists each question's band and accuracy.
 Every model is an assumption until then. `--runs <n>` sets the run count. `viability.md` adds the static side: per
@@ -391,14 +418,17 @@ stat, how many anchors have any iconic challenger in the opening band.
 
 ```
 seed(ranked,   gameNo) = HMAC-SHA256(RUN_SECRET, "ranked:"   + gameNo)
-seed(endless,  runId)  = HMAC-SHA256(RUN_SECRET, "endless:"  + runId)
+seed(endless,  runId)  = HMAC-SHA256(RUN_SECRET, "endless:"  + runBody)
 seed(friendly, runId)  = HMAC-SHA256(RUN_SECRET, "friendly:" + runBody)
 ```
 
 Ranked's seed depends only on the game number, so **every player gets the same sequence** — that is what
 makes the board comparable. Endless and Friendly are per-run.
 
-**Friendly run ids** are `YYYYMMDD-<uuid>.<sig>`, minted by the server with the UTC date. The body,
+**Run ids** are `YYYYMMDD-<uuid>.<sig>`, minted by the server with the UTC date, in Friendly and
+Endless alike. **They are signed per mode**: Friendly's signature covers `"run:" + runBody`, as it
+always has, and Endless's `"run:endless:" + runBody`, so an id only verifies in the mode it was
+minted for and can't be played as the other (a Friendly id from before Endless still verifies). The body,
 `YYYYMMDD-<uuid>` (`runBody` above), names the run; `sig` is the first 16 bytes of
 `HMAC-SHA256(RUN_SECRET, "run:" + runBody)` as unpadded base64url (22 characters). The server
 answers only run ids it signed: unsigned, tampered and malformed ids are `400`. The signature is
@@ -412,44 +442,47 @@ value moves between rounds of one run. The server refuses a fresh run id dated m
 from its own UTC date, so a caller can't choose an arbitrary reference date. The client never sees
 or chooses a seed.
 
-**Challenge links** (DESIGN.md §13) replay a finished Friendly run for a friend:
-`/football-higher-or-lower/legends/friendly?challenge=<runId>&score=<n>&sig=<sig>` — the server
-issues the three signed parts and the client builds the URL on the game page. `sig` signs the run
-and the score together — the first 16 bytes of
-`HMAC-SHA256(RUN_SECRET, "challenge:" + runBody + ":" + score)`, unpadded base64url — so neither
-the run nor the "Beat n" number can be edited. The server issues one with every run's end (§8), for
-the score that run reached.
+**Challenge links, Endless only** (DESIGN.md §13, `CHALLENGES`):
+`/football-higher-or-lower/legends/endless?challenge=<runId>&score=<n>&sig=<sig>` — the server
+issues the three signed parts with every Endless run's end (§8), for the score that run reached,
+and the client builds the URL. `sig` signs the run and the score together — the first 16 bytes of
+`HMAC-SHA256(RUN_SECRET, "challenge:endless:" + runBody + ":" + score)`, unpadded base64url — so
+neither the run nor the "Beat n" number can be edited.
 
-- A start carrying a genuine link is accepted for **10 days** from the run's date
-  (`CHALLENGE_DAYS`). A forged, edited or broken link, or one past its 10 days, starts a fresh run
-  instead, and the response says why so the page can show a short note.
-- The friend gets a **replay id**, `YYYYMMDD-<uuid>~<uuid>.<sig>`: the challenged run's body, then a
-  fresh uuid of their own, signed like any run id. The seed and `now` come from the challenged
-  body, so the rounds are identical; the whole body is the rate-limit key, so everyone replaying
-  one shared link has their own answer allowance (§12). A replay id is answered for the 10 days
-  plus the usual day's grace; fresh run ids keep the ±1-day rule.
-- A replay's own end links back to the challenged run, at the friend's score, so the challenge can
-  travel on.
-- **A deck change within the 10 days alters the replay**, because the percentile tables behind the
-  ramp depend on the whole deck: the same seed can deal different pairs once a player is added or a
-  figure corrected. Acceptable for Friendly; Ranked will pin the deck and rules versions per game.
-- **The signature proves the server issued the score, not that it was earned in order.** Friendly
-  is stateless, so answering a late round directly yields a signed link for a score never played.
-  That is fine for a leaderboard-exempt mode; Ranked's spent-once token chain (§8) is what proves a
-  run.
+- **A link sets the score to beat, never the sequence.** A start carrying one mints an ordinary
+  fresh run — its own run id, its own seed — framed as "Beat n". There are no replay ids in
+  Endless; a challenge run is an ordinary run (run kind `challenge` in analytics, §19), and is
+  published to the boards like any other (`/api/run/submit`, §8).
+- A genuine link is accepted for **10 days** from the run's date (`CHALLENGE_DAYS`), and its score
+  is at most Endless's cap, 150. A forged, edited or broken link, or one past its 10 days, starts a
+  plain run instead, and the response says why so the page can show a short note.
+- **The score was earned**: Endless's spent-once token chain (§8) is what the server signed it
+  from, unlike Friendly's stateless answers.
 
-> **Phase 5 note — seeds collapse to 32 bits.** `createRng` turns the seed string into the
-> generator's state through `hashSeed` (FNV-1a, 32-bit), so however strong the HMAC, there are at
-> most 2³² distinct runs. That is fine for Friendly. For Ranked and Endless, someone holding the deck
-> could brute-force the state from the first few observed rounds and read the rest of the sequence
-> — not the hidden values, which are public facts anyway, but the upcoming pairings. Decide in
-> Phase 5 whether that matters; widening the state changes every golden fingerprint.
+**Friendly's challenge links are retired.** They replayed the challenged run under a replay id,
+`YYYYMMDD-<uuid>~<uuid>.<sig>`, and signed `"challenge:" + runBody + ":" + score`. Friendly is
+stateless, so answering a late round directly yielded a signed "Beat n" for a score never played.
+Now `/api/round/next` refuses a challenge start and a replay id with `400`, as do the leave beacon
+and corrections, and a Friendly run's end carries no link. The run id grammar still recognises the
+replay form so it can be refused by name; the page shows an old link arriving at
+`/friendly?challenge=` as "This challenge link has expired — play Friendly", and never sends it.
+
+**Seeds are 32 bits of PRNG state, on purpose.** `createRng` turns the seed string into the
+generator's state through `hashSeed` (FNV-1a, 32-bit), so however strong the HMAC, there are at
+most 2³² distinct runs per mode. Someone holding the deck could brute-force the state from a run's
+first few observed rounds and predict its upcoming pairings — not its hidden values, which are
+public facts anyway, and the photo lookahead already shows the next challenger a round early.
+Decided in Phase 5 to keep it: the deck is private, predicting pairings gains little over looking
+the figures up, the clock and timing heuristics are what catch a bot, and widening the state
+would change every golden fingerprint.
 
 `sequence.ts` takes a seed, a mode and a round number and replays the engine deterministically
 from round one. The mode is part of the input because it sets how many early rounds prefer iconic
 challengers (`ICONIC_ROUNDS`), the band schedule (`BAND_SCHEDULES`) and the cap on its length
-(`roundCap`: Friendly's twenty, `WIN_ROUNDS`, else `MAX_ROUNDS`); the same seed under a different
-mode is a different run. Twenty rounds is well under a millisecond, so the server recomputes rather than storing.
+(`roundCap`: Friendly's twenty, `WIN_ROUNDS`, else the mode's `MAX_ROUNDS`, 150 for Endless and
+60 for Ranked); the same seed under a different mode is a different run. Twenty rounds is well
+under a millisecond and an Endless run's first thirty a few, so the server recomputes rather than
+storing.
 
 **Game numbering.** `gameNo = floor((now - EPOCH) / 86400000) + 1`, `EPOCH` being launch day at
 00:00 UTC. **Game 1 is launch day and the epoch is never moved** — game numbers become permanent
@@ -486,33 +519,87 @@ affected. Correct, but D1 is regional rather than edge-local, so it adds latency
 
 ### Progress token
 
-`base64url(payload) + "." + base64url(HMAC(RUN_SECRET, payload))`
+`base64url(JSON payload) + "." + base64url(HMAC-SHA256(RUN_SECRET, "token:" + payloadB64))`
+(`worker/src/token.ts`)
 
 ```ts
-type Progress = {
-  runId: string;
-  mode: "ranked" | "endless";
-  gameNo: number;
+type ProgressPayload = {
+  v: 1;
+  runId: string; // the signed Endless run id
+  mode: "endless"; // Ranked will add gameNo
   // Friendly issues no token — it uses /api/round/next and carries no state.
   round: number;
-  streak: number;
+  streak: number; // round - 1: the answers so far were all right
   anchorId: string;
   challengerId: string;
   stat: StatKey;
   anchorValue: number; // already shown — safe
-  issuedAt: number; // authoritative timer start
-  nonce: string;
+  issuedAt: number; // the server's clock, ms: the timer's start
+  deadline: number; // issuedAt + the animation allowance + the limit + 3 s
+  nonce: string; // spent once, by the run's Durable Object
 };
 ```
 
 The token is signed, **not encrypted** — assume the client reads it. That is fine: it carries only
-what is already on screen. The challenger's value is never in it.
+what is already on screen. The challenger's value is never in it. The HMAC is over the encoded
+payload under its own prefix (`"token:"`), so no other use of `RUN_SECRET` makes a valid token;
+verification compares in constant time and parses strictly — a missing, extra or mistyped field,
+or a `streak` that isn't `round - 1`, is no token. The fields are copied in a fixed order, so the
+same payload always makes the same bytes. The web app keeps the latest token **in memory only**:
+a page reload ends the run.
+
+A finished run also gets a **result token**, the same shape under `"result:"`: `{ v, runId, mode,
+score, end, startedOn, elapsedMs, endedAt }`, `elapsedMs` being the sum of the server-measured
+answer times. `POST /api/run/submit` takes it to publish the run.
+
+### The run's Durable Object
+
+One per Endless run, named by the run key (`RUNS.idFromName`), class `RunDO` (`worker/run-do.ts`,
+wiring only; the rules are `worker/src/run-ledger.ts`, tested in Node and under workerd).
+SQLite-backed: a `run` table holding the run's record, and `answers`, one row per accepted answer
+with its server-measured time. **Single job: spend each nonce once.**
+
+- `begin` records round one's token when the run starts.
+- `advance` spends a nonce and records the answer, its time and what it led to — the next nonce,
+  issue time and deadline, or the end — in one call, which the object runs one at a time.
+- **A resend of the latest step is answered the same.** If the nonce is the one most recently
+  spent, its next token still unused, and the guess is the same, the ledger hands back the stored
+  outcome, and the Worker rebuilds the byte-identical response — the same next token, issue time
+  and deadline, so a retry after a lost response is safe and buys no clock time.
+- **Anything else is `409` and voids the run:** the same token with the other guess, an older
+  token once its next has been used, a nonce never issued, another round. A void run takes nothing
+  more, not even its genuine next token.
+- **A run that is over refuses every answer** (`409 over`), and its streak stands.
+- **The alarm.** While a question is open it is set `DISCONNECT_MARGIN_MS` (5 s) past the deadline.
+  A connected client always answers, or sends its own timeout, before then — so if nothing came,
+  the client went away: the run is closed as `disconnected`, keeping the streak it had verified,
+  and its `run_end` and `end` event are written from the object (§19). A late guess after that is
+  `409 over`. Once a run is over, the alarm is set `RETAIN_MS` (6 h) after its last activity and
+  deletes everything, so runs don't accumulate.
+- **Publishing.** `claimForSubmit(claim)` checks a submission against the run in one step: this
+  object's own run (only `/api/run/start` creates one, so a run found here was dealt fresh), not
+  void, over, the streak and end the token says, not yet published, and ended no more than 30
+  minutes ago (`SUBMIT_WINDOW_MS`); it hands back the run and its answer times. A run banked after
+  a dropped connection is claimed with its latest progress token: if the alarm hasn't closed it
+  yet, the claim closes it as `disconnected` at the streak the token proves — the player gives up
+  the open question, and gains nothing. `markSubmitted()` marks it published, once the score is
+  stored. Storage outlives the 30 minutes by hours, so `RETAIN_MS` is unchanged.
 
 ### Endpoints
 
-**`POST /api/run/start`** → `{ mode, turnstileToken }`
-Verifies Turnstile. For Ranked, checks the signed device-day token and refuses a second run.
-Creates the DO, returns round one's display payload and the first progress token.
+**`POST /api/run/start`** (Endless) → `{ mode: "endless", turnstileToken, challenge? }`
+
+```jsonc
+← { "runId": "20260929-<uuid>.<sig>", "round": RoundPayload, "token": "…",
+    "challenge"?: { "accepted": true, "score": 23 } | { "accepted": false, "reason": "invalid" | "expired" } }
+```
+
+In order: the flood limit, then `RUN_STARTS`; strict parsing (`challenge` is `{ runId, score, sig }`,
+score 0–150); Turnstile Siteverify (`403 verification_failed` on a fail,
+`502 unavailable` if it can't be asked); the challenge link checked (it sets the target only);
+a fresh Endless run id minted; rounds one and two dealt (two for `upcoming`); the run's Durable
+Object told about the first token (`503` if it can't be); the response. For Ranked it will also
+check the signed device-day token and refuse a second run.
 
 **`POST /api/round/next`** — Friendly, Phase 3. Stateless: no storage, no token, no nonce, no
 timer. Types live in `packages/core/src/api.ts`, shared by the Worker and the web app.
@@ -522,25 +609,16 @@ timer. Types live in `packages/core/src/api.ts`, shared by the Worker and the we
 → { "mode": "friendly" }
 ← { "runId": "20260919-<uuid>.<sig>", "round": RoundPayload }      // round 1
 
-// start from a challenge link (§7)
-→ { "mode": "friendly", "challenge": "<runId>", "score": 12, "sig": "…" }
-← { "runId": "20260919-<uuid>~<uuid>.<sig>", "round": RoundPayload,
-    "challenge": { "accepted": true, "score": 12 } }                // a replay
-← { "runId": "20260926-<uuid>.<sig>", "round": RoundPayload,
-    "challenge": { "accepted": false, "reason": "invalid" | "expired" } }  // a fresh run
-
 // answer
 → { "mode": "friendly", "runId": "…", "round": 7, "guess": "higher" | "lower" }
 ← { "reveal": { "round": 7, "value": 88, "display": "88m", "qualifier"?: "…", "correct": true },
     "next": RoundPayload }                                          // correct, run continues
-← { "reveal": { … }, "end": "wrong" | "deck-exhausted" | "won",
-    "challenge": { "runId": "…", "score": 6, "sig": "…" } }         // run over
+← { "reveal": { … }, "end": "wrong" | "deck-exhausted" | "won" }  // run over
 ```
 
-A run's `challenge` is the signed link for the score it reached: the correct answers before the
-wrong one, or every round for `deck-exhausted` and `won`. A challenge start is held to its types
-(`score` an integer in 0–20, Friendly's cap; the strings of bounded length) — anything else is `400` — but not its contents: a
-link mangled on its way through a chat app still starts a run, a fresh one, with the reason.
+**No challenge links in Friendly** (§7): a start carrying one (`{ mode, challenge, score, sig }`,
+as the old links sent) is `400` "challenge links are off in Friendly", and an answer on a replay id
+`400` too.
 
 `RoundPayload` is `{ index, stat: { key, label, tier, statChanged }, anchor, challenger,
 upcoming? }`. The anchor carries `id, name, country, position, image?` plus its `value`,
@@ -558,7 +636,7 @@ and **decides correctness server-side**. **Friendly is a 20-question challenge**
 a correct answer to round 20 ends the run with `won`, and no round past 20 is ever dealt, so round
 20 carries no `upcoming`. A run that can deal no next round before then ends with
 `deck-exhausted`; a wrong answer, at any round, with `wrong`. (Endless and Ranked have no win
-target; they will cap at `MAX_ROUNDS`, 60.) Every response is an explicitly declared DTO built field by field
+target; they cap at their `MAX_ROUNDS`, 150 and 60.) Every response is an explicitly declared DTO built field by field
 in `worker/src/payload.ts`; a `Round` is never returned. Requests are validated strictly — unknown
 mode, extra keys, a malformed, unsigned, tampered or out-of-range `runId`, a `round` that isn't an
 integer in 1–20, or a bad guess are all `400` — and every `/api/*` response is `cache-control: no-store`.
@@ -568,26 +646,98 @@ reveals at most one hidden value, so the **rate limit** does the real work (DESI
 only thing between the deck and a determined scraper, so it is load-bearing rather than hygiene.
 Numbers in §12.
 
-**Phase 5 hardens this same endpoint** rather than replacing it: Ranked and Endless add the progress
-token (signed, spent once via the Durable Object), the server-owned timer and Turnstile on top of
-the same payloads — the round, reveal and end shapes stay as they are. How the token sits alongside
-`runId` and `round` in the request is settled in Phase 5. `/api/run/start` and `/api/round/guess`
-below describe the enforcement that hardening adds.
+**Phase 5 shares this endpoint's payloads** rather than replacing them: Endless has its own two
+endpoints, `/api/run/start` and `/api/round/guess`, which add the progress token (signed, spent once
+via the Durable Object), the server-owned clock and Turnstile around the same round, reveal and end
+shapes. Friendly keeps `/api/round/next`, unchanged.
 
-**`POST /api/round/guess`** → `{ token, guess }`
+**`POST /api/round/guess`** (Endless) → `{ token, guess: "higher" | "lower" | "timeout", clientElapsedMs? }`
 
-1. Verify HMAC.
-2. Ask the DO to spend the nonce. Already spent → `409`, run void.
-3. Check `now - issuedAt` against the round's limit plus a **3s network grace**. The **server** owns
-   the clock; `clientElapsedMs` is telemetry only, never trusted — a client-reported send time would
-   make the grace whatever a cheater claims. Where latency compensation is wanted, derive it
-   server-side from observed round-trip times on the connection, not from anything the client says.
-4. Recompute the sequence to this round, read the true values, decide correctness.
-5. Return the challenger's value, and if correct, the next round's display payload and token.
+```jsonc
+← { "reveal": Reveal, "next": RoundPayload, "token": "…" }               // right: the next question
+← { "reveal": Reveal, "end": "wrong" | "timeout" | "deck-exhausted",
+    "challenge": { "runId": "…", "score": 6, "sig": "…" }, "result": "…" }  // over
+← 409 { "error": "conflict", "detail": "spent" | "out_of_order" | "over" | "void" | … }
+```
 
-**`POST /api/run/submit`** → `{ token, nickname, publish }`
-Validates the final token chain, moderates the nickname, writes to D1 if `publish` is true.
-Local-only scores never reach this endpoint.
+1. The flood limit; strict parsing.
+2. Verify the token's HMAC (`400` if it fails: forged, edited, another key) and its run id's
+   Endless signature.
+3. `RUN_ANSWERS`, keyed on the run key.
+4. Note the **server's** time of receipt. The server owns the clock; `clientElapsedMs` is checked for
+   type and dropped — a client-reported time would make the grace whatever a cheater claims.
+5. Recompute the sequence to this round from the seed and check the token names exactly the round
+   dealt — stat, anchor, challenger, anchor's figure (`409 token_mismatch` if not: the deck changed).
+6. Judge: `guess: "timeout"`, or any answer received after the token's `deadline`, ends the run as
+   `timeout`; a wrong pick as `wrong`; no next round as `deck-exhausted`; otherwise a next token is
+   made, issued now.
+7. The Durable Object spends the nonce (`409` as above), or answers a resend of the latest step
+   with its stored outcome.
+8. The reveal — the challenger's figure, even on a timeout — and the next round's display payload
+   and token **in the same response**; or the end, with the challenge link for the score reached
+   and the signed result. Recorded once, never for a resend (§19).
+
+**The deadline** (`deadlineFor` in `packages/core/src/clock.ts`): the question's limit (15 s for
+question one, 10 s after, `QUESTION_LIMITS`) starts when the question becomes answerable, so the
+server adds the most animation an honest client plays first, from the same timing constants the
+web app uses (`ANSWER_TIMINGS`, which the tokens.css test holds to the CSS), and a **3 s network
+grace**:
+
+| Token for      | Allowance before answerable                                                 | Deadline after issue    |
+| -------------- | --------------------------------------------------------------------------- | ----------------------- |
+| question 1     | title 1.8 s + hold 1 s (+3 s for photos) + intro 1 s + beat and spin 2.54 s | 9.34 + 15 + 3 = 27.34 s |
+| a stat change  | reveal to verdict 2.54 s + next 1.4 s + beat and spin 2.54 s                | 6.48 + 10 + 3 = 19.48 s |
+| the stat holds | reveal to verdict 2.54 s + next 1.4 s + hold 0.34 s                         | 4.28 + 10 + 3 = 17.28 s |
+
+A later token's allowance assumes the worst case, a response that lands the instant the guess
+goes. The client counts down only from when the question is answerable and sends `timeout` at
+zero, so an honest player never meets the server's deadline except on a connection slower than the
+grace. Skipping the title card gains a player nothing: their own clock still runs out first.
+
+**`POST /api/run/submit`** (Endless) → `{ token, nickname, deviceId, turnstileToken }`
+(`worker/src/submit.ts`). Publishing is **opt-in**: the page sends nothing here unless the player
+presses Publish.
+
+```jsonc
+← { "id": "<uuid>", "nickname": "SwiftVolley42", "streak": 23,
+    "periods": { "day":   { "key": "2026-09-29", "current": true, "rank": 412, "total": 3208,
+                            "resetsAt": 1790726400000, "entryId": "<uuid>", "streak": 23 },
+                 "week":  { "key": "2026-W40", … }, "month": { "key": "2026-09", … } } }
+← 400 { "error": "bad_request", "detail": "zero" | "nickname_short" | … }
+← 403 { "error": "verification_failed" }
+← 409 { "error": "conflict", "detail": "unknown" | "void" | "not_ended" | "mismatch" | "submitted" | "expired" }
+← 422 { "error": "nickname_rejected" }   // "try another name", whatever the reason
+← 429 { "error": "rate_limited" }         // with retry-after
+← 503 { "error": "unavailable", "detail": "scores" }
+```
+
+1. The flood limit, then `RUN_SUBMITS` (per IP), before any other work.
+2. Strict parsing: exactly those four keys; `deviceId` a v4 uuid; the nickname's form
+   (`checkNickname`, @bt/core): 3–20 characters, Latin letters, digits, space, `_ - .`. A name in
+   another script is a `422`, like a blocked one.
+3. **The token**: the run's signed result, or, for a run banked after a dropped connection, its
+   latest progress token. The run id in it must be an Endless one this server signed, never a
+   retired replay id (`400`); the streak it proves must be above 0 (`400 zero`).
+4. **The run's Durable Object agrees** (`claimForSubmit`, above): only `/api/run/start` creates
+   one, so a run it holds was dealt fresh from a random seed — challenge runs included, since a
+   link only sets the score to beat. A run the server never dealt, however well signed, is
+   `409 unknown`, so no sequence a player could have learned in advance reaches a board.
+5. Turnstile Siteverify.
+6. **Moderation** (§12): `422 nickname_rejected`.
+7. **The timing heuristics** (§12): a flagged score is stored, shadowed.
+8. **The insert.** `run_id` is unique: a second publish of one run is `409 submitted` even if the
+   object was never told. A D1 failure is a calm `503`, logged as an `error`. Then the object
+   marks the run published.
+9. **The ranks**, as the player sees them: the device's best in each of the run's periods, ranked
+   among every other device's public best, out of those and itself (`ownStanding`, §10). A
+   shadowed player sees an ordinary rank. The periods are the run's own — the UTC date its run id
+   carries — so a run started at 23:58 counts on that day's boards; `current` is false once that
+   period has reset, and the page says "yesterday" instead of "today".
+
+The device id is a random id the browser keeps (`bt:device`). Only `HMAC(RUN_SECRET, "device:" +
+id)` is stored, never the id; it is friction, not identity — clearing storage makes a new one.
+Nothing about the request is logged but the run key, the score, the ranks and whether it was
+shadowed; never the nickname or the device.
 
 **`POST /api/feedback`** — the three feedback forms, Phase 3. Types in `packages/core/src/api.ts`,
 handler in `worker/src/feedback.ts`. Stateless: it sends a plain-text email and logs one line with
@@ -595,7 +745,7 @@ what was sent (§19), and stores nothing else.
 
 ```jsonc
 → { "kind": "suggest", "name": "…", "note"?: "…", "turnstileToken": "…" }
-→ { "kind": "correction", "runId": "…", "round": 7, "note"?: "…", "turnstileToken": "…" }
+→ { "kind": "correction", "mode"?: "endless", "runId": "…", "round": 7, "note"?: "…", "turnstileToken": "…" }
 → { "kind": "problem", "note": "…", "page": "/about", "turnstileToken": "…" }
 ← 200 { "ok": true }
 ← 400 { "error": "bad_request", "detail": "<short code>" }   // e.g. unexpected_key, invalid_run
@@ -637,29 +787,48 @@ never mid-game.
 (`navigator.sendBeacon`, `game/leave.ts`). Telemetry only: handler in `worker/src/leave.ts`.
 
 ```jsonc
-→ { "mode": "friendly", "runId": "…", "round": 7, "phase": "question", "trigger": "hidden" }
+→ { "mode": "friendly" | "endless", "runId": "…", "round": 7, "phase": "question", "trigger": "hidden" }
 ← 204 (no body)
 ← 400 { "error": "bad_request", "detail": "…" }
 ```
 
-- **Strict.** Exactly those five keys and a body of at most 512 bytes; `round` 0–20, with 0 (and
-  only 0) for `phase: "intro"`; `phase` one of `intro`, `question`, `reveal`, `other`;
+- **Strict.** Exactly those five keys and a body of at most 512 bytes; `round` 0 to the mode's cap
+  (20 Friendly, 150 Endless), with 0 (and only 0) for `phase: "intro"`; `phase` one of `intro`, `question`, `reveal`, `other`;
   `trigger` `hidden` or `pagehide`. The run id must be one the server signed and still
   answers (§7), and a round above 0 one the run has.
-- **Changes nothing.** Friendly keeps no state, and the handler only records: a `run_leave` log
+- **Changes nothing.** Friendly keeps no state, an Endless run's Durable Object is never touched,
+  and the handler only records: a `run_leave` log
   line and a `leave` data point (§19), with the round rebuilt from the seed and only the figures
   the player had been shown. Behind the flood limit (§12) like every round request.
 - **Once per trigger per run**, only while a run is in progress (after Start, before it ends).
 
-**`GET /api/board/:mode/:gameNo`** — served from KV.
+**`GET /api/board/endless/:period`** — `day`, `week` or `month`, the current period only
+(`worker/src/board.ts`); anything else under the path is a `404`. Behind the flood limit. Served
+through the Cache API (§11), a minute stale at most.
+
+```jsonc
+← { "mode": "endless", "period": "day", "key": "2026-09-29", "resetsAt": 1790726400000,
+    "total": 3208,
+    "entries": [ { "id": "<uuid>", "rank": 1, "nickname": "SwiftVolley42", "streak": 41 },
+                 { "id": "<uuid>", "rank": 2, "nickname": null, "streak": 39 }, … ],   // top 100
+    "previous": { "key": "2026-09-28", "winner": { "nickname": "…", "streak": 44 } | null } }
+```
+
+A retired name is `null` ("Retired name" on the page): the name never leaves the database. No
+answer time, device hash or shadow flag is in it. `previous` is the period before's winner, from
+its midnight snapshot (§13), or from the scores until the snapshot exists; a name retired since the
+snapshot shows as retired. `cache-control: public, max-age=60`.
 
 ### Disconnection
 
 Offline continuation is impossible by construction: the client does not hold the next value and
 nothing can supply it while the network is down. So the behaviour is **retry visibly, then bank
 and end**. Every round up to the drop is already verified by the token chain, so the player keeps
-the streak they earned and it submits when connectivity returns. There is no "unranked offline
-mode" — there is nothing to play offline with.
+the streak they earned: the page shows "Connection lost — your streak of n is saved" and keeps the
+latest token in memory, so the run can still be published (`publishToken()`). On the server the run's Durable
+Object closes it as `disconnected` a few seconds past the deadline, with the same streak. A `409`
+(a spent or out-of-order token) banks the run the same way. There is no "unranked offline mode" —
+there is nothing to play offline with.
 
 ---
 
@@ -821,59 +990,97 @@ and banking exist for.
 
 ## 10. D1 schema
 
+In `migrations/` (wrangler's D1 migrations; `0001_scores.sql` is the first). Applied locally by
+`pnpm db:migrate:local`, which `pnpm dev` runs first, and to production only by the owner, with
+`pnpm db:migrate:remote`. Never edit an applied migration; add the next.
+
 ```sql
 CREATE TABLE scores (
-  id           TEXT PRIMARY KEY,
-  mode         TEXT NOT NULL,          -- 'ranked' | 'endless'
-  game_no      INTEGER NOT NULL,
-  nickname     TEXT NOT NULL,
-  nickname_normalised TEXT NOT NULL,
-  streak       INTEGER NOT NULL,
-  elapsed_ms   INTEGER NOT NULL,       -- tiebreaker only
-  device_hash  TEXT NOT NULL,
-  created_at   INTEGER NOT NULL,
-  name_flagged INTEGER DEFAULT 0,      -- retire a name without deleting the score
-  shadow       INTEGER DEFAULT 0       -- excluded from public board, player still sees it
+  id                  TEXT PRIMARY KEY,               -- uuid
+  mode                TEXT NOT NULL CHECK (mode IN ('endless', 'ranked')),
+  day_key             INTEGER NOT NULL,               -- YYYYMMDD (UTC) the run started
+  game_no             INTEGER,                        -- Daily Ranked's game; NULL in Endless
+  nickname            TEXT NOT NULL,
+  nickname_normalised TEXT NOT NULL,                  -- the moderation skeleton
+  streak              INTEGER NOT NULL CHECK (streak > 0),
+  elapsed_ms          INTEGER NOT NULL,               -- server-measured; tiebreaker only
+  device_hash         TEXT NOT NULL,
+  run_id              TEXT NOT NULL UNIQUE,           -- the run key: a run publishes once
+  created_at          INTEGER NOT NULL,
+  name_flagged        INTEGER NOT NULL DEFAULT 0,     -- "Retired name", score kept
+  shadow              INTEGER NOT NULL DEFAULT 0,     -- hidden from all but its owner
+  shadow_reason       TEXT                            -- the heuristics that fired
 );
-CREATE UNIQUE INDEX idx_ranked_name ON scores (game_no, nickname_normalised)
-  WHERE mode = 'ranked';
-CREATE INDEX idx_board ON scores (mode, game_no, streak DESC, elapsed_ms ASC);
+CREATE INDEX idx_scores_board  ON scores (mode, day_key, streak DESC, elapsed_ms, created_at);
+CREATE INDEX idx_scores_device ON scores (mode, device_hash, day_key);
+CREATE INDEX idx_scores_day    ON scores (day_key);
+CREATE UNIQUE INDEX idx_ranked_name ON scores (game_no, nickname_normalised) WHERE mode = 'ranked';
 
-CREATE TABLE ranked_attempts (
-  device_hash TEXT NOT NULL,
-  game_no     INTEGER NOT NULL,
-  PRIMARY KEY (device_hash, game_no)
-);
+CREATE TABLE ranked_attempts (device_hash TEXT NOT NULL, game_no INTEGER NOT NULL,
+  PRIMARY KEY (device_hash, game_no));
 
-CREATE TABLE error_reports (
-  id TEXT PRIMARY KEY, player_id TEXT, stat TEXT, note TEXT,
-  created_at INTEGER NOT NULL, ua TEXT
+CREATE TABLE board_snapshots (
+  mode TEXT NOT NULL, period TEXT NOT NULL, period_key TEXT NOT NULL,  -- day | week | month
+  taken_at INTEGER NOT NULL, total INTEGER NOT NULL, entries TEXT NOT NULL,  -- JSON top 100
+  PRIMARY KEY (mode, period, period_key)
 );
 ```
 
-`error_reports` predates `/api/feedback` (§8), which emails reports and stores nothing. If reports
-move into D1 later, they follow that endpoint's privacy rules: no user agent, no IP.
+`ranked_attempts` and the unique Ranked nickname index are for Daily Ranked and unused until it
+comes. `error_reports` is gone: `/api/feedback` (§8) emails reports and stores nothing.
 
-`device_hash` is a salted hash of a first-party random id in localStorage plus coarse request
-signals. It is **friction, not identity** — clearing storage resets it. Log how often a device
-requests a second Ranked run; if that number is high, accounts need bringing forward.
+- **Periods are ranges of `day_key`.** A day is one key; an ISO week or a calendar month is a
+  range, `from` to `to` inclusive (`periods.ts` in @bt/core), since day keys sort as dates do
+  across month and year ends. Nothing is stored per week or month.
+- **One entry per device per period.** A board is each device's single best run in the range —
+  highest `streak`, then lower `elapsed_ms`, then earlier `created_at` (then the id) — picked with
+  `ROW_NUMBER() OVER (PARTITION BY device_hash …)` over the unshadowed rows, and ranked in the same
+  order. The total is the number of distinct devices. All of it is `worker/src/scores.ts`.
+- **A player's own standing** (in the submit response) counts their own rows even if shadowed:
+  their best in the range, ranked among every _other_ device's public best, out of those plus
+  themselves. So a shadowed player sees an ordinary rank, and nobody else sees them.
+- **Retention.** The nightly job deletes scores whose run started more than 100 days ago (§13).
+  Snapshots are kept.
+- **Owner tools** (`pnpm db:owner`, run by the owner against the remote database, asking first):
+  `flag-name <id>` and `unflag-name`, `shadow <id>` and `unshadow`, and `find <nickname>` to get
+  the id. `--local` tries them on the local database.
+
+`device_hash` is `HMAC(RUN_SECRET, "device:" + id)` over a random first-party id the browser keeps
+(`bt:device`), cut to 128 bits. The raw id is never stored. It is **friction, not identity** —
+clearing storage resets it. For Ranked, log how often a device requests a second run; if that
+number is high, accounts need bringing forward.
 
 ---
 
-## 11. KV
+## 11. Board caching
 
-`board:ranked:<gameNo>` and `board:endless:<gameNo>` hold the top 100 as prebuilt JSON. Rebuilt on
-write when a submission lands in the top 100, otherwise on a short TTL. D1 stays out of the read
-path entirely — the board is the same for everyone, so it should be served from cache.
+There is **no KV**. The boards are served through the **Workers Cache API** (`caches.default`):
+`GET /api/board/endless/:period` answers from the cache when it holds the period's board, and
+otherwise reads D1 and puts the answer back (`ctx.waitUntil`), with `max-age=60`. The cache key
+includes the period's own key (`…/day?k=2026-09-29`), so a reset is a miss on the new key, never
+an hour of yesterday's board. A cache failure is logged as an `error` and served from D1.
+
+Why not KV: the free plan allows 1,000 writes a day, and writing a board per submission would
+spend that by lunchtime; and nothing needs the board fresher than a minute. The player who has
+just published sees themselves anyway: their own entry and ranks come back in the submit response
+and are kept on their device (`bt:published:…`), and the board page merges them in until the
+cached board catches up. Ranked, later, can use the same cache with its game number in the key.
 
 ---
 
 ## 12. Abuse surface
 
-- **Turnstile** on run start and on submission, and on the feedback forms today.
+- **Turnstile** on Endless's run start (executed on the Start press, `interaction-only`, so most
+  players never see it), on the feedback forms, and on publishing a run. Its script loads on
+  the Endless page once the page is idle, or on the first Start press, never in `<head>` or on
+  another page.
+- **Endless** reuses the round endpoint's three limiters: `RUN_STARTS` on `/api/run/start` before
+  Turnstile is asked, `RUN_ANSWERS` keyed on the verified run key, and `ROUND_FLOOD` on both. No new
+  limits. What stops a replayed answer is the Durable Object's spent-once nonce (§8), not a limit.
 - **Feedback** (`/api/feedback`, §8) is rate-limited, checked before any other work, as well as
   protected by Turnstile. Nothing it receives reaches a response.
-- **Rate limits** per device and per IP: Endless run starts, submissions, error reports.
+- **Rate limits** per IP: Endless run starts, submissions (`RUN_SUBMITS`, sized so a classroom
+  publishing together never meets it; the numbers are in `wrangler.toml`), feedback.
 - **Friendly (`/api/round/next`)** is limited by three Workers Rate Limiting bindings. The tight
   limit is on the **run**, not the IP, because schools, offices, VPNs and mobile carriers put many
   players behind one address and Cloudflare advises against IP-only keys:
@@ -886,8 +1093,8 @@ path entirely — the board is the same for everyone, so it should be served fro
 
   Keying answers on the run only works because run ids are **signed** (§7): a caller can't invent a
   fresh id per request, and a forged or tampered id is refused with `400` before it is counted
-  against any run. A challenge replay has its own id (§7), so a link shared to a group chat doesn't
-  put everyone who opens it on one run's allowance; each replay is a run start like any other. Each new run costs a start, counted per IP. IPv6 is cut to its /64 because a
+  against any run. A challenge link starts an ordinary fresh run (§7), so a link shared to a group chat doesn't
+  put everyone who opens it on one run's allowance; each is a run start like any other. Each new run costs a start, counted per IP. IPv6 is cut to its /64 because a
   subscriber is usually handed a whole /64 and could otherwise rotate through it.
 
   A fast honest player answers about once every two seconds — the quickest round the game can show
@@ -910,20 +1117,46 @@ path entirely — the board is the same for everyone, so it should be served fro
   scraper at about 60 values per challenge without adding friction for players. Friendly already
   has the single start request to hang it on.
 
-- **Nicknames:** default to a generated name (adjective + football noun + number); most people keep
-  the suggestion, which shrinks the moderation surface to the minority who type their own.
-  Validation normalises first — strip zero-width characters, fold unicode homoglyphs to ASCII,
-  collapse repeated characters — _then_ checks the blocklist. A raw blocklist is defeated by
-  leetspeak in a day.
+- **Nicknames** (`nickname.ts` in @bt/core, `worker/src/moderation.ts`): default to a generated
+  name (adjective + football noun + a 2–3 digit number, skipping hate codes and the crude ones);
+  most people keep the suggestion, which shrinks the moderation surface to the minority who type
+  their own. A name is 3–20 characters once cleaned (NFKC, trimmed, spaces collapsed): Latin
+  letters, accented ones included, digits, space and `_ - .`. **Latin only**, because moderation
+  can only read what its blocklist can; another script gets the same "try another name" as a
+  blocked name.
+  Moderation reads the name's **skeleton** — zero-width and direction characters stripped, NFKC,
+  homoglyphs from other scripts and leetspeak folded to a–z, accents dropped — as runs of letters,
+  so `fuuuck` matches `fuck` while a term spelt with a double letter still needs one. The whole
+  name and each word (split at separators and camel case, with and without the digits at its
+  ends) are checked. **Anywhere** terms (long, unambiguous) match inside the name; **word** terms
+  (short ones, and impersonation such as `admin`, `moderator` and `biggerthan`) only as a whole
+  word or the whole name, so Scunthorpe and badminton pass; a few innocent words holding an
+  anywhere term are allowed through. A raw blocklist is defeated by leetspeak in a day.
+- **The blocklist is not in the repo as text.** The repo is public, so `blocklist-data.ts` holds
+  each term only as a salted 52-bit hash of its letters, with its tier, length and the repeats it
+  needs; anyone can test a guess against it, nobody can read it. The plain list is
+  `worker/blocklist.local.txt`, gitignored and kept privately by the owner; `pnpm blocklist:build`
+  regenerates the data from it, and `--check <name>` tries a name. A test runs every name the
+  generator can make through the shipped list.
 - **Nickname uniqueness is per game, Ranked only.** A unique index on
   `(mode, game_no, nickname_normalised)` where `mode = 'ranked'`. A taken name returns `409` and the
   UI asks for another. Uniqueness resets at rollover, so no name is ever owned and no account system
   is implied. Endless has no uniqueness constraint.
-- **Endless submissions are unlimited but rate-limited** — Endless keeps the best single submitted
-  run per device per game, so honest players submit rarely. The cap should be one abusers hit and
-  normal players never notice; set the numbers when the endpoint is built.
-- **Shadow-flagging, not blocking.** A flagged score submits and is quietly excluded from the
-  public board. Visible rejection just tells a cheater to iterate.
+- **Endless submissions are unlimited but rate-limited** — the boards keep each device's best
+  run per period, so honest players publish rarely. Each publish also needs a real finished run
+  (§8) and a Turnstile pass.
+- **Shadow-flagging, not blocking** (`worker/src/shadow.ts`). A flagged score is stored with
+  `shadow = 1` and the heuristics that fired: its player sees their entry and rank as normal, and
+  it is left out of everyone else's boards and every total. Visible rejection just tells a cheater
+  to iterate. Three heuristics over the answer times the run's Durable Object measured: several
+  right answers faster than a person could think, think times that barely vary, and perfect
+  accuracy deep into the knife-edge bands at fast times. **Think time** is the measured time less
+  the animation every honest client plays before a question from round two on (the verdict, the
+  gap to the next pair and the short hold: 4.28 s, even with reduced motion); round one, whose
+  title card can be skipped, and
+  timeouts are left out. The thresholds are named constants in the code and are deliberately kept
+  out of these docs. Each flag is a `score_shadowed` warning (§19); `pnpm db:owner shadow` and
+  `unshadow` set it by hand.
 
 ### Telemetry signals
 
@@ -932,19 +1165,37 @@ path entirely — the board is the same for everyone, so it should be served fro
 stat, band, correct, streak, country; no IP, user agent or hidden values. §19 has the schema and
 the queries. A burst of `rate_limited` warnings from one route is what a scraper looks like there.
 
-**Phase 5 note — bot timing.** Bot detection is **behavioural, not structural**: the stats are
-public facts, so a script with its own copy of the data can always answer correctly. What it cannot
-easily fake is human timing variance — a run of sub-400ms answers at the knife-edge band is not a
-person, and perfect accuracy at the late bands is a second signal. Using server-measured answer
-time this way needs a per-round timestamp that M5c does not record; add it with the Phase 5
-anti-cheat work, under the same no-personal-data rule.
+**Bot timing.** Bot detection is **behavioural, not structural**: the stats are public facts, so a
+script with its own copy of the data can always answer correctly. What it cannot easily fake is
+human timing variance — a run of fast answers at the knife-edge band is not a person, and perfect
+accuracy at the late bands is a second signal. Since Phase 5 every Endless answer records its
+**server-measured time**, token issue to guess received (`double6`, §19; `pnpm stats clock`), and
+each run's Durable Object keeps them per round, under the same no-personal-data rule. The
+heuristics run on every publish (shadow-flagging, above).
 
 ---
 
 ## 13. Cron triggers
 
-- **00:00 UTC** — roll over `gameNo`, snapshot the closing boards, warm the new day's KV keys.
-- **Hourly** — prune `ranked_attempts` older than a few days; recompute weekly aggregates.
+Two triggers in `wrangler.toml`, `0 0 * * *` and `30 1 * * *`, both running the Worker's
+`scheduled` handler (`worker/src/cron.ts`, `runNightly`):
+
+- **Snapshot** the periods that closed at the most recent 00:00 UTC — the day, and on a Monday the
+  ISO week, and on the 1st the month — as their public top 100 and total, into `board_snapshots`.
+  That is where "Yesterday's winner", "Last week's winner" and "Last month's winner" come from. A
+  snapshot replaces an earlier one of the same period, so the **01:30 run** takes it again,
+  catching runs started before midnight and published after it (a run can last most of an hour,
+  and publishing is open for 30 minutes after it ends).
+- **Prune** scores whose run started more than 100 days ago.
+
+Each run logs one `nightly` line (§19); a D1 failure logs an `error` and throws, so Cloudflare's
+cron history shows it failed. Daily Ranked will add its rollover and `ranked_attempts` pruning.
+
+**Locally:** `pnpm dev` runs `wrangler dev --test-scheduled`; fire the job with
+`curl "http://localhost:8787/cdn-cgi/handler/scheduled?cron=0+0+*+*+*&time=<ms>"`, where `time`
+(ms since the epoch) fakes the moment it runs. The older `/__scheduled` route is caught by the
+static site's 404 here. To try a rollover, seed around the last day of the period
+(`pnpm db:seed:local --date <day>`) and fire the job at the next midnight.
 
 ---
 
@@ -954,13 +1205,15 @@ anti-cheat work, under the same no-personal-data rule.
 and the board pages. **Svelte** hydrates one island: the game, on its own page. The URL tree is in `DESIGN.md`
 §17; the paths live in `apps/web/src/lib/paths.ts`.
 
-| Path                                         | Page                                                | JS         |
-| -------------------------------------------- | --------------------------------------------------- | ---------- |
-| `/`                                          | homepage: brand, one line, a card per game          | none       |
-| `/football-higher-or-lower`                  | the football hub: general intro, a card per deck    | none       |
-| `/football-higher-or-lower/legends`          | the Legends deck: breadcrumb, intro, the mode cards | none       |
-| `/football-higher-or-lower/legends/friendly` | the game (Friendly, Legends deck)                   | the island |
-| `/about`, `/credits`, `/privacy`             | the stats and how to play; credits; privacy         | none       |
+| Path                                                    | Page                                                | JS         |
+| ------------------------------------------------------- | --------------------------------------------------- | ---------- |
+| `/`                                                     | homepage: brand, one line, a card per game          | none       |
+| `/football-higher-or-lower`                             | the football hub: general intro, a card per deck    | none       |
+| `/football-higher-or-lower/legends`                     | the Legends deck: breadcrumb, intro, the mode cards | none       |
+| `/football-higher-or-lower/legends/friendly`            | the game (Friendly, Legends deck)                   | the island |
+| `/football-higher-or-lower/legends/endless`             | the game (Endless)                                  | the island |
+| `/football-higher-or-lower/legends/endless/leaderboard` | Endless's boards and this device's runs             | an island  |
+| `/about`, `/credits`, `/privacy`                        | the stats and how to play; credits; privacy         | none       |
 
 - The game island is `client:load`, not `client:visible` — it is above the fold and the first
   interaction must not wait on an intersection observer.
@@ -997,6 +1250,57 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   edge, which gains a gold ring (`--shadow-plaque-final`). Both tags drop in (`--dur-pop`; none with
   reduced motion) and are `aria-hidden`: the live region and the progressbar's value text say
   "Final question — question 20 of 20".
+- **Endless on the game page** (`mode="endless"`, the same island and layout, driven by per-mode
+  settings in `@bt/core`):
+  - **API**: `createEndlessApi` in `game/api.ts` talks to `/api/run/start` and `/api/round/guess`
+    and holds the progress token in memory only (`latestToken()`), and a finished run's signed
+    result (`resultToken()`); `publishToken()` is whichever proves the run to the boards. A
+    Turnstile refusal is a `verification` failure: the
+    start panel says "We couldn't check your connection. Press Start to try again."
+  - **Turnstile** (`game/turnstile.ts`): `loadWhenIdle` loads the script once the page is idle
+    (`requestIdleCallback`, else the `load` event); `createHumanCheck` renders the widget into
+    the start panel on first use, `appearance: "interaction-only"` and `execution: "execute"`,
+    and executes it on each Start press (reset first), with a 30 s time-out.
+  - **The clock**: the machine sets `clock` (`{ startedAt, limitMs }`) as a question becomes
+    answerable — the `dealt` or `spun` event carries the time — and clears it at the guess; the
+    controller's one timer in `awaiting` fires `timeout`, which goes to the server as a guess.
+    `Plaque.svelte` draws it (`clockView` in `game/view.ts`): a bar along its bottom edge
+    (`--clock-*`), urgent from `URGENT_MS` (3 s) with a stopwatch tag under the plaque; stepped a
+    second at a time with reduced motion; a polite live region says "5 seconds left" once.
+  - **No track**: the streak title so far sits in a chip at the top of the pitch (`titleChip`,
+    `--chip-*`), giving way to the score badge, which shows "n" and each new title.
+  - **Start panel**: subtitle "ENDLESS", the clock, a link to Friendly and one to the
+    leaderboard.
+  - **Game-over panel**: the score, the title, the stat and the two players that ended the run
+    (with "Out of time." for a timeout), the best, Share and Save/Share image, **Challenge a
+    friend** ("Beat n" and the link, `challengeText`), **Publish to leaderboard**, and Play again.
+    A dropped connection reads "Connection lost — your streak of n is saved". The local best is
+    `bt:best:legends:endless`, saved as the streak grows.
+  - **Publishing** (`PublishModal.svelte`, `game/publish.ts`): a run that scored offers "Publish to
+    leaderboard", a row of its own under the shares. It opens a dialog (the feedback form's
+    pattern and focus handling): the nickname, prefilled with a generated one and a button for
+    another; the line "We store your nickname and your score, and nothing else about you. There's
+    no account."; Turnstile (`action: "submit"`, a fresh token per try); Publish. Refusals are
+    calm and say what to do: another name, too late (30 minutes), already published, try again.
+    Once published it shows the three ranks and a link to the board, and the panel's row becomes
+    the day's rank and a "Leaderboard" link.
+  - **This device** (`game/device.ts`): `bt:device`, the random id sent with a publish;
+    `bt:runs:legends:endless`, the 10 best runs with their date and score, recorded at every end
+    (the controller's `onOver`), published or not; and `bt:published:legends:endless`, the
+    standings from the last publish per period, for the board page. All wrapped: without storage
+    they last the visit.
+- **The leaderboard page** (`/football-higher-or-lower/legends/endless/leaderboard`, a static page
+  with the `Leaderboard.svelte` island): tabs for Today, This week and This month (the ARIA tabs
+  pattern: one tab stop, arrows, Home and End), each the top 100 in an accessible table (caption,
+  `th scope`), "Retired name" for a retired one, the player's own row highlighted and marked
+  "You", the total, "Resets in 5 hours 12 minutes" and the previous period's winner; the framing
+  line "Personal bests — everyone gets a different run, so luck plays a part"; links to play; and
+  "On this device", the 10 best runs. The player's own entry comes from their device: if the
+  cached board doesn't have it yet (or it's shadowed), it is put in at its rank, or shown as "You:
+  412th of 3,209" under the table (`boardView` in `game/leaderboard.ts`). Loading and a failure
+  are calm, with a retry. The Legends page's Endless card and the Endless start panel link here.
+  - **Friendly** hides challenges entirely; an old `?challenge=` link there is `retired`
+    (`readChallenge`), never sent, and noted on the start panel.
 - **Site navigation** is in the title bar on every page (`lib/nav.ts`): the brand links to `/`,
   then Play (`/football-higher-or-lower/legends`), How to play (`/about#how-to-play`) and About.
   The current page's link carries `aria-current="page"`; a link to a section never does. Play
@@ -1040,7 +1344,10 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   following the URL down from the homepage on the football hub, the Legends page and the game
   (the Legends page's visible breadcrumb is that trail without Home, by construction), and one
   `VideoGame` entity (free, single player, a quiz in the browser) on the Legends page and the
-  game. The 404 has no canonical and is `noindex`. The game page's one `<h1>` is the start
+  game. The 404 has no canonical and is `noindex`. The Endless page is a game page like
+  Friendly's, with the default preview image; the leaderboard page has its own title and
+  description, the default image and a `BreadcrumbList` (Home › Football › Legends › Endless ›
+  Leaderboard), which it also shows. The game page's one `<h1>` is the start
   panel's "Football Legends"; "Bigger Than Game" above it is a plain brand line, looking exactly
   as before. During a run the panel goes and a visually hidden `<h1>` takes its place, so there
   is never more than one. Link previews are 1200 × 630 PNGs under
@@ -1311,10 +1618,32 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   deck, secret and clock), and routing is tested through `createApp` with mocked bindings. The
   **response-shape test** walks many complete runs and asserts no response carries a hidden value or
   any part of a `Player`, with `scanForLeakedValues` as a backstop.
-- **Worker, Phase 5:** Miniflare/workerd integration tests covering token forgery, replay, timer
-  expiry and the ranked one-attempt rule, and the determinism test run under workerd.
+- **Worker, Phase 5:** in Node, the Endless handlers against a memory ledger per run
+  (`run.test.ts`, `run-ledger.test.ts`, `token.test.ts`, `endless-app.test.ts`): token forgery
+  (payload or signature edited, another key, another run's signature), tampered round, mode, stat
+  and anchor, replay (`409`, run void), the latest-step resend, older and out-of-order tokens, the
+  deadline (on it, just past it, question one's 15 s, the spin allowance), Turnstile's fail and
+  error, Friendly's refusals, challenge runs, and the response-shape test over
+  many complete Endless runs, tokens decoded.
+- **Worker, Endless part 2:** in Node, publishing (`submit.test.ts`: forged, spent, mismatched and
+  already-published tokens, the 30-minute window, a streak the Durable Object doesn't agree with,
+  a streak of 0, a never-started run with a genuine signature, a challenge run publishing, a banked
+  run, Turnstile, moderation, D1 failing, the unique backstop), the board SQL over **real SQLite**
+  (`scores.test.ts`, through `__tests__/d1-sqlite.ts`: Node's `node:sqlite` running the real
+  migrations — one best entry per device per period, the tiebreak, shadowed scores and retired
+  names, weeks and months at the edges), the cache (`board.test.ts`: a hit never reads D1), the
+  cron across a midnight, a Monday, a month's end and ISO week 53 (`cron.test.ts`), the
+  heuristics, moderation (with every name the generator can make), and the routes
+  (`boards-app.test.ts`). Under workerd, one whole run is published into the harness's local D1,
+  read back from the board and snapshotted by the scheduled handler. Under **workerd** (`workerd.test.ts`, wrangler's
+  `createTestHarness`, on the test Worker `worker/test/entry.ts`): the real SQLite-backed
+  `RunDO` spending a nonce once, the resend rule, the alarm closing a silent run and refusing its
+  late guess, a whole run over HTTP, and an Endless seed dealing the same run as in Node. The
+  ranked one-attempt rule comes with Ranked.
 - **Latency:** test the reveal under artificial delay (0ms, 200ms, 800ms, 3s). The count-up must
   hold and settle rather than snap or freeze, and no image fetch may occur inside the reveal window.
+  In Endless the question's clock must not run while the answer is in flight, and the next
+  question's must start only once it can be answered (`apps/web/src/game/__tests__/endless.test.ts`).
 
 ---
 
@@ -1323,7 +1652,9 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
 Static asset requests are unbilled. At 10,000 plays a day averaging a dozen questions you are
 around 120k Worker requests daily plus the same in DO messages — one of each per question, since
 the answer and the next round's display payload travel in a single response — just past the free tier and well
-inside the $5/month plan's included requests. D1 and KV usage at this scale is negligible. R2
+inside the $5/month plan's included requests. D1 usage at this scale is negligible: a
+publish is a handful of reads and one write, and a board is read from D1 at most once a minute per
+period per Cloudflare location (§11). R2
 storage for ~300 originals is a few hundred MB, inside the free 10GB, and R2 egress is free. Image
 Transformations use ~600 of the free 5,000 unique transformations a month. Verify
 current numbers against Cloudflare's pricing page before launch.
@@ -1348,8 +1679,8 @@ That gets feedback on feel, comprehension and the difficulty ramp while the long
 hand-entering the deck — proceeds in parallel. `simulation.md` remains the primary instrument for
 ramp tuning; live Friendly play is the check on it.
 
-Ranked and Endless ship together once the round protocol, Durable Object, D1 schema and moderation
-are complete.
+Endless ships first, with its boards, once the round protocol, Durable Object, D1 schema and
+moderation are complete (Phase 6A); Daily Ranked follows on the same machinery.
 
 ---
 
@@ -1358,7 +1689,8 @@ are complete.
 - **Accounts.** The real fix for the one-attempt rule and for cross-device history.
 - **Multiplayer.** A Durable Object per lobby is the canonical pattern when it arrives; the DO
   namespace introduced here is a useful precedent.
-- **Weekly and all-time boards**, Ranked only.
+- **Weekly and all-time boards for Ranked.** Endless has today, this week and this month
+  (DESIGN.md §13, §14); no all-time board.
 
 ---
 
@@ -1370,8 +1702,8 @@ response or its timing.
 - **Workers Logs** — one structured line for every request the API refuses or fails, one for each
   run's start and end, and one for each feedback message accepted (`worker/src/log.ts`). Free
   plan: 200,000 events a day, kept 3 days.
-- **Workers Analytics Engine** — one data point for each run start, each judged answer and each
-  run end (`worker/src/analytics.ts`), in the dataset `biggerthan_game_events` through the
+- **Workers Analytics Engine** — one data point for each run start, each judged answer, each
+  run end, each page left mid-run and each attempt to publish a run (`worker/src/analytics.ts`), in the dataset `biggerthan_game_events` through the
   `GAME_EVENTS` binding. The dataset is created by the first write after a deploy and keeps three
   months. Queried with SQL through Cloudflare's API: `pnpm stats` (CLAUDE.md) runs the saved
   queries below.
@@ -1416,25 +1748,31 @@ indexes every field, nested ones included (a string would only be searchable as 
 has `level`, `message`, `event` and `route`; most have a `reason`. `message` is what the dashboard
 lists as the line:
 
-- `run_start`, `run_end` or `run_leave` for the run lines, exactly;
+- `run_start`, `run_end`, `run_leave` or `run_submit` for the run lines, exactly;
+- `nightly` for the cron's line;
 - `Legend suggested`, `Problem reported` or `Card error reported` for an accepted feedback message;
 - `<event> · <reason>` for a refusal or failure, e.g. `bad_request · invalid_json`, or the event
   alone when there's no reason.
 
-| Level   | `event`               | When                                           | `reason`                                                                                        |
-| ------- | --------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `info`  | `run_start`           | a run starts (fresh or replay)                 | —                                                                                               |
-| `info`  | `run_end`             | an answer ends a run                           | the end: `wrong`, `won` or `deck-exhausted`                                                     |
-| `info`  | `run_leave`           | the game page is hidden or closed mid-run      | —                                                                                               |
-| `info`  | `feedback`            | a feedback message is accepted                 | —                                                                                               |
-| `warn`  | `bad_request`         | a 400 from either endpoint                     | the response's `detail`                                                                         |
-| `warn`  | `rate_limited`        | a 429                                          | the limit: `flood`, `starts`, `answers` or `feedback`                                           |
-| `warn`  | `method_not_allowed`  | anything but POST                              | —                                                                                               |
-| `warn`  | `verification_failed` | Turnstile said no (403)                        | —                                                                                               |
-| `error` | `internal`            | a 500                                          | `not_configured` (`cause` names the missing secrets), or the exception's name, with its `cause` |
-| `error` | `unavailable`         | 503, the deck can't deal; 502, Siteverify down | the 503's `detail`, or `turnstile`                                                              |
-| `error` | `send_failed`         | a feedback email couldn't be sent              | the send error's code, e.g. `E_SENDER_NOT_VERIFIED`                                             |
-| `error` | `analytics_failed`    | a data point write threw — once per isolate    | the exception's name, with its `cause`                                                          |
+| Level   | `event`               | When                                                                    | `reason`                                                                                        |
+| ------- | --------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `info`  | `run_start`           | a run starts (fresh or challenge)                                       | —                                                                                               |
+| `info`  | `run_end`             | an answer ends a run, or a silent one closes                            | the end: `wrong`, `won`, `deck-exhausted`, `timeout` or `disconnected`                          |
+| `info`  | `run_leave`           | the game page is hidden or closed mid-run                               | —                                                                                               |
+| `info`  | `feedback`            | a feedback message is accepted                                          | —                                                                                               |
+| `info`  | `run_submit`          | a run is published to the boards                                        | —                                                                                               |
+| `info`  | `nightly`             | the cron's snapshot and prune (§13)                                     | —                                                                                               |
+| `warn`  | `score_shadowed`      | a published run trips a timing heuristic (§12)                          | the heuristics, e.g. `fast,flat`                                                                |
+| `warn`  | `nickname_rejected`   | a 422: the nickname didn't pass                                         | `nickname_blocked` or `nickname_script`                                                         |
+| `warn`  | `bad_request`         | a 400 from either endpoint                                              | the response's `detail`                                                                         |
+| `warn`  | `rate_limited`        | a 429                                                                   | the limit: `flood`, `starts`, `answers`, `feedback` or `submits`                                |
+| `warn`  | `method_not_allowed`  | anything but POST                                                       | —                                                                                               |
+| `warn`  | `verification_failed` | Turnstile said no (403)                                                 | —                                                                                               |
+| `warn`  | `conflict`            | an Endless token spent, out of order, run over; a publish refused       | the refusal, e.g. `spent`, `void`, `mismatch` or `expired` (§8)                                 |
+| `error` | `internal`            | a 500                                                                   | `not_configured` (`cause` names the missing secrets), or the exception's name, with its `cause` |
+| `error` | `unavailable`         | a 503 or 502: the deck, a run's DO, Siteverify, D1, the cache, the cron | the 503's `detail`, or `run_store`, `turnstile`, `scores`, `board_cache`, `cron`                |
+| `error` | `send_failed`         | a feedback email couldn't be sent                                       | the send error's code, e.g. `E_SENDER_NOT_VERIFIED`                                             |
+| `error` | `analytics_failed`    | a data point write threw — once per isolate                             | the exception's name, with its `cause`                                                          |
 
 Refusals and failures also carry `status`. Nothing else is logged: no successful answer (the
 dataset has those), and no 404 under `/api/`, which scanners probe all day.
@@ -1454,12 +1792,14 @@ dataset has those), and no 404 under `/api/`, which scanners probe all day.
     { "role": "challenger", "id": "…", "name": "…", "value": 91, "display": "91" } ] }
 ```
 
-`run` is the run key, so a start and its end can be paired; for a replay it is the replay's own
-key, `YYYYMMDD-<uuid>~<uuid>`. `run_end` adds the round that ended the run: the miss on `wrong`,
-the final question on `won`, the last answer on `deck-exhausted` (every end follows an answer, so
-there is always one). That's `endStat` (the stat's id and label), `guess` (`higher` or `lower`)
-and `players`, each with the figure its card showed (`display`, plus `qualifier` for a stat that
-has one) and its raw `value`.
+`run` is the run key, so a start and its end can be paired. Endless's lines carry `"mode":
+"endless"` and come from `/api/run/start` and `/api/round/guess`. `run_end` adds the round that
+ended the run: the miss on `wrong`, the timed-out question on `timeout` (`guess` is then
+`timeout`), the final question on `won`, the last answer on `deck-exhausted`. That's `endStat`
+(the stat's id and label), `guess` and `players`, each with the figure its card showed
+(`display`, plus `qualifier` for a stat that has one) and its raw `value`. An Endless run closed
+as `disconnected` is logged by its Durable Object's alarm (`"route": "run-do"`), with the open
+round as the player saw it: the anchor's figure, and the challenger's name only.
 
 **The leave line**, when the game page reports being hidden (`visibilitychange`) or closed
 (`pagehide`) mid-run: after Start, before the run ends, at most once per trigger per run
@@ -1515,6 +1855,31 @@ email then sends. A failed send still logs its `send_failed` line after it.
 (§8), and kept as plain text inside the JSON. For a correction it adds the round as the form
 showed it, with the run key and never the run id. A note left blank is left out.
 
+**The publish line**, one per run published: the run key, the new entry's id, the score, where it
+stands today, this week and this month as its owner sees it, and whether it was shadowed. Never the
+nickname, and never the device.
+
+```jsonc
+{
+  "level": "info",
+  "message": "run_submit",
+  "event": "run_submit",
+  "route": "/api/run/submit",
+  "mode": "endless",
+  "run": "20260929-<uuid>",
+  "runKind": "fresh",
+  "deckVersion": "legends-107-e68a4e1b",
+  "country": "GB",
+  "score": 23,
+  "shadowed": "no",
+  "id": "<uuid>",
+  "ranks": { "day": 412, "week": 1030, "month": 2114 },
+}
+```
+
+A shadowed one also has a `score_shadowed` warning with the heuristics that fired, the run key,
+the entry id and the score, so the owner can look at it (`pnpm db:owner`).
+
 **Filtering in the dashboard** (Workers & Pages → biggerthangame → Observability → Logs; switch on
 live to stream):
 
@@ -1522,6 +1887,8 @@ live to stream):
 - where players leave: `message` equals `run_leave`; add `phase`, `round` or `trigger`
 - where runs end: `endStat.id` (or `endStat.label`) equals a stat; `players.name` finds a player
 - feedback: `event` equals `feedback`, with `kind` equals `suggest`, `problem` or `correction`
+- publishing: `message` equals `run_submit`; shadow flags: `event` equals `score_shadowed`;
+  the nightly job: `message` equals `nightly`
 - failures: `level` equals `error`
 
 `npx wrangler tail biggerthangame --format pretty --search run_end` does the same from a terminal,
@@ -1536,35 +1903,51 @@ happening, sample the `rate_limited` lines rather than dropping them.
 One layout for every event, so a column means the same thing everywhere. Blobs are strings,
 doubles numbers; unused columns are empty.
 
-| Column    | `start`      | `answer`                          | `end`                                        | `leave`                                       |
-| --------- | ------------ | --------------------------------- | -------------------------------------------- | --------------------------------------------- |
-| `index1`  | run key      | run key                           | run key                                      | run key                                       |
-| `blob1`   | `start`      | `answer`                          | `end`                                        | `leave`                                       |
-| `blob2`   | mode         | mode                              | mode                                         | mode                                          |
-| `blob3`   | run kind     | run kind                          | run kind                                     | run kind                                      |
-| `blob4`   | deck version | deck version                      | deck version                                 | deck version                                  |
-| `blob5`   | country      | country                           | country                                      | country                                       |
-| `blob6`   |              | stat id (`caps`)                  | end reason: `wrong`, `won`, `deck-exhausted` | phase: `intro`, `question`, `reveal`, `other` |
-| `blob7`   |              | tier: `basic`, `uncommon`, `rare` |                                              | trigger: `hidden`, `pagehide`                 |
-| `blob8`   |              | band: `0.45+`, `0.30-0.80`, …     |                                              | stat id; empty on the intro                   |
-| `blob9`   |              | final question: `1` or `0`        |                                              |                                               |
-| `double1` |              | round, 1–20                       | final score                                  | round on screen, 0–20 (0 the intro)           |
-| `double2` |              | correct: 1 or 0                   |                                              |                                               |
-| `double3` |              | streak after the answer           |                                              |                                               |
-| `double4` |              | relaxation step, 0–3              |                                              |                                               |
-| `double5` |              | rank distance of the pair, 0–1    |                                              |                                               |
+| Column    | `start`      | `answer`                          | `end`              | `leave`                                       | `submit`                 |
+| --------- | ------------ | --------------------------------- | ------------------ | --------------------------------------------- | ------------------------ |
+| `index1`  | run key      | run key                           | run key            | run key                                       | run key                  |
+| `blob1`   | `start`      | `answer`                          | `end`              | `leave`                                       | `submit`                 |
+| `blob2`   | mode         | mode                              | mode               | mode                                          | mode                     |
+| `blob3`   | run kind     | run kind                          | run kind           | run kind                                      | run kind                 |
+| `blob4`   | deck version | deck version                      | deck version       | deck version                                  | deck version             |
+| `blob5`   | country      | country                           | country            | country                                       | country                  |
+| `blob6`   |              | stat id (`caps`)                  | end reason (below) | phase: `intro`, `question`, `reveal`, `other` | published: `1` or `0`    |
+| `blob7`   |              | tier: `basic`, `uncommon`, `rare` |                    | trigger: `hidden`, `pagehide`                 | shadowed: `1` or `0`     |
+| `blob8`   |              | band: `0.45+`, `0.30-0.80`, …     |                    | stat id; empty on the intro                   | day rank bucket, `1-10`… |
+| `blob9`   |              | final question: `1` or `0`        |                    |                                               | refusal, e.g. `expired`  |
+| `double1` |              | round, 1–150                      | final score        | round on screen (0 the intro)                 | the run's score          |
+| `double2` |              | correct: 1 or 0                   |                    |                                               |                          |
+| `double3` |              | streak after the answer           |                    |                                               |                          |
+| `double4` |              | relaxation step, 0–3              |                    |                                               |                          |
+| `double5` |              | rank distance of the pair, 0–1    |                    |                                               |                          |
+| `double6` |              | answer ms (Endless; absent → 0)   |                    |                                               |                          |
 
 - **When.** `start` once a run's first round is dealt. `answer` once the server has judged the
-  guess and built the response — a request that fails after the judgement records nothing. `end`
-  straight after the answer that ends the run. A run with a start and no end was **abandoned**.
+  guess and built the response — a request that fails after the judgement records nothing, and an
+  Endless resend answered from the ledger (§8) records nothing again. `end` straight after the
+  answer that ends the run, or, for an Endless run that went silent, from its Durable Object's
+  alarm. A run with a start and no end was **abandoned**.
   `leave` when the game page reports being hidden or closed mid-run (`POST /api/run/leave`, §8),
   at most once per trigger per run; it says where an abandoned run stopped, and that a run which
-  carried on had been put down for a while.
-- **Run key** (`index1`): the run id's body, `YYYYMMDD-<uuid>` or a replay's
-  `YYYYMMDD-<uuid>~<uuid>`. The longest is a replay's, 82 bytes, inside Analytics Engine's 96; the
-  run id grammar (§7) allows nothing longer, and a test holds it.
-- **Run kind**: `fresh`, or `replay` for a run started from a challenge link (§7). A link that
-  fails its check starts a fresh run, and is recorded as one.
+  carried on had been put down for a while. `submit` for each attempt to publish a run whose
+  token checked out (`POST /api/run/submit`, §8): published, with the day rank's bucket (never
+  the exact rank) and whether it was shadowed, or refused, with why. Never the nickname.
+- **Run key** (`index1`): the run id's body, `YYYYMMDD-<uuid>` (45 bytes); older data has
+  Friendly's retired replay keys, `YYYYMMDD-<uuid>~<uuid>` (82). Both fit Analytics Engine's 96;
+  the run id grammar (§7) allows nothing longer, and a test holds it.
+- **Mode**: `friendly` or `endless`.
+- **Run kind**: `fresh`; `challenge` for an Endless run started from a challenge link that checked
+  out (fresh rounds, against the link's score, §7); `replay` for Friendly's challenge replays
+  before challenges moved to Endless. A link that fails its check starts a fresh run, recorded as
+  one. An Endless run's leave beacon records `fresh` whatever its kind; join on the run key.
+- **End reason**: `wrong`, `won` (Friendly), `deck-exhausted`, and in Endless `timeout` (the
+  answer came after the deadline, or the client's clock ran out) and `disconnected` (no answer
+  came: the run's Durable Object closed it a little past the deadline, keeping the streak, and
+  wrote its `end` itself).
+- **Answer ms** (`double6`, Endless): the server's own measure, from the token's issue to the guess
+  reaching the Worker — the animation before the question, the thinking and the network. Never the
+  client's. Friendly writes no `double6`, which reads as 0. The input to the timing heuristics
+  (§12).
 - **Deck version**: `deckVersion` (§6), e.g. `legends-107-e68a4e1b`.
 - **Streak after the answer**: the run's score once this answer is counted — the round if right,
   one less if wrong. One life, so a wrong answer's streak is also the run's final score.
@@ -1579,8 +1962,8 @@ doubles numbers; unused columns are empty.
 
 **What the numbers can and can't say.** Friendly is stateless (§7): a resent answer is judged and
 recorded again, and a technical caller can answer rounds out of order or without ever starting.
-So these are counts of answers the server judged, not of verified runs — near enough for tuning,
-not for a leaderboard. A run that started before the query's window but ended inside it counts as
+So Friendly's are counts of answers the server judged, not of verified runs — near enough for
+tuning, not for a leaderboard. Endless's are verified: each answer spent its token once. A run that started before the query's window but ended inside it counts as
 an end without a start, so `abandoned` can dip below zero on a short window. Local `wrangler dev`
 simulates the binding and writes nothing to the real dataset.
 
@@ -1647,6 +2030,43 @@ WHERE blob1 = 'end'
   AND timestamp > NOW() - INTERVAL '7' DAY
 GROUP BY mode, score
 ORDER BY mode, score
+```
+
+**How runs end** (`endings`): finished runs per mode and end reason — in Endless also `timeout`
+(out of time) and `disconnected` (no answer came; the ledger closed the run with its streak).
+
+```sql
+SELECT
+  blob2 AS mode,
+  blob6 AS reason,
+  SUM(_sample_interval) AS runs,
+  round(SUM(_sample_interval * double1) / SUM(_sample_interval), 1) AS mean_score
+FROM biggerthan_game_events
+WHERE blob1 = 'end'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY mode, reason
+ORDER BY mode, runs DESC
+```
+
+**Endless answer times** (`clock`): the server-measured time from a question's token to its
+answer (`double6`), per scheduled band — the animation before the question plus the thinking.
+The raw material of the timing heuristics (§12): very fast, right answers late in a run are what
+a bot looks like.
+
+```sql
+SELECT
+  blob8 AS band,
+  SUM(_sample_interval) AS answers,
+  quantileExactWeighted(0.1)(double6, _sample_interval) AS p10_ms,
+  quantileExactWeighted(0.5)(double6, _sample_interval) AS median_ms,
+  quantileExactWeighted(0.9)(double6, _sample_interval) AS p90_ms,
+  round(100 * SUM(_sample_interval * double2) / SUM(_sample_interval), 1) AS correct_pct
+FROM biggerthan_game_events
+WHERE blob1 = 'answer'
+  AND blob2 = 'endless'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY band
+ORDER BY band DESC
 ```
 
 **Friendly win rate and the final question** (`friendly`): win rate of finished runs, the share of
@@ -1759,7 +2179,8 @@ ORDER BY mode, round, phase
 ```
 
 **Answers in one run** (`run`, as `pnpm stats run <runKey>`; not part of `all`): every answer the
-server judged for one run key, oldest first, and `gap_s`, the seconds since the answer before. The
+server judged for one run key, oldest first, with `answer_ms` (Endless's server-measured answer
+time; 0 in Friendly), and `gap_s`, the seconds since the answer before. The
 script prints a summary under it: how many answers, any round answered more than once (Friendly is
 stateless, so a resent answer is judged again, §7), the fastest gap between two answers and the
 time from the first answer to the last. The key is the run id before the "."; a whole run id works
@@ -1772,7 +2193,8 @@ SELECT
   double1 AS round,
   blob6 AS stat,
   double2 AS correct,
-  double3 AS streak
+  double3 AS streak,
+  double6 AS answer_ms
 FROM biggerthan_game_events
 WHERE blob1 = 'answer'
   AND index1 = '20260928-00000000-0000-4000-8000-000000000000'
@@ -1781,19 +2203,44 @@ ORDER BY timestamp, round
 LIMIT 1000
 ```
 
-**Challenge replays** (`replays`): the share of runs started from a challenge link.
+**Challenge runs** (`replays`): the share of runs started from a challenge link — Endless's
+`challenge` runs, and Friendly's `replay`s from before challenges moved to Endless.
 
 ```sql
 SELECT
   blob2 AS mode,
   SUM(_sample_interval) AS started,
-  sumIf(_sample_interval, blob3 = 'replay') AS replays,
-  round(100 * sumIf(_sample_interval, blob3 = 'replay') / SUM(_sample_interval), 1) AS replay_pct
+  sumIf(_sample_interval, blob3 = 'challenge' OR blob3 = 'replay') AS challenged,
+  round(100 * sumIf(_sample_interval, blob3 = 'challenge' OR blob3 = 'replay')
+    / SUM(_sample_interval), 1) AS challenged_pct
 FROM biggerthan_game_events
 WHERE blob1 = 'start'
   AND timestamp > NOW() - INTERVAL '7' DAY
 GROUP BY mode
 ORDER BY mode
+```
+
+**Endless: runs, scores and publishing** (`endless`): Endless runs started and finished, the
+spread of their scores, and attempts to publish, with how many were published and how many of
+those were shadow-flagged. The script blanks the columns that don't apply to a row, and prints the
+publish rate (published / finished) and the shadow rate (shadowed / published) under it.
+
+```sql
+SELECT
+  blob1 AS event,
+  SUM(_sample_interval) AS events,
+  round(SUM(_sample_interval * double1) / SUM(_sample_interval), 1) AS mean_score,
+  quantileExactWeighted(0.5)(double1, _sample_interval) AS median_score,
+  quantileExactWeighted(0.9)(double1, _sample_interval) AS p90_score,
+  max(double1) AS max_score,
+  sumIf(_sample_interval, blob1 = 'submit' AND blob6 = '1') AS published,
+  sumIf(_sample_interval, blob1 = 'submit' AND blob6 = '1' AND blob7 = '1') AS shadowed
+FROM biggerthan_game_events
+WHERE blob2 = 'endless'
+  AND (blob1 = 'start' OR blob1 = 'end' OR blob1 = 'submit')
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY event
+ORDER BY event
 ```
 
 **Latest 50 starts and ends** (`latest`): newest first, for a look at what's happening now. The

@@ -26,6 +26,13 @@
   On the final question (`final`) the plaque wears a gold ring and a gold
   "Final question" tab sits on its top edge. The tab is hidden from screen
   readers, which hear "Final question" in the live region.
+
+  In a timed mode (`clock`, Endless) a thin bar along the plaque's bottom edge
+  drains as the question's seconds go: faint, then for the last three red and
+  thicker, with a tag under the plaque showing a stopwatch and the seconds
+  left, so colour never carries it alone. With reduced motion the bar steps
+  down a second at a time. Screen readers hear "5 seconds left" once, never a
+  count every second. The clock only draws time; the controller times out.
 -->
 <script lang="ts">
   import { STAT_KEYS } from "@bt/core";
@@ -33,8 +40,9 @@
   import { untrack } from "svelte";
   import { statLabel, t } from "../../i18n";
   import { TIER_COLOUR } from "../../lib/tiers";
+  import type { QuestionClock } from "../../game/machine";
   import type { Timings } from "../../game/timing";
-  import { reelStrip } from "../../game/view";
+  import { clockView, clockWarning, reelStrip } from "../../game/view";
 
   interface Props {
     stat: StatPayload | null;
@@ -49,6 +57,8 @@
     lead?: string | null;
     /** The title card gliding into it, or the hold for round one's photos. */
     stage?: "title" | "hold" | null;
+    /** The question's clock, while it runs, in a timed mode. */
+    clock?: QuestionClock | null;
   }
 
   let {
@@ -60,7 +70,28 @@
     final = false,
     lead = null,
     stage = null,
+    clock = null,
   }: Props = $props();
+
+  /** `performance.now()`, kept fresh while the clock runs: every frame, or four times a second with reduced motion. */
+  let now = $state(0);
+  $effect(() => {
+    if (clock === null) return;
+    now = performance.now();
+    if (reducedMotion) {
+      const id = setInterval(() => (now = performance.now()), 250);
+      return () => clearInterval(id);
+    }
+    let raf = 0;
+    const frame = () => {
+      now = performance.now();
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  });
+  const time = $derived(clock === null ? null : clockView(clock, now, reducedMotion));
+  const warning = $derived(clockWarning(time));
 
   let strip: StatKey[] = $state([]);
   /** The line the spin starts from, when it starts from `lead`. */
@@ -184,7 +215,24 @@
   {#if stage === "hold"}
     <span class="shimmer" aria-hidden="true"></span>
   {/if}
+  {#if time !== null}
+    <span class="clock" class:urgent={time.urgent} aria-hidden="true">
+      <span class="fill" style:--left={time.fraction}></span>
+    </span>
+  {/if}
 </div>
+{#if time !== null && time.urgent}
+  <span class="clocktag" aria-hidden="true">
+    <svg class="stopwatch" viewBox="0 0 12 12" focusable="false">
+      <circle cx="6" cy="7" r="4.2" />
+      <path d="M6 7V4.6M4.8 1.5h2.4M9.2 3.8l.8-.8" />
+    </svg>
+    {t("clock.seconds", { seconds: time.seconds })}
+  </span>
+{/if}
+{#if clock !== null}
+  <p class="sr" aria-live="polite">{warning}</p>
+{/if}
 
 <style>
   .plaque {
@@ -433,6 +481,67 @@
     to {
       opacity: 1;
       transform: translateX(100%);
+    }
+  }
+
+  /* The clock: a bar along the bottom edge, clipped to the pill by the plaque,
+     draining from the right. Transform only, so it costs no layout. */
+  .clock {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--clock-bar-h);
+    pointer-events: none;
+    background: var(--clock-track);
+    transition: height var(--dur-hover) var(--ease);
+  }
+  .clock .fill {
+    position: absolute;
+    inset: 0;
+    background: var(--clock-bar);
+    transform-origin: left center;
+    transform: scaleX(var(--left));
+  }
+  .clock.urgent {
+    height: var(--clock-bar-h-urgent);
+  }
+  .clock.urgent .fill {
+    background: var(--clock-bar-urgent);
+  }
+  /* The last seconds, under the plaque: a stopwatch and the count, pulsing. */
+  .clocktag {
+    position: absolute;
+    left: 50%;
+    top: calc(50% + var(--plaque-h) / 2);
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--clock-tag-gap);
+    padding: var(--clock-tag-pad);
+    border-radius: var(--radius-pill);
+    background: var(--clock-tag-bg);
+    color: var(--clock-tag-text);
+    font-size: var(--fs-clock-tag);
+    font-variation-settings: var(--fv-caps);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    box-shadow: 0 0 0 var(--clock-tag-halo) var(--night);
+    pointer-events: none;
+    animation: clock-pulse var(--dur-clock-pulse) var(--ease) infinite;
+  }
+  .stopwatch {
+    width: var(--clock-tag-icon);
+    height: var(--clock-tag-icon);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+  }
+  @keyframes clock-pulse {
+    50% {
+      transform: translate(-50%, -50%) scale(1.08);
     }
   }
 </style>

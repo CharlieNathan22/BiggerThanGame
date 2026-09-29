@@ -120,7 +120,8 @@ describe("answering", () => {
     const { runId, answers } = await walkRun(ctx);
     const twenty = (answers.at(-2) as ContinueResponse).next;
     const res = await answer(ctx, runId, 20, wrongGuess(correctGuess(SAMPLE_DECK, runId, twenty)));
-    expect(res).toMatchObject({ end: "wrong", challenge: { score: 19 } });
+    expect(res).toMatchObject({ end: "wrong", reveal: { round: 20, correct: false } });
+    expect(res).not.toHaveProperty("challenge");
   });
 });
 

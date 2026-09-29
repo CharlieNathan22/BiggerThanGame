@@ -1,17 +1,23 @@
 /**
  * Challenge links on the client: reading one from the game page's URL, and
- * writing one for the player to share:
- * `/football-higher-or-lower/legends/friendly?challenge=<runId>&score=<n>&sig=<sig>`.
+ * writing one for the player to share. Endless only (`CHALLENGES` in
+ * @bt/core):
+ * `/football-higher-or-lower/legends/endless?challenge=<runId>&score=<n>&sig=<sig>`.
+ * A link sets the score to beat; the friend plays a fresh run of their own.
  *
  * The client can't tell a genuine link from a forged one — only the server
  * holds the secret — so this checks shape only. A link that is plainly broken
  * (a parameter missing or mangled) never reaches the server: the run starts
- * fresh with the same polite note the server's refusal gets.
+ * as a plain one with the same polite note the server's refusal gets.
+ *
+ * Friendly used to have challenge links too. One arriving there now is
+ * `retired`: never sent, with a note that it has expired.
  */
 
-import { roundCap } from "@bt/core";
-import type { ChallengeLink, Mode } from "@bt/core";
-import { FRIENDLY_PATH } from "../lib/paths";
+import { CHALLENGES, roundCap } from "@bt/core";
+import type { ChallengeLink } from "@bt/core";
+import { ENDLESS_PATH, FRIENDLY_PATH } from "../lib/paths";
+import type { GameMode } from "./machine";
 
 export const CHALLENGE_PARAMS = ["challenge", "score", "sig"] as const;
 
@@ -19,37 +25,49 @@ export const CHALLENGE_PARAMS = ["challenge", "score", "sig"] as const;
 const RUN_ID = /^\d{8}-[0-9a-f-]{36}\.[A-Za-z0-9_-]{22}$/;
 const SIG = /^[A-Za-z0-9_-]{22}$/;
 
+/** Each mode's game page: where its challenge links point. */
+export const GAME_PATHS: Readonly<Record<GameMode, string>> = {
+  friendly: FRIENDLY_PATH,
+  endless: ENDLESS_PATH,
+};
+
 /**
- * What the URL says: no challenge, a well-formed one to try, or one too
- * broken to send.
+ * What the URL says: no challenge, a well-formed one to try, one too broken to
+ * send, or (in a mode without challenges) one from before they moved.
  */
 export type ChallengeParam =
   | { readonly kind: "none" }
   | { readonly kind: "link"; readonly link: ChallengeLink }
-  | { readonly kind: "broken" };
+  | { readonly kind: "broken" }
+  | { readonly kind: "retired" };
 
-/** A score above `mode`'s cap (20 in Friendly) can't have been played, so the link is broken. */
-export function readChallenge(search: string, mode: Mode): ChallengeParam {
+/** A score above `mode`'s cap (150 in Endless) can't have been played, so the link is broken. */
+export function readChallenge(search: string, mode: GameMode): ChallengeParam {
   const params = new URLSearchParams(search);
   if (!CHALLENGE_PARAMS.some((name) => params.has(name))) return { kind: "none" };
+  if (!CHALLENGES[mode]) return { kind: "retired" };
   const runId = params.get("challenge") ?? "";
   const scoreText = params.get("score") ?? "";
   const sig = params.get("sig") ?? "";
-  const score = /^\d{1,2}$/.test(scoreText) ? Number(scoreText) : NaN;
+  const score = /^\d{1,3}$/.test(scoreText) ? Number(scoreText) : NaN;
   if (!RUN_ID.test(runId) || !SIG.test(sig) || !(score >= 0 && score <= roundCap(mode))) {
     return { kind: "broken" };
   }
   return { kind: "link", link: { runId, score, sig } };
 }
 
-/** The shareable URL for `link`: the game page on `site` (an origin, no trailing slash). */
-export function challengeUrl(site: string, link: ChallengeLink): string {
+/** The shareable URL for `link`: `mode`'s game page on `site` (an origin, no trailing slash). */
+export function challengeUrl(
+  site: string,
+  link: ChallengeLink,
+  mode: GameMode = "endless",
+): string {
   const params = new URLSearchParams({
     challenge: link.runId,
     score: String(link.score),
     sig: link.sig,
   });
-  return `${site}${FRIENDLY_PATH}?${params.toString()}`;
+  return `${site}${GAME_PATHS[mode]}?${params.toString()}`;
 }
 
 /** `search` without the challenge parameters, for `history.replaceState` once a link is used. */

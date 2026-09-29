@@ -9,15 +9,11 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkPages, checkRobots, checkSitemap, pngSize } from "./site-check.js";
-import type { BuiltPage, SiteExpectations } from "./site-check.js";
+import { checkPages, checkRobots, checkSitemap, pngSize, siteExpectations } from "./site-check.js";
+import type { BuiltPage } from "./site-check.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "apps", "web", "dist");
-
-const FOOTBALL = "/football-higher-or-lower";
-const LEGENDS = `${FOOTBALL}/legends`;
-const FRIENDLY = `${LEGENDS}/friendly`;
 
 /** Every generated image, at the size it must be (scripts/site-images.ts). */
 const IMAGES: readonly [string, number, number][] = [
@@ -51,19 +47,7 @@ function main(): number {
     .filter((f) => f.endsWith(".html"))
     .map((f) => ({ path: servedPath(f), html: readFileSync(join(dist, f), "utf8") }));
 
-  const expect: SiteExpectations = {
-    origin: "https://biggerthangame.com",
-    lang: "en-GB",
-    noindex: ["/404"],
-    structuredData: {
-      [FOOTBALL]: ["BreadcrumbList"],
-      [LEGENDS]: ["BreadcrumbList", "VideoGame"],
-      [FRIENDLY]: ["BreadcrumbList", "VideoGame"],
-    },
-    files: files.filter((f) => !f.endsWith(".html")).map((f) => `/${f}`),
-    previewImage: "/og-image.png",
-    previewImages: { [FRIENDLY]: "/og-friendly.png" },
-  };
+  const expect = siteExpectations(files.filter((f) => !f.endsWith(".html")).map((f) => `/${f}`));
 
   const problems = [...checkPages(pages, expect)];
   const read = (file: string) =>

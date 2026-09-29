@@ -9,7 +9,7 @@
  */
 
 import { isEligible } from "./eligibility.js";
-import { bandFor, pairFits, percentiles, relaxations } from "./ramp.js";
+import { RELAXATION_LADDERS, bandFor, pairFits, percentiles, relaxations } from "./ramp.js";
 import { STATS } from "./stats.js";
 import type { Band, Mode, Player, Relaxation, StatKey } from "./types.js";
 import type { Rng } from "./prng.js";
@@ -104,7 +104,7 @@ export function selectChallenger(
   preferIconic = false,
 ): Match | undefined {
   const target = bandFor(stat, round, mode);
-  const ladder = relaxations(target);
+  const ladder = relaxations(target, RELAXATION_LADDERS[mode]);
 
   if (preferIconic) {
     const pool = candidates(anchor, stat, target, ctx).filter((p) => p.iconic === true);

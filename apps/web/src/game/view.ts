@@ -3,10 +3,10 @@
  * and the edge cases are under test rather than buried in markup.
  */
 
-import { STREAK_TITLES, WIN_ROUNDS, isFinalRound } from "@bt/core";
+import { STREAK_TITLES, WIN_ROUNDS, isFinalRound, streakTitle } from "@bt/core";
 import type { Mode, PlayerCard, StatKey, Tier } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
-import type { GameState, Hitch, RoundRecord } from "./machine";
+import type { GameState, Hitch, QuestionClock, RoundRecord } from "./machine";
 
 /**
  * A score as the mode shows it: out of the win target where the mode has one
@@ -139,6 +139,7 @@ export function announcement(state: GameState, mode: Mode): string {
   if (best !== null) return best === "new" ? t("live.newHighScore") : t("live.matchedBest");
   if ((state.phase === "verdict" || state.phase === "over") && reveal !== null) {
     const params = { challenger: round.challenger.name, value: reveal.display };
+    if (state.end === "timeout") return t("live.timeout", params);
     if (!reveal.correct) return t("live.wrong", params);
     if (state.end === "won") return t("live.won", { ...params, score: state.streak });
     return target === null
@@ -155,8 +156,11 @@ export function announcement(state: GameState, mode: Mode): string {
  */
 export function challengeNotice(state: GameState): string {
   const { challenge, phase, round } = state;
-  if (challenge?.status !== "refused" || phase === "over") return "";
+  if (phase === "over") return "";
   if (round !== null && round.index !== 1) return "";
+  // An old Friendly link: said on the start panel only, and never sent.
+  if (challenge?.status === "retired") return phase === "idle" ? t("challenge.retired") : "";
+  if (challenge?.status !== "refused") return "";
   return challenge.reason === "expired" ? t("challenge.expired") : t("challenge.invalid");
 }
 
@@ -167,6 +171,7 @@ export function challengeNotice(state: GameState): string {
  */
 export function verdictLabel(state: GameState): string | null {
   if (state.phase !== "verdict" || state.reveal === null) return null;
+  if (state.end === "timeout") return t("verdict.timeout");
   return state.reveal.correct ? t("verdict.correct") : t("verdict.incorrect");
 }
 
@@ -344,7 +349,7 @@ export interface ScoreBadge {
 
 export function scoreBadge(state: GameState, mode: Mode): ScoreBadge | null {
   const target = WIN_ROUNDS[mode];
-  if (target === null || state.streak === 0 || state.end === "won") return null;
+  if (state.streak === 0 || state.end === "won") return null;
   const { phase } = state;
   if (
     phase !== "verdict" &&
@@ -358,7 +363,9 @@ export function scoreBadge(state: GameState, mode: Mode): ScoreBadge | null {
   const last = state.history.at(-1);
   if (last === undefined || !last.correct) return null;
   const score = scoreFigure(state.streak, mode);
-  const title = STREAK_TITLES[mode].find((t) => t.min === state.streak && t.min < target);
+  const title = STREAK_TITLES[mode].find(
+    (t) => t.min === state.streak && (target === null || t.min < target),
+  );
   return title === undefined
     ? { key: state.streak, text: score, milestone: false }
     : {
@@ -395,6 +402,71 @@ export function bestOutcome(state: GameState): BestOutcome | null {
  */
 export function onNewBest(state: GameState): boolean {
   return state.phase !== "idle" && state.bestBefore > 0 && state.streak > state.bestBefore;
+}
+
+/**
+ * The streak title the run holds so far, for the chip under the title bar in a
+ * mode without a progress track (Endless): "Starter". Empty below the first,
+ * and in a mode with a track.
+ */
+export function titleChip(state: Pick<GameState, "streak">, mode: Mode): string {
+  if (WIN_ROUNDS[mode] !== null) return "";
+  const title = streakTitle(state.streak, mode);
+  return title === undefined ? "" : t(`title.${title.id}`);
+}
+
+/**
+ * The note on the game-over panel when the run didn't end on a revealed round:
+ * a dropped connection, with the streak kept. Empty otherwise.
+ */
+export function bankedText(state: Pick<GameState, "end" | "streak">, mode: Mode): string {
+  if (state.end !== "network") return "";
+  return WIN_ROUNDS[mode] === null
+    ? t("over.networkSaved", { streak: state.streak })
+    : t("over.network", { streak: state.streak });
+}
+
+// ------------------------------------------------------------------ clock
+
+/** The last seconds of a question, shown urgently: colour, a bolder bar and the count. */
+export const URGENT_MS = 3000;
+
+/** When screen readers hear how long is left: once, at this many seconds. */
+export const WARN_MS = 5000;
+
+/** The countdown as the plaque draws it. */
+export interface ClockView {
+  /** What's left, ms, never below zero. */
+  readonly remainingMs: number;
+  /** Whole seconds left, rounded up: "3" until the last instant of the third. */
+  readonly seconds: number;
+  /**
+   * How full the bar is, 0 to 1. With reduced motion it shrinks in whole-second
+   * steps rather than smoothly.
+   */
+  readonly fraction: number;
+  readonly urgent: boolean;
+}
+
+/** The clock at `now` (`performance.now()`). */
+export function clockView(clock: QuestionClock, now: number, reducedMotion = false): ClockView {
+  const remainingMs = Math.max(0, clock.limitMs - (now - clock.startedAt));
+  const seconds = Math.ceil(remainingMs / 1000);
+  const smooth = remainingMs / clock.limitMs;
+  const stepped = Math.min(1, (seconds * 1000) / clock.limitMs);
+  return {
+    remainingMs,
+    seconds,
+    fraction: reducedMotion ? stepped : smooth,
+    urgent: remainingMs <= URGENT_MS,
+  };
+}
+
+/** What the clock's live region says: "5 seconds left" from five seconds out, else nothing. */
+export function clockWarning(view: ClockView | null): string {
+  return view !== null && view.remainingMs <= WARN_MS && view.remainingMs > 0
+    ? t("clock.warning", { seconds: WARN_MS / 1000 })
+    : "";
 }
 
 /** "in a row", "correct, then out" for a streak of one, or "a perfect run" for a win. */

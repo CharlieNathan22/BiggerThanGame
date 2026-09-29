@@ -77,3 +77,40 @@ namespace_id = "1006"
   [ratelimits.simple]
   limit = 10
   period = 60
+
+# Publishes to the Endless boards per IP (POST /api/run/submit).
+[[ratelimits]]
+name = "RUN_SUBMITS"
+namespace_id = "1007"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60
+
+# One Durable Object per Endless run (worker/run-do.ts, ARCHITECTURE.md §8):
+# it spends each progress token once, keeps the run's answer times and closes a
+# run that goes silent. SQLite-backed, which the free plan supports; the
+# migration below creates the class on the next deploy.
+[[durable_objects.bindings]]
+name = "RUNS"
+class_name = "RunDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RunDO"]
+
+# The leaderboards (ARCHITECTURE.md §10): scores and the nightly snapshots.
+# Local dev and every test use wrangler's local D1 (under .wrangler/); nothing
+# here or in the scripts points at the remote database. The owner creates it
+# on deploy day (`wrangler d1 create biggerthangame`), puts its id below and
+# applies the migrations with `pnpm db:migrate:remote`.
+[[d1_databases]]
+binding = "DB"
+database_name = "biggerthangame"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# The nightly job (worker/src/cron.ts): snapshot the boards that closed at
+# midnight UTC and prune old scores; again at 01:30 for runs published late.
+[triggers]
+crons = ["0 0 * * *", "30 1 * * *"]

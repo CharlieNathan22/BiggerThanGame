@@ -51,6 +51,7 @@ function over(ending: GameEvent): GameState {
 const NO_CONTEXT: FeedbackContext = { report: null, page: "/" };
 
 const REPORT: ReportedRound = {
+  mode: "friendly",
   runId: RUN_ID,
   round: 2,
   stat: "fee",
@@ -63,6 +64,7 @@ describe("reportedRound", () => {
     const state = over({ type: "answered", response: wrong(2, 20), at: 5100 });
     expect(state.phase).toBe("over");
     expect(reportedRound(state)).toEqual({
+      mode: "friendly",
       runId: RUN_ID,
       round: 2,
       stat: "caps",
@@ -154,6 +156,22 @@ describe("feedbackRequest", () => {
     });
     const text = JSON.stringify(body);
     for (const shown of ["Zidane", "Figo", "77.5", "62", "fee"]) expect(text).not.toContain(shown);
+  });
+
+  it("names the mode for an Endless run, whose ids are signed apart", () => {
+    const body = feedbackRequest(
+      "correction",
+      { name: "", note: "" },
+      { report: { ...REPORT, mode: "endless" }, page: "/about" },
+      "tok",
+    );
+    expect(body).toEqual({
+      kind: "correction",
+      mode: "endless",
+      runId: RUN_ID,
+      round: 2,
+      turnstileToken: "tok",
+    });
   });
 
   it("sends a problem's note and page, and nothing else", () => {

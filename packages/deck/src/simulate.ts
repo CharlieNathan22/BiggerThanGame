@@ -21,6 +21,7 @@
 import {
   FINAL_STRETCH,
   ICONIC_ROUNDS,
+  PAIR_RULES,
   STATS,
   STREAK_TITLES,
   STAT_KEYS,
@@ -34,7 +35,7 @@ import {
   roundCap,
   valueOf,
 } from "@bt/core";
-import type { Mode, Player, Relaxation, Round } from "@bt/core";
+import type { Mode, Player, Relaxation, Round, StatKey, ValueRule } from "@bt/core";
 
 /**
  * Round ranges for the per-range firing table. The opening stat dominates the
@@ -258,7 +259,10 @@ export interface SimResult {
   readonly roundsDealt: number;
   /** Runs that ended because the engine could not deal another pair. */
   readonly exhausted: number;
-  /** Longest run the engine could construct at all, ignoring player skill. */
+  /**
+   * Longest run the engine could construct at all, ignoring player skill, over
+   * the first `REACH_SAMPLE` seeds (dealt to the cap whatever the player did).
+   */
   readonly maxConstructible: number;
   /** Relaxation rate per 10-round bucket. */
   readonly relaxationByBucket: Readonly<Record<string, number>>;
@@ -266,6 +270,11 @@ export interface SimResult {
   readonly openingStatRounds: number;
   /** Rounds played per round range (`ROUND_RANGES`), per stat. */
   readonly statCountsByRange: Readonly<Record<string, Readonly<Record<string, number>>>>;
+  /**
+   * Rounds played from the mode's pair rules on (`PAIR_RULES`, round 16 in
+   * Endless), per stat; empty for a mode without them.
+   */
+  readonly lateStatCounts: Readonly<Record<string, number>>;
 }
 
 function quantile(sorted: readonly number[], q: number): number {
@@ -312,6 +321,28 @@ function play(seed: string, distances: readonly number[], tally: Tally): number 
   return streak;
 }
 
+/** The streak `play` would give, without tallying anything. */
+function streakOf(seed: string, distances: readonly number[], model: PlayerModel): number {
+  const rng = createRng(`${seed}:skill`);
+  let streak = 0;
+  for (const distance of distances) {
+    if (!(rng.next() < model.pCorrect(distance))) break;
+    streak += 1;
+  }
+  return streak;
+}
+
+/**
+ * Rounds dealt up front for each run. Dealing is the slow part and most runs
+ * end long before a long cap (Endless's is 150), so a run is dealt this far and
+ * only dealt in full when a model answers all of it. The sequence doesn't
+ * depend on answers, so the full run starts with exactly these rounds.
+ */
+export const PROBE_ROUNDS = 40;
+
+/** Runs dealt to the full cap, whatever the player does, to measure the engine's reach. */
+export const REACH_SAMPLE = 200;
+
 export function simulate(opts: SimOptions): SimResult {
   const runs = opts.runs ?? 20_000;
   const maxRounds = opts.maxRounds ?? roundCap(opts.mode);
@@ -341,13 +372,26 @@ export function simulate(opts: SimOptions): SimResult {
   }
   let exhausted = 0;
   let maxConstructible = 0;
+  const lateFrom = PAIR_RULES[opts.mode]?.from ?? Infinity;
+  const lateStatCounts: Record<string, number> = {};
+
+  const deal = (seed: string, rounds: number): Round[] =>
+    buildRun({ deck: opts.deck, seed, mode: opts.mode, now: opts.now, maxRounds: rounds });
+  const probe = Math.min(maxRounds, PROBE_ROUNDS);
 
   for (let i = 0; i < runs; i++) {
     const seed = `${prefix}:${i}`;
-    const rounds = buildRun({ deck: opts.deck, seed, mode: opts.mode, now: opts.now, maxRounds });
-    maxConstructible = Math.max(maxConstructible, rounds.length);
-
-    const distances = rounds.map((round) => distanceOf(round, opts.deck, opts.now));
+    let rounds = deal(seed, i < REACH_SAMPLE ? maxRounds : probe);
+    let distances = rounds.map((round) => distanceOf(round, opts.deck, opts.now));
+    if (
+      rounds.length === probe &&
+      probe < maxRounds &&
+      tallies.some((t) => streakOf(seed, distances, t.model) === probe)
+    ) {
+      rounds = deal(seed, maxRounds);
+      distances = rounds.map((round) => distanceOf(round, opts.deck, opts.now));
+    }
+    if (i < REACH_SAMPLE) maxConstructible = Math.max(maxConstructible, rounds.length);
     for (const tally of tallies) {
       const n = play(seed, distances, tally);
       tally.streaks.push(n);
@@ -365,6 +409,9 @@ export function simulate(opts: SimOptions): SimResult {
       statCounts[round.stat] = (statCounts[round.stat] ?? 0) + 1;
       const inRange = statCountsByRange[rangeOf(round.index)]!;
       inRange[round.stat] = (inRange[round.stat] ?? 0) + 1;
+      if (round.index >= lateFrom) {
+        lateStatCounts[round.stat] = (lateStatCounts[round.stat] ?? 0) + 1;
+      }
       relaxationCounts[round.relaxation] += 1;
       if (round.index <= windowEnd) iconicWindow[round.relaxation] += 1;
 
@@ -409,6 +456,7 @@ export function simulate(opts: SimOptions): SimResult {
     relaxationByBucket,
     openingStatRounds,
     statCountsByRange,
+    lateStatCounts,
   };
 }
 
@@ -422,15 +470,138 @@ function mean(values: readonly number[]): number {
 
 /**
  * Round `round`'s scheduled band in `mode`, as the report shows it: `≥0.45` or
- * `0.20–0.60`, plus the final stretch's ratio floor where it applies.
+ * `0.20–0.60`, plus the final stretch's ratio floor where it applies, and in
+ * Endless's late rounds its pair rules: wide stats also ≥10% apart, narrow ones
+ * paired by value instead (`PAIR_RULES`, listed under the table).
  */
 export function bandText(round: number, mode: Mode): string {
   const band = bandForRound(round, mode);
   const range = band.ceiling === null ? `≥${band.floor}` : `${band.floor}–${band.ceiling}`;
   const stretch = FINAL_STRETCH[mode];
-  return stretch !== null && round >= stretch.from
-    ? `${range}, ≥${Math.round(stretch.minRatio * 100)}% apart`
-    : range;
+  if (stretch !== null && round >= stretch.from) {
+    return `${range}, ≥${Math.round(stretch.minRatio * 100)}% apart`;
+  }
+  const rules = PAIR_RULES[mode];
+  if (rules !== null && round >= rules.from) {
+    return `${range}, ≥${Math.round(rules.wideMinRatio * 100)}% apart; narrow by value`;
+  }
+  return range;
+}
+
+/** A value rule in words: "within 10%, not equal", "1–2 apart". */
+export function valueRuleText(rule: ValueRule): string {
+  return rule.kind === "relative"
+    ? `different, and within ${Math.round(rule.max * 100)}% of each other`
+    : `${rule.min}–${rule.max} apart`;
+}
+
+/** Share of the answers in rounds `from`–`to` (inclusive) that were right. */
+export function accuracyOver(o: ModelOutcome, from: number, to: number): number {
+  let reached = 0;
+  let correct = 0;
+  for (let q = from; q <= Math.min(to, o.reached.length); q++) {
+    reached += o.reached[q - 1] ?? 0;
+    correct += o.correct[q - 1] ?? 0;
+  }
+  return reached === 0 ? NaN : correct / reached;
+}
+
+/** Round ranges for a no-finish-line mode's accuracy table. */
+export const OPEN_RANGES: ReadonlyArray<{ label: string; from: number; to: number }> = [
+  { label: "1–5", from: 1, to: 5 },
+  { label: "6–10", from: 6, to: 10 },
+  { label: "11–15", from: 11, to: 15 },
+  { label: "16–20", from: 16, to: 20 },
+  { label: "21–30", from: 21, to: 30 },
+  { label: "31+", from: 31, to: Infinity },
+];
+
+/**
+ * A mode with no finish line (Endless): how far runs get, how accurate the
+ * player is by round range under every model, the pair rules and each stat's
+ * share of the late rounds.
+ */
+function openSection(r: SimResult, cap: number): string[] {
+  const name = r.mode.charAt(0).toUpperCase() + r.mode.slice(1);
+  const share = (x: number): string => (Number.isNaN(x) ? "—" : `${(x * 100).toFixed(1)}%`);
+  const reach = (o: ModelOutcome, n: number): string =>
+    pct(o.streaks.filter((s) => s >= n).length, o.streaks.length);
+  const models = r.outcomes;
+  const cells = ["Measure", ...models.map((o) => `\`${o.model.id}\``)];
+  const row = (label: string, cell: (o: ModelOutcome) => string): string =>
+    `| ${[label, ...models.map(cell)].join(" | ")} |`;
+  const lines: string[] = [
+    `## ${name}: a streak with no finish line`,
+    "",
+    "The same runs and skill draws under each model; the first column played the runs",
+    "the rest of this report describes.",
+    "",
+    `| ${cells.join(" | ")} |`,
+    `|${cells.map(() => "---").join("|")}|`,
+    row("Mean streak", (o) => mean(o.streaks).toFixed(1)),
+    ...[0.5, 0.75, 0.9, 0.99].map((p) =>
+      row(`${p === 0.5 ? "Median" : `${p * 100}th percentile`}`, (o) =>
+        quantile(o.streaks, p).toFixed(0),
+      ),
+    ),
+    ...[10, 20, 30, 40].map((n) => row(`Reached ${n}`, (o) => reach(o, n))),
+    row(`Reached the cap (${cap})`, (o) => reach(o, cap)),
+    ...OPEN_RANGES.map((g) =>
+      row(`Correct, rounds ${g.label}`, (o) => share(accuracyOver(o, g.from, g.to))),
+    ),
+    "",
+  ];
+
+  const rules = PAIR_RULES[r.mode];
+  if (rules !== null) {
+    lines.push(`From round ${rules.from}, the pair rules (\`PAIR_RULES\`):`);
+    lines.push("");
+    lines.push(
+      `- **Wide stats** keep their band and must also be at least ` +
+        `${Math.round(rules.wideMinRatio * 100)}% apart, whatever relaxes.`,
+    );
+    for (const [key, rule] of Object.entries(rules.narrow)) {
+      if (rule === undefined) continue;
+      lines.push(
+        `- **${STATS[key as StatKey].label}**: ${valueRuleText(rule)}, instead of the band.`,
+      );
+    }
+    lines.push("");
+  }
+
+  const o = r.outcomes[0]!;
+  lines.push("By round: the scheduled band, the share of runs dealt it, and the share of those");
+  lines.push("that answered it right.");
+  lines.push("");
+  lines.push("| Round | Band | Reached | Correct |", "|---|---|---|---|");
+  const last = Math.min(cap, 40);
+  for (let q = 1; q <= last; q++) {
+    lines.push(
+      `| ${q} | ${bandText(q, r.mode)} | ${pct(o.reached[q - 1] ?? 0, r.runs)} | ` +
+        `${share(accuracyAt(o, q))} |`,
+    );
+  }
+  lines.push("");
+
+  if (rules !== null) {
+    const total = STAT_KEYS.reduce((sum, key) => sum + (r.lateStatCounts[key] ?? 0), 0);
+    lines.push(`### Stats from round ${rules.from}`);
+    lines.push("");
+    lines.push("Share of the rounds played from the pair rules on, against the stat's target.");
+    lines.push("Every stat should still fire: the wheel never skips a stat it can deal.");
+    lines.push("");
+    lines.push("| Stat | Tier | Target | Share |", "|---|---|---|---|");
+    for (const key of STAT_KEYS) {
+      const tier = STATS[key].tier;
+      lines.push(
+        `| ${STATS[key].label} | ${tier} | ${TIER_TARGET[tier]}% | ` +
+          `${pct(r.lateStatCounts[key] ?? 0, total)} |`,
+      );
+    }
+    lines.push(`| _Rounds played_ |  |  | ${total} |`);
+    lines.push("");
+  }
+  return lines;
 }
 
 /** Share of runs that answered question `q` right, of those dealt it. */
@@ -540,9 +711,10 @@ function modelsSection(results: readonly SimResult[]): string[] {
     `- **\`${used.id}\`** (used above): ${used.summary}.`,
     ...others.map((m) => `- \`${m.id}\`: ${m.summary}.`),
     "",
-    "`fan` is the default and the model Friendly is tuned with. `rank` was the only",
-    "model until Friendly's retune; it is far weaker than a real football fan, so bands",
-    "tuned with it proved too soft in real play. Endless and Ranked were tuned with it.",
+    "`fan` is the default and the model Friendly and Endless are tuned with. `rank` was",
+    "the only model until Friendly's retune; it is far weaker than a real football fan,",
+    "so bands tuned with it proved too soft in real play. Ranked was tuned with it. The",
+    "fan model has no clock, so Endless, with ten seconds a question, plays harder still.",
     "",
     "- `pnpm simulate` uses `fan`; `pnpm simulate --model rank` uses `rank`.",
     "- `pnpm simulate --calibration <file.json>` replaces the fan's points with a list",
@@ -625,6 +797,8 @@ export function simulationReport(
     lines.push(...challengeSection(r, goal));
     if (r.outcomes.length > 1) lines.push(...modelComparison(r, goal));
   }
+  const endless = results.find((r) => r.mode === "endless");
+  if (endless !== undefined) lines.push(...openSection(endless, roundCap("endless")));
 
   lines.push(...modelsSection(results));
 

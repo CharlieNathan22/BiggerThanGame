@@ -15,7 +15,7 @@ import {
   sitemapXml,
   websiteLd,
 } from "../seo";
-import { FOOTBALL_PATH, FRIENDLY_PATH, HOME_PATH, LEGENDS_PATH } from "../paths";
+import { ENDLESS_PATH, FOOTBALL_PATH, FRIENDLY_PATH, HOME_PATH, LEGENDS_PATH } from "../paths";
 
 const ORIGIN = "https://biggerthangame.com";
 
@@ -28,10 +28,20 @@ describe("canonical URLs", () => {
 });
 
 describe("the pages in search", () => {
-  it("are every page but the 404, the privacy page included", () => {
+  it("are every page but the 404, the privacy and Endless pages included", () => {
     expect(INDEXABLE_PAGES).toEqual(SITE_PAGES.filter((p) => p !== "/404"));
     expect(INDEXABLE_PAGES).toContain("/privacy");
+    expect(INDEXABLE_PAGES).toContain(ENDLESS_PATH);
     expect(INDEXABLE_PAGES).not.toContain("/404");
+  });
+
+  it("put the Endless page under the Legends page, like Friendly", () => {
+    expect(breadcrumbTrail(ENDLESS_PATH).map((c) => c.path)).toEqual([
+      HOME_PATH,
+      FOOTBALL_PATH,
+      LEGENDS_PATH,
+      ENDLESS_PATH,
+    ]);
   });
 });
 

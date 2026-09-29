@@ -11,7 +11,13 @@ import Breadcrumb from "../../components/Breadcrumb.astro";
 import Card from "../../components/Card.astro";
 import Cards from "../../components/Cards.astro";
 import { t } from "../../i18n";
-import { ABOUT_PATH, FRIENDLY_PATH, LEGENDS_PATH } from "../../lib/paths";
+import {
+  ABOUT_PATH,
+  ENDLESS_PATH,
+  FRIENDLY_PATH,
+  LEADERBOARD_PATH,
+  LEGENDS_PATH,
+} from "../../lib/paths";
 import { breadcrumbLd, breadcrumbTrail, gameLd } from "../../lib/seo";
 
 const trail = breadcrumbTrail(LEGENDS_PATH);
@@ -60,7 +66,12 @@ const tiers =
 
   <Cards label={t("legends.modes")} stack>
     <Card name={t("mode.friendly.name")} body={t("mode.friendly.body")} href={FRIENDLY_PATH} wide />
-    <Card name={t("mode.endless.name")} body={t("mode.endless.body")} />
+    <Card
+      name={t("mode.endless.name")}
+      body={t("mode.endless.body")}
+      href={ENDLESS_PATH}
+      extra={{ href: LEADERBOARD_PATH, label: t("mode.endless.leaderboard") }}
+    />
     <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} />
   </Cards>
 

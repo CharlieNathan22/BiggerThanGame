@@ -8,7 +8,14 @@ import { readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { checkPages, checkRobots, checkSitemap, pngSize, readHead } from "../site-check.js";
+import {
+  checkPages,
+  checkRobots,
+  checkSitemap,
+  pngSize,
+  readHead,
+  siteExpectations,
+} from "../site-check.js";
 import type { BuiltPage, SiteExpectations } from "../site-check.js";
 
 const ORIGIN = "https://biggerthangame.com";
@@ -338,5 +345,24 @@ describe("the committed images", () => {
     for (const comment of svg.matchAll(/<!--([\s\S]*?)-->/g)) {
       expect(comment[1]).not.toContain("--");
     }
+  });
+});
+
+describe("siteExpectations", () => {
+  const ENDLESS = "/football-higher-or-lower/legends/endless";
+  const LEADERBOARD = `${ENDLESS}/leaderboard`;
+
+  it("indexes Endless with a breadcrumb and the game, and the default preview", () => {
+    const expect_ = siteExpectations(["/og-image.png"]);
+    expect(expect_.noindex).toEqual(["/404"]);
+    expect(expect_.structuredData[ENDLESS]).toEqual(["BreadcrumbList", "VideoGame"]);
+    expect(expect_.previewImages?.[ENDLESS]).toBeUndefined();
+    expect(expect_.previewImage).toBe("/og-image.png");
+  });
+
+  it("indexes the leaderboard with a breadcrumb and the default preview", () => {
+    const expect_ = siteExpectations(["/og-image.png"]);
+    expect(expect_.structuredData[LEADERBOARD]).toEqual(["BreadcrumbList"]);
+    expect(expect_.previewImages?.[LEADERBOARD]).toBeUndefined();
   });
 });

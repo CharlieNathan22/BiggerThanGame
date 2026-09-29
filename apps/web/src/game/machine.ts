@@ -22,24 +22,32 @@
  * §7). Components render `GameState`; `controller.ts` runs the timers and the
  * network calls that produce events.
  *
- * Friendly Mode has no clock, so `awaiting` waits for the player indefinitely.
+ * Friendly has no clock, so `awaiting` waits for the player indefinitely. In a
+ * timed mode (Endless, `QUESTION_LIMITS` in @bt/core) the question's clock
+ * starts as `awaiting` begins — after the deal, and after the wheel lands on a
+ * stat change — and stops the moment the player answers: it never runs while
+ * the answer is in flight. When it runs out the controller sends `timeout`,
+ * which goes to the server like a guess, so the player still sees the reveal.
+ * The server owns the real clock; this one is the player's view of it.
  *
  * A request that fails doesn't end the run on the spot. A 429 is waited out
  * and the same request sent again; a dropped connection is retried visibly for
  * a few seconds and only then banked (DESIGN.md §3, Connectivity). Both show as
  * a `hitch` while the reveal (or the start) waits.
  *
- * A run can start from a challenge link (DESIGN.md §13). The link is offered
- * with the start; the server says whether it replays the challenged run or,
- * for a link it can't verify, deals a fresh one. Every run the server ends
- * comes back with a signed link of its own, for the share.
+ * In a mode with challenge links (Endless, DESIGN.md §13) a run can start from
+ * one. The link is offered with the start; the server says whether it checks
+ * out — the run is then framed as "Beat n" — or not. Either way the run is a
+ * fresh one. Every run the server ends comes back with a signed link of its
+ * own, to challenge a friend with. In Friendly an old link is only noted.
  */
 
+import { questionLimit } from "@bt/core";
 import type {
   AnswerResponse,
   ChallengeLink,
   ChallengeStatus,
-  Guess,
+  Mode,
   PlayerCard,
   Reveal,
   RoundPayload,
@@ -47,6 +55,7 @@ import type {
   StatKey,
   StatPayload,
   Tier,
+  TimedGuess,
 } from "@bt/core";
 import type { Timings } from "./timing";
 
@@ -64,8 +73,14 @@ export type Phase =
   | "sliding"
   | "over";
 
-/** Why a run stopped: the server's reasons, or the connection dropping. */
+/**
+ * Why a run stopped: the server's reasons, or the connection dropping (a run
+ * banked with the streak verified so far).
+ */
 export type EndReason = RunEnd | "network";
+
+/** The modes the game page plays. */
+export type GameMode = Extract<Mode, "friendly" | "endless">;
 
 /**
  * One answered round, for the share grid and share image (M5). Only what the
@@ -85,7 +100,9 @@ export type Failure =
   /** Too many requests: wait `retryAfterMs`, then send the same one again. */
   | { readonly kind: "rateLimited"; readonly retryAfterMs: number }
   /** A refusal retrying can't fix. */
-  | { readonly kind: "fatal" };
+  | { readonly kind: "fatal" }
+  /** A run start the Turnstile check didn't pass (or couldn't run): try Start again. */
+  | { readonly kind: "verification" };
 
 /** A request that has to be sent again before the run can carry on. */
 export type Hitch =
@@ -119,12 +136,25 @@ export function reconnectDelay(retries: number): number {
  *
  * - `offered`: from the page's URL, sent with the start. Framed as "Beat n".
  * - `accepted`: the server verified it; this run replays the challenged one.
- * - `refused`: broken, forged or too old; this run is a fresh one, with a note.
+ * - `refused`: broken, forged or too old; this run is a plain one, with a note.
+ * - `retired`: a link on the Friendly page, from before challenges moved to
+ *   Endless. Never sent; the start panel says it has expired.
  */
 export type Challenge =
   | { readonly status: "offered"; readonly link: ChallengeLink }
   | { readonly status: "accepted"; readonly score: number }
-  | { readonly status: "refused"; readonly reason: "invalid" | "expired" };
+  | { readonly status: "refused"; readonly reason: "invalid" | "expired" }
+  | { readonly status: "retired" };
+
+/**
+ * The question's clock, in a timed mode: when it started (`performance.now()`)
+ * and how long it runs. Null while the question isn't answerable, and always
+ * in Friendly.
+ */
+export interface QuestionClock {
+  readonly startedAt: number;
+  readonly limitMs: number;
+}
 
 /** When the guess went, and when the answer came back. `performance.now()` ms. */
 export interface CountClock {
@@ -134,6 +164,7 @@ export interface CountClock {
 
 export interface GameState {
   readonly phase: Phase;
+  readonly mode: GameMode;
   readonly runId: string | null;
   /** The question on screen. */
   readonly round: RoundPayload | null;
@@ -143,7 +174,10 @@ export interface GameState {
    * before the wheel lands on it.
    */
   readonly plaque: StatPayload | null;
-  readonly guess: Guess | null;
+  /** The answer sent: a pick, or `timeout` when the clock ran out. */
+  readonly guess: TimedGuess | null;
+  /** The question's clock, while it runs. */
+  readonly clock: QuestionClock | null;
   readonly count: CountClock | null;
   /** The challenger's figure, once the server has judged the guess. */
   readonly reveal: Reveal | null;
@@ -163,6 +197,8 @@ export interface GameState {
   readonly end: EndReason | null;
   /** The last start attempt failed; the start panel says so. */
   readonly startFailed: boolean;
+  /** ...because the Turnstile check didn't pass: the panel suggests trying again. */
+  readonly checkFailed: boolean;
   /** A request waiting to be sent again; null when all is well. */
   readonly hitch: Hitch | null;
   /** The challenge link this run came from, if any. */
@@ -196,9 +232,12 @@ export type GameEvent =
   | { readonly type: "skip" }
   /** The cards are in: deal round one as usual. */
   | { readonly type: "introDone" }
-  | { readonly type: "dealt" }
-  | { readonly type: "spun" }
-  | { readonly type: "guess"; readonly guess: Guess; readonly at: number }
+  /** `at`: when (`performance.now()`); starts the clock when the question is answerable. */
+  | { readonly type: "dealt"; readonly at?: number }
+  | { readonly type: "spun"; readonly at?: number }
+  | { readonly type: "guess"; readonly guess: TimedGuess; readonly at: number }
+  /** The question's clock ran out: answered as `timeout`. */
+  | { readonly type: "timeout"; readonly at: number }
   | { readonly type: "answered"; readonly response: AnswerResponse; readonly at: number }
   | { readonly type: "answerFailed"; readonly failure: Failure; readonly at: number }
   /** A hitch's wait is over: send the request again. */
@@ -208,13 +247,19 @@ export type GameEvent =
   | { readonly type: "slide" }
   | { readonly type: "advance" };
 
-export function initialState(best = 0, challenge: Challenge | null = null): GameState {
+export function initialState(
+  best = 0,
+  challenge: Challenge | null = null,
+  mode: GameMode = "friendly",
+): GameState {
   return {
     phase: "idle",
+    mode,
     runId: null,
     round: null,
     plaque: null,
     guess: null,
+    clock: null,
     count: null,
     reveal: null,
     next: null,
@@ -225,6 +270,7 @@ export function initialState(best = 0, challenge: Challenge | null = null): Game
     history: [],
     end: null,
     startFailed: false,
+    checkFailed: false,
     hitch: null,
     challenge,
     link: null,
@@ -247,7 +293,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       if (state.phase !== "idle" && state.phase !== "over") return state;
       // A challenge belongs to the first run from the link. "Play again" is a fresh run.
       return {
-        ...initialState(state.best, state.phase === "idle" ? state.challenge : null),
+        ...initialState(state.best, state.phase === "idle" ? state.challenge : null, state.mode),
         phase: "starting",
         repeat: state.phase === "over" || state.repeat,
       };
@@ -289,24 +335,38 @@ export function reduce(state: GameState, event: GameEvent): GameState {
           hitch: { kind: "slowDown", until: event.at + event.failure.retryAfterMs },
         };
       }
-      return { ...state, phase: "idle", startFailed: true, hitch: null };
+      return {
+        ...state,
+        phase: "idle",
+        startFailed: true,
+        checkFailed: event.failure.kind === "verification",
+        hitch: null,
+      };
 
     case "dealt":
       if (state.phase !== "dealing" || state.round === null) return state;
       return shouldSpin(state.round)
         ? { ...state, phase: "spinning" }
-        : { ...state, phase: "awaiting" };
+        : { ...state, phase: "awaiting", clock: clockFor(state, event.at) };
 
     case "spun":
       if (state.phase !== "spinning" || state.round === null) return state;
-      return { ...state, phase: "awaiting", plaque: state.round.stat };
+      return {
+        ...state,
+        phase: "awaiting",
+        plaque: state.round.stat,
+        clock: clockFor(state, event.at),
+      };
 
     case "guess":
+    case "timeout":
       if (state.phase !== "awaiting") return state;
+      // The clock stops here: never while the answer is in flight.
       return {
         ...state,
         phase: "revealing",
-        guess: event.guess,
+        guess: event.type === "timeout" ? "timeout" : event.guess,
+        clock: null,
         count: { tappedAt: event.at, arrivedAt: null },
       };
 
@@ -327,7 +387,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         reveal: response.reveal,
         next: "next" in response ? response.next : null,
         end: "end" in response ? response.end : null,
-        link: "end" in response ? response.challenge : null,
+        link: "end" in response ? (response.challenge ?? null) : null,
       };
     }
 
@@ -408,6 +468,13 @@ export function reduce(state: GameState, event: GameEvent): GameState {
   }
 }
 
+/** The clock for the round on screen, in a timed mode; null in Friendly. */
+function clockFor(state: GameState, at: number | undefined): QuestionClock | null {
+  if (state.round === null) return null;
+  const limitMs = questionLimit(state.mode, state.round.index);
+  return limitMs === null ? null : { startedAt: at ?? 0, limitMs };
+}
+
 /** What the server made of the offered link. A refusal made before the start stands. */
 function settleChallenge(
   offered: Challenge | null,
@@ -438,7 +505,7 @@ function deal(state: GameState, round: RoundPayload): GameState {
 }
 
 function over(state: GameState, end: EndReason): GameState {
-  return { ...state, phase: "over", end, next: null, hitch: null, link: null };
+  return { ...state, phase: "over", end, next: null, hitch: null, link: null, clock: null };
 }
 
 /**

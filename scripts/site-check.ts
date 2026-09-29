@@ -127,6 +127,35 @@ export interface SiteExpectations {
   readonly previewImages?: Readonly<Record<string, string>>;
 }
 
+const FOOTBALL = "/football-higher-or-lower";
+const LEGENDS = `${FOOTBALL}/legends`;
+const FRIENDLY = `${LEGENDS}/friendly`;
+const ENDLESS = `${LEGENDS}/endless`;
+const LEADERBOARD = `${ENDLESS}/leaderboard`;
+
+/**
+ * What the built site must be, given its non-page files. The Endless page is a
+ * game page like Friendly's, with its own canonical and the site's default
+ * preview; its leaderboard is an ordinary page under it, with a breadcrumb.
+ */
+export function siteExpectations(files: readonly string[]): SiteExpectations {
+  return {
+    origin: "https://biggerthangame.com",
+    lang: "en-GB",
+    noindex: ["/404"],
+    structuredData: {
+      [FOOTBALL]: ["BreadcrumbList"],
+      [LEGENDS]: ["BreadcrumbList", "VideoGame"],
+      [FRIENDLY]: ["BreadcrumbList", "VideoGame"],
+      [ENDLESS]: ["BreadcrumbList", "VideoGame"],
+      [LEADERBOARD]: ["BreadcrumbList"],
+    },
+    files,
+    previewImage: "/og-image.png",
+    previewImages: { [FRIENDLY]: "/og-friendly.png" },
+  };
+}
+
 /** A page's canonical URL: the origin and path, with no trailing slash but the root's. */
 export function canonicalFor(origin: string, path: string): string {
   return path === "/" ? `${origin}/` : `${origin}${path}`;

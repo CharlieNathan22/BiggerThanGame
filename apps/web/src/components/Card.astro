@@ -16,15 +16,25 @@ interface Props {
   large?: boolean;
   /** Takes a whole row of its list, the others sharing the rows below. */
   wide?: boolean;
+  /**
+   * A second, smaller link under the text (Endless's leaderboard), above the
+   * card's own so it can be reached on its own. Only on an open card.
+   */
+  extra?: { readonly href: string; readonly label: string };
 }
 
-const { name, body, href, large = false, wide = false } = Astro.props;
+const { name, body, href, large = false, wide = false, extra } = Astro.props;
 const soon = href === undefined;
 ---
 
 <li class:list={["card", { large, soon, wide, open: !soon }]}>
   <h2>{soon ? name : <a href={href}>{name}</a>}</h2>
   <p class="body">{body}</p>
+  {!soon && extra !== undefined && (
+    <a class="extra" href={extra.href}>
+      {extra.label}
+    </a>
+  )}
   {soon ? <p class="badge">{t("mode.soon")}</p> : <span class="go" aria-hidden="true" />}
 </li>
 
@@ -153,13 +163,33 @@ const soon = href === undefined;
     z-index: 1;
     border-radius: inherit;
   }
+  /* A second link sits above the card's: its own target, 44px tall, underlined. */
+  .card .extra {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-min);
+    padding: 0 8px;
+    font-size: var(--fs-body);
+    color: var(--gold);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .card .extra::after {
+    content: none;
+  }
+  .card .extra:focus-visible {
+    outline: var(--focus-ring) solid var(--gold);
+    outline-offset: var(--focus-offset);
+  }
   /* The focus ring goes round the card, not the heading inside it. */
-  .card:has(a:focus-visible) {
+  .card:has(h2 a:focus-visible) {
     outline: var(--focus-ring) solid var(--gold);
     outline-offset: var(--focus-offset);
   }
   @supports selector(:has(a)) {
-    .card a:focus-visible {
+    .card h2 a:focus-visible {
       outline: none;
     }
   }

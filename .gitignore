@@ -39,5 +39,8 @@ packages/deck/sample/*/originals/
 # Local design reference, not shipped
 /prototype/
 BUILD_PLAN.md
-PHASE3_HANDOFF.md
+PHASE*_HANDOFF.md
 players-csv-format.md
+
+# The plain nickname blocklist: only its hashes are committed (worker/src/blocklist-data.ts)
+worker/blocklist.local.txt

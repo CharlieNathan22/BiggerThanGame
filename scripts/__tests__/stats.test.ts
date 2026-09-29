@@ -109,6 +109,22 @@ describe("the saved queries", () => {
     }
   });
 
+  it("works out Endless's publish and shadow rates", () => {
+    const rows = QUERIES.endless.post([
+      { event: "end", events: "200", mean_score: 9.5, published: "0", shadowed: "0" },
+      { event: "start", events: "250", mean_score: 0, published: "0", shadowed: "0" },
+      { event: "submit", events: "60", mean_score: 14, published: "50", shadowed: "2" },
+    ]);
+    expect(rows[1]).toMatchObject({ event: "start", mean_score: "", published: "" });
+    expect(rows[0]).toMatchObject({ event: "end", mean_score: 9.5, published: "" });
+    expect(QUERIES.endless.summary(rows)).toBe(
+      "publish rate 25% (50 of 200 finished runs); shadow rate 4% (2 of 50 published)",
+    );
+    expect(QUERIES.endless.summary([])).toBe(
+      "publish rate – (0 of 0 finished runs); shadow rate – (0 of 0 published)",
+    );
+  });
+
   it("works out who left after each round", () => {
     const rows = QUERIES.dropoff.post([
       { mode: "friendly", round: 1, reached: "100", correct: "90", correct_pct: 90 },

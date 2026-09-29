@@ -1,6 +1,8 @@
 /**
- * The round endpoint's wire format: `POST /api/round/next`, and the beacon a
- * run sends when the player leaves, `POST /api/run/leave`.
+ * The round endpoints' wire format: Friendly's stateless `POST /api/round/next`;
+ * Endless's `POST /api/run/start` and `POST /api/round/guess`, which carry a
+ * signed progress token; and the beacon a run sends when the player leaves,
+ * `POST /api/run/leave`.
  *
  * Shared by the Worker, which builds these, and the web app, which reads them.
  * Types only — no runtime code — so importing it costs the client nothing.
@@ -10,8 +12,8 @@
  * `Player` objects with every stat on them, and a handler whose return type is
  * inferred would happily serialise one. ARCHITECTURE.md §4, invariant 1.
  *
- * Phase 5 hardens this same endpoint for Ranked and Endless by adding a
- * progress token; the payload shapes stay as they are.
+ * Both paths share the round, reveal and end shapes; Endless adds the token
+ * (and, at a run's end, a signed result) alongside them.
  */
 
 import type { PlayerImage } from "./images.js";
@@ -20,17 +22,33 @@ import type { Position, StatKey, Tier } from "./types.js";
 export type Guess = "higher" | "lower";
 
 /**
- * Why a run stopped: a wrong guess; no further round could be dealt; or, in a
- * mode with a finish line (`WIN_ROUNDS`), its last round answered correctly.
+ * An answer in a timed mode: a pick, or `timeout` when the client's clock ran
+ * out, so the player still sees the reveal. The server's own deadline decides
+ * whether time was up; `timeout` only ends a run early.
  */
-export type RunEnd = "wrong" | "deck-exhausted" | "won";
+export type TimedGuess = Guess | "timeout";
 
-/** Starts a run. The server mints the run id; the client never picks a seed. */
+/**
+ * Why a run stopped:
+ *
+ * - `wrong`: a wrong guess;
+ * - `deck-exhausted`: no further round could be dealt;
+ * - `won`: in a mode with a finish line (`WIN_ROUNDS`), its last round
+ *   answered correctly;
+ * - `timeout`: in a timed mode, the answer came after the question's deadline,
+ *   or the client's clock ran out;
+ * - `disconnected`: in a timed mode, no answer came at all — the server closes
+ *   the run a little after the deadline, keeping the streak it had verified.
+ *   Only ever in the server's own records; the client banks the run itself.
+ */
+export type RunEnd = "wrong" | "deck-exhausted" | "won" | "timeout" | "disconnected";
+
+/** Starts a Friendly run. The server mints the run id; the client never picks a seed. */
 export interface StartRequest {
   readonly mode: "friendly";
 }
 
-/** Answers round `round` of run `runId`. */
+/** Answers round `round` of Friendly run `runId`. */
 export interface AnswerRequest {
   readonly mode: "friendly";
   readonly runId: string;
@@ -39,23 +57,7 @@ export interface AnswerRequest {
   readonly guess: Guess;
 }
 
-/**
- * Starts a replay of someone else's run, from a challenge link
- * (`/football-higher-or-lower/legends/friendly?challenge=<runId>&score=<n>&sig=<sig>`).
- * The fields are the link's own. If the server can't verify the link it starts
- * a fresh run instead, and says why in `StartResponse.challenge`.
- */
-export interface ChallengeStartRequest {
-  readonly mode: "friendly";
-  /** The challenged run's id, `YYYYMMDD-<uuid>.<sig>`. */
-  readonly challenge: string;
-  /** The score to beat. */
-  readonly score: number;
-  /** Signs `challenge` and `score` together, so neither can be edited. */
-  readonly sig: string;
-}
-
-export type NextRoundRequest = StartRequest | ChallengeStartRequest | AnswerRequest;
+export type NextRoundRequest = StartRequest | AnswerRequest;
 
 /**
  * Where a run was when the player left: the title card and the cards sliding
@@ -73,7 +75,7 @@ export type LeaveTrigger = "hidden" | "pagehide";
  * the run. The server looks the round up for itself; nothing else is sent.
  */
 export interface LeaveRequest {
-  readonly mode: "friendly";
+  readonly mode: "friendly" | "endless";
   readonly runId: string;
   /** The round on screen, 1-based; 0 during the title card and the intro. */
   readonly round: number;
@@ -136,27 +138,38 @@ export interface RoundPayload {
   readonly upcoming?: CardImage;
 }
 
-/** What became of a challenge link a run was started from. */
+/**
+ * What became of a challenge link a run was started from (Endless only). Either
+ * way the run is a fresh one, with its own random rounds: a link sets the
+ * score to beat, never the sequence.
+ */
 export type ChallengeStatus =
-  /** The run is a replay of the challenged one: the same rounds, in the same order. */
+  /** The link checked out: the run is framed as "Beat <score>". */
   | { readonly accepted: true; readonly score: number }
-  /** The link didn't check out, or is too old; the run is a fresh one. */
+  /** The link didn't check out, or is too old: a plain run, with a note. */
   | { readonly accepted: false; readonly reason: "invalid" | "expired" };
 
+/**
+ * A run's first round, as the game reads it in every mode. Friendly's start
+ * answers exactly this; Endless's adds the first progress token
+ * (`RunStartResponse`), which the web app keeps to itself.
+ */
 export interface StartResponse {
   readonly runId: string;
   readonly round: RoundPayload;
-  /** Present only when the start came from a challenge link. */
+  /** Present only when the start came from a challenge link (Endless). */
   readonly challenge?: ChallengeStatus;
 }
 
 /**
  * A signed challenge for the run just played, at the score it reached: the
  * three query parameters of the game page's
- * `?challenge=<runId>&score=<score>&sig=<sig>`. The client builds the URL.
+ * `?challenge=<runId>&score=<score>&sig=<sig>`. The client builds the URL. The
+ * signature covers the run and the score together, so the number can't be
+ * edited; the friend who opens it plays a fresh run against that score.
  */
 export interface ChallengeLink {
-  /** The run to replay, `YYYYMMDD-<uuid>.<sig>` — the original, even after a replay. */
+  /** The run that set the score, `YYYYMMDD-<uuid>.<sig>`. */
   readonly runId: string;
   readonly score: number;
   readonly sig: string;
@@ -181,11 +194,141 @@ export interface ContinueResponse {
 export interface EndResponse {
   readonly reveal: Reveal;
   readonly end: RunEnd;
-  /** A link challenging a friend to beat this run's score on the same rounds. */
-  readonly challenge: ChallengeLink;
+  /**
+   * A link challenging a friend to beat this run's score, in a mode that has
+   * them (`CHALLENGES`: Endless). Friendly's ends carry none.
+   */
+  readonly challenge?: ChallengeLink;
 }
 
 export type AnswerResponse = ContinueResponse | EndResponse;
+
+// ------------------------------------------------------------ Endless
+
+/**
+ * `POST /api/run/start`: starts a run in a timed mode. Turnstile is checked
+ * first; a challenge link, if the page came from one, only sets the score to
+ * beat.
+ */
+export interface RunStartRequest {
+  readonly mode: "endless";
+  readonly turnstileToken: string;
+  readonly challenge?: ChallengeLink;
+}
+
+/**
+ * Round one, and the first progress token: the only way to answer it. The
+ * token is signed, not encrypted, and carries only what is on screen
+ * (ARCHITECTURE.md §8); the web app holds it in memory and sends it back with
+ * the guess.
+ */
+export interface RunStartResponse extends StartResponse {
+  readonly token: string;
+}
+
+/**
+ * `POST /api/round/guess`: answers the round the token names. `clientElapsedMs`
+ * is telemetry at most — the server measures the time itself and never trusts
+ * the client's clock.
+ */
+export interface GuessRequest {
+  readonly token: string;
+  readonly guess: TimedGuess;
+  readonly clientElapsedMs?: number;
+}
+
+/** The run goes on: the next round and the token to answer it with. */
+export interface GuessContinueResponse extends ContinueResponse {
+  readonly token: string;
+}
+
+/**
+ * The run is over. `result` is a signed record of it — score, how it ended,
+ * the day it started and the time the server measured — for publishing it
+ * later (part 2); the client keeps it in memory and never reads it.
+ */
+export interface GuessEndResponse extends EndResponse {
+  readonly challenge: ChallengeLink;
+  readonly result: string;
+}
+
+export type GuessResponse = GuessContinueResponse | GuessEndResponse;
+
+// ------------------------------------------------------------ boards
+
+/**
+ * `POST /api/run/submit`: publishes a finished Endless run to the boards.
+ * Opt-in — nothing reaches it unless the player presses Publish.
+ */
+export interface SubmitRequest {
+  /**
+   * The run's signed result (`GuessEndResponse.result`), or, for a run banked
+   * after the connection dropped, its latest progress token.
+   */
+  readonly token: string;
+  /** Checked with `checkNickname`, then against the blocklist. */
+  readonly nickname: string;
+  /**
+   * A random id this browser keeps (a v4 uuid). The server stores only a keyed
+   * hash of it, which is what "one entry per device" counts.
+   */
+  readonly deviceId: string;
+  readonly turnstileToken: string;
+}
+
+/** Where a published run stands in one of its periods, as its owner sees it. */
+export interface PeriodRank {
+  /** `2026-09-29`, `2026-W40` or `2026-09`. */
+  readonly key: string;
+  /** False when the period has already closed: a run started before a reset, published after. */
+  readonly current: boolean;
+  /** The device's best in the period, ranked among every device's best. */
+  readonly rank: number;
+  /** How many devices have an entry in the period. */
+  readonly total: number;
+  /** When the period resets, ms since the epoch. */
+  readonly resetsAt: number;
+  /** The device's best entry in the period: this run, or a better one already published. */
+  readonly entryId: string;
+  readonly streak: number;
+}
+
+export interface SubmitResponse {
+  /** The new entry's id. */
+  readonly id: string;
+  /** As stored: cleaned (`cleanNickname`). */
+  readonly nickname: string;
+  readonly streak: number;
+  readonly periods: {
+    readonly day: PeriodRank;
+    readonly week: PeriodRank;
+    readonly month: PeriodRank;
+  };
+}
+
+export interface BoardEntry {
+  readonly id: string;
+  readonly rank: number;
+  /** Null for a name that has been retired: shown as "Retired name", the score kept. */
+  readonly nickname: string | null;
+  readonly streak: number;
+}
+
+/** `GET /api/board/endless/:period` — the current period's top 100. */
+export interface BoardResponse {
+  readonly mode: "endless";
+  readonly period: "day" | "week" | "month";
+  readonly key: string;
+  readonly resetsAt: number;
+  /** Devices with an entry this period. */
+  readonly total: number;
+  readonly entries: readonly BoardEntry[];
+  /** The period before: yesterday, last week, last month. */
+  readonly previous: {
+    readonly key: string;
+    readonly winner: { readonly nickname: string | null; readonly streak: number } | null;
+  };
+}
 
 export type ApiErrorCode =
   | "bad_request"
@@ -194,10 +337,17 @@ export type ApiErrorCode =
   | "rate_limited"
   | "unavailable"
   | "internal"
-  /** Feedback only: the Turnstile check didn't pass. */
+  /** Feedback and run starts: the Turnstile check didn't pass. */
   | "verification_failed"
+  /**
+   * Endless: the progress token was already spent, is out of order, or its run
+   * is over. The run is void; nothing more is taken for it.
+   */
+  | "conflict"
   /** Feedback only: the message couldn't be sent on. */
-  | "send_failed";
+  | "send_failed"
+  /** Publishing: the nickname didn't pass moderation. "Try another name." */
+  | "nickname_rejected";
 
 export interface ApiError {
   readonly error: ApiErrorCode;
@@ -229,6 +379,8 @@ export interface SuggestRequest {
  */
 export interface CorrectionRequest {
   readonly kind: "correction";
+  /** Endless for an Endless run's report; absent for Friendly's, as before. */
+  readonly mode?: "endless";
   readonly runId: string;
   /** 1-based. */
   readonly round: number;

@@ -446,12 +446,20 @@ describe("the score badge", () => {
     expect(scoreBadge(at(3, "over"), "friendly")).toBeNull();
   });
 
-  it("never shows on a wrong answer, the winning one, before any point, or outside Friendly", () => {
+  it("never shows on a wrong answer, the winning one, or before any point", () => {
     const missed = at(3, "verdict", { history: [rec(1), rec(2), rec(3), rec(4, false)] });
     expect(scoreBadge(missed, "friendly")).toBeNull();
     expect(scoreBadge(at(20, "verdict", { end: "won" }), "friendly")).toBeNull();
     expect(scoreBadge(at(0, "dealing"), "friendly")).toBeNull();
-    expect(scoreBadge(at(3), "endless")).toBeNull();
+  });
+
+  it("shows the plain streak in Endless, with the title at each milestone, 50 included", () => {
+    expect(scoreBadge(at(3), "endless")).toMatchObject({ text: "3", milestone: false });
+    expect(scoreBadge(at(15), "endless")).toMatchObject({
+      text: "15 · Fan favourite",
+      milestone: true,
+    });
+    expect(scoreBadge(at(50), "endless")).toMatchObject({ text: "50 · Immortal", milestone: true });
   });
 });
 

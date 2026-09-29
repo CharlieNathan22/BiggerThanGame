@@ -44,13 +44,21 @@ If a change seems to require breaking one of these, stop and ask.
 ## Commands
 
 ```bash
-pnpm dev          # builds the deck, then wrangler dev on :8787 and astro dev together; /api proxied
-pnpm dev:api      # builds the deck, then the Worker on :8787 (wrangler dev, secret from .dev.vars)
+pnpm dev          # builds the deck, migrates the local D1, then wrangler dev on :8787 (with
+                  # --test-scheduled) and astro dev together; /api proxied
+pnpm dev:api      # the same without astro: the Worker on :8787 (secrets from .dev.vars)
 pnpm test         # unit tests (vitest) — core, deck and Worker
 pnpm simulate     # 20k-run difficulty simulation → simulation.md; --model rank, --calibration <file.json>,
                   # --runs <n> (fan model by default)
 pnpm deck:import  # players.csv (+ image-log.csv, focus.csv) → players/*.yaml; --dry-run, --prune
 pnpm stats        # gameplay analytics from Analytics Engine; needs .env (see "Logs and analytics")
+pnpm db:migrate:local   # apply migrations/ to wrangler's LOCAL D1 (pnpm dev does it first)
+pnpm db:seed:local      # a few hundred fake scores around today (--date YYYY-MM-DD); local only
+pnpm db:reset:local     # wipe the local D1 and migrate it again
+pnpm db:migrate:remote  # OWNER ONLY, deploy day: migrations to production, after asking
+pnpm db:owner           # OWNER ONLY: flag-name / shadow a score by id (--local to try it locally)
+pnpm blocklist:build    # worker/blocklist.local.txt (gitignored) → hashed worker/src/blocklist-data.ts
+pnpm load:local         # Endless under load against wrangler dev; refuses anything but localhost
 pnpm build        # validates deck, emits artifacts, builds site, leak-scans and search-checks it
                   # (sample deck allowed)
 pnpm build:prod   # same, but refuses the sample deck — production and deploy only
@@ -105,7 +113,8 @@ they record every request's IP, location, user agent and headers. Don't turn the
 
 **Gameplay analytics** — `pnpm stats` prints the start/end summary (runs started, finished,
 abandoned, score spread, win rate) for the last 7 days. Name queries to see more:
-`pnpm stats streaks friendly stats distance bands dropoff leaves replays latest`, or `pnpm stats all`;
+`pnpm stats streaks endings clock friendly stats distance bands dropoff leaves replays endless latest`, or
+`pnpm stats all`;
 `pnpm stats run <runKey>` lists one run's answers with the gaps between them (the run key is in
 its `run_start`/`run_end` log lines);
 `--days 30` (up to 92), `--deck legends-107-e68a4e1b` for one deck version, `--list` for the
@@ -122,7 +131,11 @@ permission and nothing else. Keep it in `.env` only; never commit, print or past
 packages/core/    framework-free TypeScript. The game.
 packages/deck/    schema, validation, build pipeline. Data is a private submodule.
 apps/web/         Astro + Svelte
-worker/           fetch handler, /api/round/next and /api/feedback; DO and tokens arrive in Phase 5
+worker/           fetch handler: /api/round/next (Friendly), /api/run/start and /api/round/guess
+                  (Endless: tokens, RunDO), /api/run/submit and GET /api/board/endless/:period
+                  (the boards: D1, Cache API), /api/feedback, /api/run/leave; scheduled (the
+                  nightly snapshot and prune)
+migrations/       D1 migrations
 scripts/          pnpm stats (Node, no dependencies)
 ```
 
@@ -194,8 +207,17 @@ overlooked. Don't scaffold them speculatively.
 Friendly Mode ships first — clock-free, leaderboard-exempt, on the full deck. It needs
 `packages/core`, the Astro shell, the Svelte island, and **one stateless, rate-limited endpoint**
 (`POST /api/round/next`). It needs none of the Durable Object, D1, KV, progress tokens or
-Turnstile. Don't build that enforcement machinery until Friendly Mode is done; Phase 5 hardens
-`/api/round/next` in place rather than replacing it.
+Turnstile. Phase 5 built that enforcement for Endless on two endpoints of its own
+(`/api/run/start`, `/api/round/guess`) around the same payloads; Friendly keeps
+`/api/round/next`. Endless part 2 added the boards (D1, `/api/run/submit`, the board endpoint, the
+cron) and took Endless live: there is no launch switch any more.
+
+**The boards' database is local in development, always.** `pnpm dev` and every test use
+wrangler's local D1; never set `remote = true`, never pass `--remote`, and never run anything
+against the remote database (`db:migrate:remote` and `db:owner` are the owner's). The nickname
+blocklist is private: only hashes are committed; the plain list, `worker/blocklist.local.txt`, is
+gitignored. Never commit or print it. Shadow-flag thresholds and rate-limit numbers stay out of
+the public docs.
 
 ---
 

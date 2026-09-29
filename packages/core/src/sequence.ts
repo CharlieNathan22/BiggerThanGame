@@ -14,7 +14,8 @@ import { createRng } from "./prng.js";
 import type { Rng } from "./prng.js";
 import { isEligible } from "./eligibility.js";
 import { candidates, remember, selectChallenger } from "./engine.js";
-import { bandFor } from "./ramp.js";
+import type { MatchContext } from "./engine.js";
+import { RELAXATION_LADDERS, bandFor, relaxations } from "./ramp.js";
 import { STATS, STAT_KEYS } from "./stats.js";
 import { chooseStat, nextDwell, weightedPick } from "./wheel.js";
 import type { Mode, Player, Round, StatKey, Tier } from "./types.js";
@@ -31,10 +32,38 @@ export interface RunOptions {
 }
 
 /**
- * The cap on a run's length in the modes with no finish line. A run that
- * reaches it has exhausted the deck.
+ * The most rounds a run of each mode can deal. Friendly's is its win target
+ * (`WIN_ROUNDS`); in the modes with no finish line a run that reaches its cap
+ * has exhausted the deck (`deck-exhausted`). Endless's is set well past where
+ * any run ends — simulation.md shows how many get near it.
  */
-export const MAX_ROUNDS = 60;
+export const MAX_ROUNDS: Readonly<Record<Mode, number>> = {
+  friendly: 20,
+  endless: 150,
+  ranked: 60,
+};
+
+/** The highest round any mode can deal: the bound on a round number in any request. */
+export const MAX_ANY_ROUND = Math.max(...Object.values(MAX_ROUNDS));
+
+/**
+ * How the wheel decides a stat is **viable** — that it may switch to it — per
+ * mode (DESIGN.md §7):
+ *
+ * - `band`: a challenger can be dealt within the round's own band, unrelaxed.
+ *   A stat with nothing in the band is skipped for that switch.
+ * - `any`: a challenger can be dealt at all, at any step of the relaxation
+ *   ladder, the recently-seen queue included. The wheel never skips a stat
+ *   that can be played; Endless's pair rules (ramp.ts) keep what it then deals
+ *   hard rather than letting it relax to an easy pair.
+ *
+ * Changing a value changes every run of that mode.
+ */
+export const WHEEL_VIABILITY: Readonly<Record<Mode, "band" | "any">> = {
+  friendly: "band",
+  endless: "any",
+  ranked: "band",
+};
 
 /**
  * Rounds that win a run, per mode: answer this many correctly and the run ends,
@@ -52,9 +81,9 @@ export function isFinalRound(round: number, mode: Mode): boolean {
   return WIN_ROUNDS[mode] === round;
 }
 
-/** The most rounds a run of `mode` can deal: its win target, or `MAX_ROUNDS`. */
+/** The most rounds a run of `mode` can deal: its win target, or its `MAX_ROUNDS`. */
 export function roundCap(mode: Mode): number {
-  return WIN_ROUNDS[mode] ?? MAX_ROUNDS;
+  return WIN_ROUNDS[mode] ?? MAX_ROUNDS[mode];
 }
 
 /**
@@ -148,13 +177,10 @@ export function buildRun(opts: RunOptions): Round[] {
     const previousStat = stat;
 
     if (heldFor >= dwell && index > 1) {
-      const viable = STAT_KEYS.filter((key) => {
-        if (!isEligible(anchor as Player, key, now)) return false;
-        return (
-          candidates(anchor as Player, key, bandFor(key, index, mode), { deck, now, seen }).length >
-          0
-        );
-      });
+      const current = anchor;
+      const viable = STAT_KEYS.filter((key) =>
+        isViable(current, key, index, mode, { deck, now, seen }),
+      );
       const next = chooseStat({ current: stat, viable, rng });
       if (next !== undefined) {
         stat = next;
@@ -164,15 +190,23 @@ export function buildRun(opts: RunOptions): Round[] {
     }
 
     const preferIconic = index <= iconicRounds;
-    const match = selectChallenger(
-      anchor,
-      stat,
-      index,
-      mode,
-      { deck, now, seen },
-      rng,
-      preferIconic,
-    );
+    const ctx = { deck, now, seen };
+    let match = selectChallenger(anchor, stat, index, mode, ctx, rng, preferIconic);
+    // The held stat can't be dealt to this anchor at all. Where the wheel
+    // counts any dealable stat (Endless), switch rather than end the run: a
+    // value rule never relaxes, so an anchor at the edge of a narrow stat's
+    // values may have no partner on it.
+    if (match === undefined && WHEEL_VIABILITY[mode] === "any") {
+      const current = anchor;
+      const viable = STAT_KEYS.filter((key) => isViable(current, key, index, mode, ctx));
+      const next = chooseStat({ current: stat, viable, rng });
+      if (next !== undefined) {
+        stat = next;
+        dwell = nextDwell(rng);
+        heldFor = 0;
+        match = selectChallenger(anchor, stat, index, mode, ctx, rng, preferIconic);
+      }
+    }
     if (match === undefined) break;
 
     rounds.push({
@@ -191,6 +225,26 @@ export function buildRun(opts: RunOptions): Round[] {
   }
 
   return rounds;
+}
+
+/**
+ * Whether the wheel may switch to `stat` for this anchor at this round, by the
+ * mode's `WHEEL_VIABILITY`: a challenger within the unrelaxed band, or a
+ * challenger at all — the loosest step of the relaxation ladder with the
+ * recently-seen queue ignored, the engine's last resort.
+ */
+export function isViable(
+  anchor: Player,
+  stat: StatKey,
+  round: number,
+  mode: Mode,
+  ctx: MatchContext,
+): boolean {
+  if (!isEligible(anchor, stat, ctx.now)) return false;
+  const band = bandFor(stat, round, mode);
+  if (WHEEL_VIABILITY[mode] === "band") return candidates(anchor, stat, band, ctx).length > 0;
+  const loosest = relaxations(band, RELAXATION_LADDERS[mode]).at(-1) ?? band;
+  return candidates(anchor, stat, loosest, ctx, true).length > 0;
 }
 
 /** One round, without materialising the whole run for the caller. */

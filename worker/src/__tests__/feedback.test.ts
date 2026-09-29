@@ -186,7 +186,8 @@ describe("validation", () => {
     ["a run on a problem", () => problem({ runId: "x", round: 1 }), "unexpected_key"],
     ["a malformed run id", () => correction({ runId: "not-a-run" }), "invalid_run"],
     ["a round of zero", () => correction({ round: 0 }), "invalid_round"],
-    ["a round past the maximum", () => correction({ round: 61 }), "invalid_round"],
+    ["a round past the maximum", () => correction({ round: 151 }), "invalid_round"],
+    ["a mode that isn't Endless", () => correction({ mode: "friendly" }), "invalid_mode"],
     ["a fractional round", () => correction({ round: 1.5 }), "invalid_round"],
     ["a round as a string", () => correction({ round: "1" }), "invalid_round"],
   ];

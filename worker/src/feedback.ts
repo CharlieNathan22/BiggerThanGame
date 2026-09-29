@@ -38,8 +38,8 @@ import type { LogLine, LogValue } from "./log.js";
 import type { PlainTextMail } from "./mail.js";
 import { figureFor } from "./payload.js";
 import { isRunAnswerable, verifyRunId } from "./run-id.js";
-import type { RunId } from "./run-id.js";
-import { friendlySeed } from "./seed.js";
+import type { RunId, RunMode } from "./run-id.js";
+import { seedFor } from "./seed.js";
 import type { TurnstileOutcome } from "./turnstile.js";
 
 /** The sender: an address on the site's own domain, where Email Routing is set up. */
@@ -188,13 +188,14 @@ export async function correctionReport(
   req: CorrectionRequest,
   ctx: Pick<FeedbackContext, "deck" | "secret" | "clock">,
 ): Promise<CorrectionReport> {
-  const run = await verifyRunId(req.runId, ctx.secret);
-  if (run === undefined) return { ok: false, code: "invalid_run" };
+  const mode = req.mode ?? "friendly";
+  const run = await verifyRunId(req.runId, ctx.secret, mode);
+  if (run === undefined || run.replay) return { ok: false, code: "invalid_run" };
   if (!isRunAnswerable(run, ctx.clock())) return { ok: false, code: "run_expired" };
 
   const now = run.date;
-  const seed = await friendlySeed(ctx.secret, run.origin);
-  const rounds = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds: req.round });
+  const seed = await seedFor(mode, ctx.secret, run.origin);
+  const rounds = buildRun({ deck: ctx.deck, seed, mode, now, maxRounds: req.round });
   const round = rounds[req.round - 1];
   if (round === undefined) return { ok: false, code: "invalid_round" };
 
@@ -209,7 +210,7 @@ export async function correctionReport(
     "Note:",
     req.note ?? "(none)",
     "",
-    `Round ${round.index} of ${describeRun(run)}`,
+    `Round ${round.index} of ${describeRun(run, mode)}`,
     `Received: ${ctx.clock().toISOString()}`,
     "",
   ].join("\n");
@@ -268,11 +269,9 @@ function figureLine(player: Player, stat: StatKey, now: Date): string {
   return `${player.name} (${player.id}): ${shown} [${value}]`;
 }
 
-function describeRun(run: RunId): string {
+function describeRun(run: RunId, mode: RunMode): string {
   const day = run.date.toISOString().slice(0, 10);
-  return run.replay
-    ? `replay ${run.body} of run ${run.origin} (dealt as of ${day})`
-    : `run ${run.body} (dealt as of ${day})`;
+  return `${mode === "endless" ? "Endless run" : "run"} ${run.body} (dealt as of ${day})`;
 }
 
 function errorCode(err: unknown): string {

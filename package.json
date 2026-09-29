@@ -5,10 +5,10 @@
   "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@12.4.2",
   "scripts": {
-    "dev": "pnpm --filter @bt/deck build --no-sim && pnpm run \"/^dev:(worker|web)$/\"",
-    "dev:worker": "wrangler dev --port 8787",
+    "dev": "pnpm --filter @bt/deck build --no-sim && pnpm db:migrate:local && pnpm run \"/^dev:(worker|web)$/\"",
+    "dev:worker": "wrangler dev --port 8787 --test-scheduled",
     "dev:web": "pnpm --filter web dev",
-    "dev:api": "pnpm --filter @bt/deck build --no-sim && wrangler dev",
+    "dev:api": "pnpm --filter @bt/deck build --no-sim && pnpm db:migrate:local && wrangler dev --test-scheduled",
     "build": "pnpm --filter @bt/deck build --no-sim && pnpm --filter web build && pnpm scan:dist && pnpm check:site",
     "build:prod": "pnpm --filter @bt/deck build --no-sim --require-private && pnpm --filter web build && pnpm scan:dist && pnpm check:site",
     "scan:dist": "pnpm --filter @bt/deck exec tsx src/scan-dist-cli.ts",
@@ -23,7 +23,14 @@
     "images:sync": "pnpm --filter @bt/deck exec tsx src/sync-cli.ts",
     "deck:import": "pnpm --filter @bt/deck exec tsx src/import-cli.ts",
     "stats": "tsx scripts/stats.ts",
-    "deploy": "pnpm build:prod && wrangler deploy"
+    "deploy": "pnpm build:prod && wrangler deploy",
+    "blocklist:build": "tsx scripts/blocklist.ts",
+    "db:migrate:local": "tsx scripts/db.ts migrate:local",
+    "db:migrate:remote": "tsx scripts/db.ts migrate:remote",
+    "db:seed:local": "tsx scripts/db.ts seed:local",
+    "db:reset:local": "tsx scripts/db.ts reset:local",
+    "db:owner": "tsx scripts/db.ts owner",
+    "load:local": "tsx scripts/load-test.ts"
   },
   "devDependencies": {
     "@bt/core": "workspace:*",

@@ -11,9 +11,18 @@
 
 import { describe, expect, it } from "vitest";
 import { STATS, WIN_ROUNDS, valueOf } from "@bt/core";
-import type { AnswerResponse, Player, RoundPayload, StartResponse } from "@bt/core";
+import type {
+  AnswerResponse,
+  GuessResponse,
+  Player,
+  RoundPayload,
+  RunStartResponse,
+  StartResponse,
+} from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
 import { FIXTURE_DECK, SAMPLE_DECK, context, fakeImages, runDay, walkRun } from "./helpers.js";
+import { begin, harness, readToken, walk } from "./endless-helpers.js";
+import type { Ending } from "./endless-helpers.js";
 
 const CARD_KEYS = ["country", "id", "image", "name", "position"];
 const ANCHOR_KEYS = [...CARD_KEYS, "display", "qualifier", "value"];
@@ -21,7 +30,6 @@ const STAT_KEYS = ["key", "label", "statChanged", "tier"];
 const ROUND_KEYS = ["anchor", "challenger", "index", "stat", "upcoming"];
 const REVEAL_KEYS = ["correct", "display", "qualifier", "round", "value"];
 const IMAGE_KEYS = ["focus", "height", "key", "width"];
-const CHALLENGE_LINK_KEYS = ["runId", "score", "sig"];
 
 /** Where a number may legitimately appear. Anything else is a leak. */
 const NUMERIC_PATHS = [
@@ -31,8 +39,6 @@ const NUMERIC_PATHS = [
   // The next round's challenger's photo, so it loads a round early.
   /^(round|next)\.upcoming\.(width|height)$/,
   /^reveal\.(round|value)$/,
-  // The player's own score, signed into the challenge link at a run's end.
-  /^challenge\.score$/,
 ];
 
 /** Fields that carry values the player has been shown, stripped before the scan. */
@@ -122,23 +128,18 @@ function checkResponse(
   if ("round" in response) {
     checkRound(response.round, deck, now);
   } else {
-    expectKeysWithin(response, ["challenge", "end", "next", "reveal"]);
+    // Challenge links are off in Friendly: no end carries one.
+    expectKeysWithin(response, ["end", "next", "reveal"]);
     expectKeysWithin(response.reveal, REVEAL_KEYS);
     // Friendly never deals past its twentieth round, and never scores past it.
     expect(response.reveal.round).toBeLessThanOrEqual(WIN_ROUNDS.friendly!);
     if ("end" in response) {
       expect(["wrong", "deck-exhausted", "won"]).toContain(response.end);
-      expectKeysWithin(response.challenge, CHALLENGE_LINK_KEYS);
-      expect(response.challenge.score).toBe(
-        response.reveal.correct ? response.reveal.round : response.reveal.round - 1,
-      );
-      expect(response.challenge.score).toBeLessThanOrEqual(WIN_ROUNDS.friendly!);
+      expect(response).not.toHaveProperty("challenge");
       // A run is won exactly when its twentieth round is answered correctly.
       const lastRight = response.reveal.correct && response.reveal.round === WIN_ROUNDS.friendly;
       expect(response.end === "won").toBe(lastRight);
       expect(response.end === "wrong").toBe(!response.reveal.correct);
-    } else {
-      expect(response).not.toHaveProperty("challenge");
     }
     if ("next" in response) {
       checkRound(response.next, deck, now);
@@ -282,5 +283,132 @@ describe("the checks themselves", () => {
     const player = SAMPLE_DECK.find((p) => p.id === started.round.challenger.id)!;
     const leaky = { ...started, round: { ...started.round, challenger: player } };
     expect(() => checkResponse(leaky as unknown as StartResponse, SAMPLE_DECK, now)).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------- Endless
+
+const ENDLESS_START_KEYS = ["challenge", "round", "runId", "token"];
+const ENDLESS_CONTINUE_KEYS = ["next", "reveal", "token"];
+const ENDLESS_END_KEYS = ["challenge", "end", "result", "reveal"];
+const TOKEN_KEYS = [
+  "anchorId",
+  "anchorValue",
+  "challengerId",
+  "deadline",
+  "issuedAt",
+  "mode",
+  "nonce",
+  "round",
+  "runId",
+  "stat",
+  "streak",
+  "v",
+];
+
+/** Numbers in an Endless response, beyond Friendly's: the score in its challenge link. */
+const ENDLESS_NUMERIC_PATHS = [...NUMERIC_PATHS, /^challenge\.score$/];
+
+/**
+ * A progress token carries exactly its declared fields, and only what is on
+ * screen: the anchor's figure, never the challenger's.
+ */
+function checkToken(token: string, round: RoundPayload): void {
+  const payload = readToken(token);
+  expect(Object.keys(payload).sort()).toEqual(TOKEN_KEYS);
+  expect(payload.round).toBe(round.index);
+  expect(payload.streak).toBe(round.index - 1);
+  expect(payload.stat).toBe(round.stat.key);
+  expect(payload.anchorId).toBe(round.anchor.id);
+  expect(payload.challengerId).toBe(round.challenger.id);
+  expect(payload.anchorValue).toBe(round.anchor.value);
+  // The only figure a token holds is the anchor's: every other number is the
+  // round, the streak, the version or the server's timing.
+  const numbers = numericLeaves(payload).map((l) => l.path);
+  expect(numbers.sort()).toEqual(["anchorValue", "deadline", "issuedAt", "round", "streak", "v"]);
+  expect(Object.keys(payload)).not.toContain("value");
+}
+
+function checkEndless(
+  response: RunStartResponse | GuessResponse,
+  deck: readonly Player[],
+  now: Date,
+): void {
+  const keys = allKeys(response);
+  for (const forbidden of ["stats", "dob", "deceased", "iconic", "era", "leagues", "mainClubs"]) {
+    expect(keys).not.toContain(forbidden);
+  }
+  for (const forbidden of ["band", "relaxation", "seed", "nonce", "deadline", "issuedAt"]) {
+    expect(keys).not.toContain(forbidden);
+  }
+  for (const leaf of numericLeaves(response)) {
+    expect(
+      ENDLESS_NUMERIC_PATHS.some((p) => p.test(leaf.path)),
+      `number at ${leaf.path}`,
+    ).toBe(true);
+  }
+  const stripped = JSON.stringify(response, (k, v: unknown) =>
+    SHOWN_FIELDS.has(k) || k === "token" || k === "result" ? null : v,
+  );
+  expect(scanForLeakedValues(stripped, deck, now, "endless response")).toEqual([]);
+
+  if ("round" in response) {
+    expectKeysWithin(response, ENDLESS_START_KEYS);
+    checkRound(response.round, deck, now);
+    checkToken(response.token, response.round);
+    return;
+  }
+  expectKeysWithin(response.reveal, REVEAL_KEYS);
+  if ("next" in response) {
+    expect(Object.keys(response).sort()).toEqual(ENDLESS_CONTINUE_KEYS);
+    expect(response.reveal.correct).toBe(true);
+    checkRound(response.next, deck, now);
+    checkToken(response.token, response.next);
+  } else {
+    expect(Object.keys(response).sort()).toEqual(ENDLESS_END_KEYS);
+    expect(["wrong", "timeout", "deck-exhausted"]).toContain(response.end);
+    expect(Object.keys(response.challenge).sort()).toEqual(["runId", "score", "sig"]);
+    expect(response.challenge.score).toBe(
+      response.reveal.correct ? response.reveal.round : response.reveal.round - 1,
+    );
+    expect(typeof response.result).toBe("string");
+  }
+}
+
+describe("Endless responses", () => {
+  const endings: Ending[] = ["wrong", "timeout", "late"];
+
+  it.each([
+    { name: "sample deck", deck: SAMPLE_DECK, runs: 30 },
+    { name: "fixture deck", deck: FIXTURE_DECK, runs: 15 },
+  ])(
+    "never carry a hidden value across $runs complete runs on the $name",
+    async ({ deck, runs }) => {
+      let responses = 0;
+      for (let i = 0; i < runs; i++) {
+        const h = harness({ deck, images: fakeImages(deck) });
+        const { started, answers } = await walk(h, {
+          deck,
+          stopAt: 1 + ((i * 7) % 25),
+          ending: endings[i % endings.length]!,
+        });
+        const now = runDay(started.runId);
+        for (const response of [started, ...answers]) {
+          checkEndless(response, deck, now);
+          responses += 1;
+        }
+        expect("end" in answers.at(-1)!).toBe(true);
+      }
+      expect(responses).toBeGreaterThan(runs * 2);
+    },
+    60_000,
+  );
+
+  it("fail on a token that carries the challenger's figure", async () => {
+    const h = harness();
+    const started = await begin(h);
+    const payload = { ...readToken(started.token), challengerValue: 1 };
+    const forged = `${Buffer.from(JSON.stringify(payload)).toString("base64url")}.x`;
+    expect(() => checkToken(forged, started.round)).toThrow();
   });
 });

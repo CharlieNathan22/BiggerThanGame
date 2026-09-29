@@ -9,6 +9,8 @@ import type { GameState, RoundRecord } from "../machine";
 import {
   challengeHeading,
   challengeIntro,
+  challengeText,
+  endingNames,
   gridCells,
   gridLabel,
   outcomeText,
@@ -99,11 +101,15 @@ describe("streak titles in text", () => {
     }
   });
 
-  it("gives none below five, and the long table's titles in Endless", () => {
+  it("gives none below five, and Endless's own titles past that", () => {
     expect(titleText(4, "endless")).toBe("");
     expect(titleText(10, "endless")).toBe("Starter");
+    expect(titleText(15, "endless")).toBe("Fan favourite");
     expect(titleText(20, "endless")).toBe("Captain");
-    expect(titleText(50, "endless")).toBe("GOAT");
+    expect(titleText(30, "endless")).toBe("Club legend");
+    expect(titleText(40, "endless")).toBe("World class");
+    expect(titleText(50, "endless")).toBe("Immortal");
+    expect(titleText(45, "ranked")).toBe("GOAT");
   });
 
   it("gives Friendly its own: Captain at fifteen, Legend for the win", () => {
@@ -116,95 +122,116 @@ describe("streak titles in text", () => {
   });
 });
 
-describe("the share text", () => {
+describe("the share text in Endless", () => {
   const history = run([...Array<Tier>(12).fill("basic"), "rare"]);
+  const site = "https://biggerthangame.com";
 
-  it("carries score, title, grid, the ending stat and the challenge link", () => {
-    const text = shareText(12, history, "wrong", link(12), "https://biggerthangame.com", "endless");
-    const lines = text.split("\n");
-    expect(lines[0]).toBe("Bigger Than — Football Legends");
-    expect(lines[1]).toBe("12 in a row · Starter");
-    expect(lines[2]).toBe("🟨".repeat(10));
-    expect(lines[3]).toBe("🟨🟨❌");
-    expect(lines[4]).toBe("Ended on: Club trophies");
-    expect(lines[5]).toBe(
-      `Can you beat 12? https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=${encodeURIComponent(RUN_ID)}&score=12&sig=${SIG}`,
-    );
-    expect(lines).toHaveLength(6);
+  it("carries the streak, title, grid, the stat and the two players that ended it, and the site", () => {
+    const text = shareText(12, history, "wrong", site, "endless", ["Zinedine Zidane", "Luís Figo"]);
+    expect(text.split("\n")).toEqual([
+      "Bigger Than — Football Legends",
+      "12 in a row · Starter",
+      "🟨".repeat(10),
+      "🟨🟨❌",
+      "Ended on: Club trophies — Zinedine Zidane v Luís Figo",
+      site,
+    ]);
   });
 
-  it("names no player and no value", () => {
-    for (const mode of ["endless", "friendly"] as const) {
-      const text = shareText(
-        3,
-        run(["basic", "basic", "basic", "basic"]),
-        "wrong",
-        link(3),
-        "https://s",
-        mode,
-      );
-      expect(text).not.toMatch(/\bp\d\b/);
-      // "3/20" is the score; anything else with two digits would be a value.
-      expect(text.replace(/https?:\S+/, "").replaceAll("3/20", "")).not.toMatch(/\d{2,}/);
-    }
+  it("names the players but never their figures, and carries no challenge link", () => {
+    const text = shareText(3, run(["basic", "basic", "basic", "basic"]), "wrong", site, "endless", [
+      "Anchor",
+      "Challenger",
+    ]);
+    expect(text).toContain("Anchor v Challenger");
+    expect(text.replace(site, "")).not.toMatch(/\d{2,}/);
+    expect(text).not.toContain("challenge=");
   });
 
-  it("falls back to the site's address without a signed link", () => {
+  it("says when the clock ran out", () => {
     const text = shareText(
-      1,
-      run(["basic"], false),
-      "network",
-      null,
-      "https://biggerthangame.com",
+      4,
+      run(["basic", "basic", "basic", "basic", "rare"]),
+      "timeout",
+      site,
       "endless",
+      ["A", "B"],
     );
+    expect(text).toContain("Out of time on: Club trophies — A v B");
+  });
+
+  it("ends with the site after a dropped connection", () => {
+    const text = shareText(1, run(["basic"], false), "network", site, "endless");
     expect(text.split("\n")).toEqual([
       "Bigger Than — Football Legends",
       "1 correct, then out",
       "🟨",
-      "https://biggerthangame.com",
+      site,
     ]);
   });
 
   it("says so when a run went the distance", () => {
-    const text = shareText(
-      2,
-      run(["basic", "basic"], false),
-      "deck-exhausted",
-      link(2),
-      "s",
-      "endless",
-    );
+    const text = shareText(2, run(["basic", "basic"], false), "deck-exhausted", "s", "endless");
     expect(text).toContain("Went the distance");
+  });
+
+  it("takes the names from the round that ended the run, in Endless only", () => {
+    const state = {
+      round: {
+        index: 3,
+        stat: { key: "caps" as const, label: "Caps", tier: "basic" as const, statChanged: false },
+        anchor: { ...anchor("a", 91), name: "Anchor Name" },
+        challenger: card("b", "Challenger Name"),
+      },
+      reveal: { round: 3, value: 88, display: "88", correct: false },
+    };
+    expect(endingNames(state, "endless")).toEqual(["Anchor Name", "Challenger Name"]);
+    expect(endingNames(state, "friendly")).toBeNull();
+    expect(endingNames({ ...state, reveal: null }, "endless")).toBeNull();
+  });
+});
+
+describe("challenge links, shared on their own", () => {
+  const site = "https://biggerthangame.com";
+
+  it("read Beat n and the Endless page's link", () => {
+    expect(challengeText(link(12), site, "endless")).toBe(
+      `Beat 12 — https://biggerthangame.com/football-higher-or-lower/legends/endless?challenge=${encodeURIComponent(RUN_ID)}&score=12&sig=${SIG}`,
+    );
+  });
+
+  it("don't exist in Friendly, or without a signed link", () => {
+    expect(challengeText(link(12), site, "friendly")).toBeNull();
+    expect(challengeText(null, site, "endless")).toBeNull();
   });
 });
 
 describe("the share text in Friendly", () => {
   const site = "https://biggerthangame.com";
 
-  it("scores a lost run out of twenty and asks a friend to beat it", () => {
+  it("scores a lost run out of twenty, names no player, and ends with the site", () => {
     const history = run([...Array<Tier>(12).fill("basic"), "rare"]);
-    const lines = shareText(12, history, "wrong", link(12), site, "friendly").split("\n");
+    const lines = shareText(12, history, "wrong", site, "friendly").split("\n");
     expect(lines[1]).toBe("12/20 · Starter");
     expect(lines[2]).toBe("🟨".repeat(10));
     expect(lines[3]).toBe("🟨🟨❌" + "⬛".repeat(7));
     expect(lines[4]).toBe("Ended on: Club trophies");
-    expect(lines[5]).toMatch(/^Can you beat 12\/20\? https:\/\/biggerthangame\.com\/.*&score=12&/);
+    expect(lines[5]).toBe(site);
     expect(lines).toHaveLength(6);
   });
 
-  it("gives a won run a trophy, no ending stat, and a challenge to match it", () => {
+  it("gives a won run a trophy and no ending stat", () => {
     const history = run(Array<Tier>(20).fill("uncommon"), false);
-    const lines = shareText(20, history, "won", link(20), site, "friendly").split("\n");
+    const lines = shareText(20, history, "won", site, "friendly").split("\n");
     expect(lines[1]).toBe("🏆 20/20 · Legend");
     expect(lines.slice(2, 4)).toEqual(["🟦".repeat(10), "🟦".repeat(10)]);
-    expect(lines[4]).toMatch(/^Can you match 20\/20\? /);
+    expect(lines[4]).toBe(site);
     expect(lines).toHaveLength(5);
   });
 
   it("gives no trophy for twenty in a mode without a target", () => {
     const history = run(Array<Tier>(20).fill("basic"), false);
-    const text = shareText(20, history, "deck-exhausted", link(20), site, "endless");
+    const text = shareText(20, history, "deck-exhausted", site, "endless");
     expect(text).not.toContain("🏆");
     expect(text).toContain("20 in a row · Captain");
   });
@@ -215,7 +242,8 @@ describe("challenge text", () => {
     expect(challengeHeading(7, "friendly")).toBe("Beat 7/20");
     expect(challengeHeading(20, "friendly")).toBe("Match 20/20");
     expect(challengeHeading(7, "endless")).toBe("Beat 7");
-    expect(challengeIntro(7, "friendly")).toContain("scored 7/20");
+    expect(challengeIntro(7, "endless")).toContain("streak was 7");
+    expect(challengeIntro(7, "endless")).toContain("a run of your own");
     expect(challengeIntro(20, "friendly")).toContain("Can you match it?");
   });
 

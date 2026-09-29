@@ -9,10 +9,10 @@
  * Friendly is a 20-question challenge (`WIN_ROUNDS`): answering the last round
  * correctly ends the run, won.
  *
- * A start may carry a challenge link. When it checks out, the run is a replay
- * of the challenged one — same seed, same date, so the same rounds — under a
- * replay id of its own (run-id.ts). Every end carries a signed link for the
- * score reached (challenge.ts).
+ * Challenge links are off in Friendly (`CHALLENGES`, @bt/core): a stateless
+ * score can be inflated by resending a round, so "Beat n" would mislead. A
+ * start carrying one is refused, as is a replay id from before they moved to
+ * Endless (validate.ts, run-id.ts), and an end carries no link.
  *
  * Deck, images, secret, clock, uuid and the rate limits are all injected, so
  * tests drive this directly in Node with no Worker runtime. So is `record`,
@@ -25,8 +25,6 @@ import type {
   AnswerRequest,
   AnswerResponse,
   ApiError,
-  ChallengeStartRequest,
-  ChallengeStatus,
   ContinueResponse,
   EndResponse,
   Player,
@@ -35,15 +33,13 @@ import type {
   StartResponse,
 } from "@bt/core";
 import { finalRound, pairRankDistance } from "./analytics.js";
-import type { GameEvent, RunKind } from "./analytics.js";
-import { challengeLink, checkChallenge } from "./challenge.js";
-import type { ChallengeCheck } from "./challenge.js";
+import type { GameEvent } from "./analytics.js";
 import { isCorrect, toReveal, toRoundPayload } from "./payload.js";
 import type { ImageLookup } from "./payload.js";
 import type { RateDecision } from "./rate-limit.js";
-import { isRunAnswerable, mintReplayId, mintRunId, parseRunId, verifyRunId } from "./run-id.js";
+import { isRunAnswerable, mintRunId, parseRunId, verifyRunId } from "./run-id.js";
 import { friendlySeed } from "./seed.js";
-import { isAnswer, isChallengeStart, parseNextRoundRequest } from "./validate.js";
+import { isAnswer, parseNextRoundRequest } from "./validate.js";
 
 export interface RoundContext {
   readonly deck: readonly Player[];
@@ -68,7 +64,7 @@ export interface RoundContext {
  */
 export interface RoundLimits {
   start(): Promise<RateDecision>;
-  /** `run` is the run id's verified body: `YYYYMMDD-<uuid>`, or a replay's `…~<uuid>`. */
+  /** `run` is the run id's verified body: `YYYYMMDD-<uuid>`. */
   answer(run: string): Promise<RateDecision>;
 }
 
@@ -89,19 +85,11 @@ export async function handleNextRound(body: unknown, ctx: RoundContext): Promise
   return isAnswer(parsed.value) ? answer(parsed.value, ctx) : start(parsed.value, ctx);
 }
 
-async function start(
-  req: StartRequest | ChallengeStartRequest,
-  ctx: RoundContext,
-): Promise<RoundResult> {
+async function start(_req: StartRequest, ctx: RoundContext): Promise<RoundResult> {
   const limited = await ctx.limits?.start();
   if (limited?.ok === false) return rateLimited(limited.retryAfter, "starts");
 
-  const challenge = isChallengeStart(req)
-    ? await checkChallenge(ctx.secret, req, ctx.clock())
-    : undefined;
-  const runId = challenge?.ok
-    ? await mintReplayId(challenge.run, ctx.uuid(), ctx.secret)
-    : await mintRunId(ctx.clock(), ctx.uuid(), ctx.secret);
+  const runId = await mintRunId(ctx.clock(), ctx.uuid(), ctx.secret);
   const run = parseRunId(runId);
   // Never the id itself in the message: it reaches the logs.
   if (run === undefined) throw new Error("minted a malformed run id");
@@ -114,29 +102,15 @@ async function start(
     return { status: 503, body: { error: "unavailable", detail: "the deck cannot deal a round" } };
   }
 
-  const status = isChallengeStart(req) && challenge ? challengeStatus(req, challenge) : undefined;
-  const response: StartResponse = {
-    runId,
-    round: toRoundPayload(first, now, ctx.images, second),
-    ...(status !== undefined ? { challenge: status } : {}),
-  };
-  ctx.record?.({ type: "start", mode: "friendly", run: run.body, runKind: runKind(run.replay) });
+  const response: StartResponse = { runId, round: toRoundPayload(first, now, ctx.images, second) };
+  ctx.record?.({ type: "start", mode: "friendly", run: run.body, runKind: "fresh" });
   return { status: 200, body: response };
-}
-
-function runKind(replay: boolean): RunKind {
-  return replay ? "replay" : "fresh";
-}
-
-function challengeStatus(req: ChallengeStartRequest, check: ChallengeCheck): ChallengeStatus {
-  return check.ok
-    ? { accepted: true, score: req.score }
-    : { accepted: false, reason: check.reason };
 }
 
 async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResult> {
   const run = await verifyRunId(req.runId, ctx.secret);
   if (run === undefined) return badRequest("runId is not one this server issued");
+  if (run.replay) return badRequest("replay ids are refused: challenge links are off in Friendly");
   // `now` is the run's date, fixed for the whole run, never the server clock.
   const now = run.date;
   if (!isRunAnswerable(run, ctx.clock())) return badRequest("runId is out of date");
@@ -158,7 +132,7 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
 
   // Recorded once the response is built, so a failure after the judgement
   // can't record an answer the player never saw.
-  const facts = { mode: "friendly", run: run.body, runKind: runKind(run.replay) } as const;
+  const facts = { mode: "friendly", run: run.body, runKind: "fresh" } as const;
   const recordAnswer = (): void =>
     ctx.record?.({
       type: "answer",
@@ -171,12 +145,8 @@ async function answer(req: AnswerRequest, ctx: RoundContext): Promise<RoundResul
       rankDistance: pairRankDistance(ctx.deck, round, now),
     });
 
-  const ended = async (end: RunEnd, score: number): Promise<RoundResult> => {
-    const response: EndResponse = {
-      reveal,
-      end,
-      challenge: await challengeLink(ctx.secret, run.origin, score),
-    };
+  const ended = (end: RunEnd, score: number): RoundResult => {
+    const response: EndResponse = { reveal, end };
     recordAnswer();
     // Every end follows an answer, so there's always a final round to log.
     ctx.record?.({ type: "end", ...facts, end, score, final: finalRound(round, now, req.guess) });

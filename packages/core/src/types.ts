@@ -95,10 +95,29 @@ export interface Band {
   readonly minRatio?: number;
   /**
    * Smallest ratio gap (`max / min - 1`) that **no relaxation removes**, unlike
-   * `minRatio`. Set for Friendly's final stretch only (`FINAL_STRETCH`).
+   * `minRatio`. Set for Friendly's final stretch (`FINAL_STRETCH`) and for
+   * Endless's wide stats in its late rounds (`PAIR_RULES`).
    */
   readonly strictMinRatio?: number;
+  /**
+   * A rule on the two values themselves that **replaces** the rank band: when
+   * set, `floor` and `ceiling` are ignored and nothing relaxes but the
+   * recently-seen queue. For stats that cluster on a few values, where a rank
+   * band means little (`PAIR_RULES`, ramp.ts).
+   */
+  readonly valueRule?: ValueRule;
 }
+
+/**
+ * What makes a hard pair for a narrow stat, measured on the values:
+ *
+ * - `relative`: the two values differ and the larger is at most `max` above
+ *   the smaller as a ratio (`max / min - 1 <= max`) — age, 50 against 54.
+ * - `difference`: the two values differ by `min` to `max` — trophies, clubs.
+ */
+export type ValueRule =
+  | { readonly kind: "relative"; readonly max: number }
+  | { readonly kind: "difference"; readonly min: number; readonly max: number };
 
 export type Relaxation = "none" | "iconic" | "band" | "seen";
 

@@ -17,7 +17,7 @@ import type { FeedbackRequest, SitePage, StatKey } from "@bt/core";
 import { t } from "../i18n";
 import { FRIENDLY_PATH } from "../lib/paths";
 import type { Fetch } from "./api";
-import type { GameState } from "./machine";
+import type { GameMode, GameState } from "./machine";
 import type { Timings } from "./timing";
 import { qualifierText } from "./view";
 
@@ -74,6 +74,8 @@ export interface ShownFigure {
 
 /** The round a report is about: its address, and what the player saw of it. */
 export interface ReportedRound {
+  /** Endless for an Endless run: its run ids are signed apart from Friendly's. */
+  readonly mode: GameMode;
   readonly runId: string;
   readonly round: number;
   readonly stat: StatKey;
@@ -91,6 +93,7 @@ export function reportedRound(state: GameState): ReportedRound | null {
   if (phase !== "over" || runId === null || round === null || reveal === null) return null;
   if (reveal.round !== round.index) return null;
   return {
+    mode: state.mode,
     runId,
     round: round.index,
     stat: round.stat.key,
@@ -146,7 +149,14 @@ export function feedbackRequest(
   }
   const { report } = context;
   if (report === null) throw new Error("feedbackRequest: a correction needs the round it's about");
-  return { kind, runId: report.runId, round: report.round, ...withNote, turnstileToken };
+  return {
+    kind,
+    ...(report.mode === "endless" ? { mode: "endless" as const } : {}),
+    runId: report.runId,
+    round: report.round,
+    ...withNote,
+    turnstileToken,
+  };
 }
 
 /** How a send went, as the form tells the player. */

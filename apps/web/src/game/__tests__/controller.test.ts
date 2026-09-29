@@ -173,6 +173,33 @@ describe("GameController", () => {
     expect(latest.end).toBe("wrong");
   });
 
+  it("tells onOver once when a run ends, with its final state", async () => {
+    const ended: GameState[] = [];
+    const c = new GameController({
+      api,
+      timings: TIMINGS,
+      now: () => Date.now(),
+      schedule: (fn, ms) => {
+        const id = setTimeout(fn, ms);
+        return () => clearTimeout(id);
+      },
+      reducedMotion: () => false,
+      onOver: (state) => ended.push(state),
+    });
+    c.start();
+    api.starts[0]?.resolve({ runId: "20260926-a", round: round(1) });
+    await flush();
+    await vi.advanceTimersByTimeAsync(TIMINGS.title + TIMINGS.holdMin + TIMINGS.introMin);
+    await vi.advanceTimersByTimeAsync(TIMINGS.beat + TIMINGS.spin + TIMINGS.land);
+    c.guess("lower");
+    api.answers[0]?.reply.resolve(wrong(1));
+    await flush();
+    await vi.advanceTimersByTimeAsync(TIMINGS.verdict + TIMINGS.over + 5000);
+    expect(ended).toHaveLength(1);
+    expect(ended[0]).toMatchObject({ phase: "over", end: "wrong", streak: 0 });
+    c.destroy();
+  });
+
   it("skips the spin with reduced motion", async () => {
     reduced = true;
     await startRun();

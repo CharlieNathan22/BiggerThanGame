@@ -94,10 +94,20 @@ storage. That is friction, not prevention, and the doc should stay honest about 
 
 ### Endless Casual
 
-- **Randomised sequence**, unlimited attempts, play as much as you like.
-- Same server-authoritative protection as Daily Ranked.
-- Leaderboard is **best streak, reset daily**, and is presented as a personal-best board rather
-  than a ranking.
+- **Randomised sequence**, a random seed per run, unlimited attempts, play as much as you like.
+- **One life, no finish line.** A run ends on a wrong answer (`wrong`), when the clock runs out
+  (`timeout`), when the connection goes (`disconnected`: the streak so far is kept) or, in
+  principle, when the engine can deal no more (`deck-exhausted`, capped at 150 rounds, which the
+  simulation shows no run reaching).
+- **The clock:** 15 seconds for question one, 10 for every question after (§9).
+- Same server-authoritative protection as Daily Ranked: a signed progress token per question,
+  spent once, and the server's own clock (ARCHITECTURE.md §8).
+- A bit harder than Friendly, on its own ramp (§8), with its own streak titles (§13). Every stat
+  can come up on every question.
+- **Challenge links live here** (§13): a friend plays a fresh run of their own against your score.
+- **Boards for today, this week and this month** (UTC; §13), each of a device's best published
+  run, presented as personal-best boards rather than a ranking. Publishing is opt-in, under a
+  nickname.
 
 ### Friendly Mode
 
@@ -110,8 +120,9 @@ One life still applies.
 
 **Friendly is a 20-question challenge.** Answer all twenty correctly and the run ends, won — there
 is no "keep going". A miss ends it as before. The score reads out of twenty everywhere it appears:
-"7 / 20" in the title bar instead of "Streak 7", "7/20" on the game-over panel, in both shares, in
-challenge links ("Beat 7/20") and in the local best ("Best 12/20"). A win gets its own moment on
+"7 / 20" in the title bar instead of "Streak 7", "7/20" on the game-over panel, in both shares and
+in the local best ("Best 12/20"). **Friendly has no challenge links**: it is stateless, so a score
+can be inflated by resending a round, which made "Beat n" misleading. They moved to Endless (§13). A win gets its own moment on
 the game-over panel — a trophy, "You won" in gold, 20/20 — which is still, with the same content,
 under reduced motion. A thin **progress track** under the title bar has one segment per question:
 each answered round fills in gold, a miss in red, and the current round is lit.
@@ -120,8 +131,10 @@ title bar carries the score in text. Round 20 is the **final question**: its seg
 while it is asked the plaque and the track carry a gold "Final question" tag, announced as "Final
 question — question 20 of 20". Friendly has its own, compressed difficulty ramp (§8), its
 own streak titles (§13) and holds the iconic preference for five rounds (§10). Endless and Ranked
-keep the plain streak, no cap, no track and the long ramp; all of it is driven from per-mode
-settings in `@bt/core` (`WIN_ROUNDS`, `BAND_SCHEDULES`, `STREAK_TITLES`, `ICONIC_ROUNDS`).
+keep the plain streak and no track; Endless has its own ramp and pair rules, Ranked the long ramp.
+All of it is driven from per-mode settings in `@bt/core` (`WIN_ROUNDS`, `MAX_ROUNDS`,
+`BAND_SCHEDULES`, `PAIR_RULES`, `WHEEL_VIABILITY`, `QUESTION_LIMITS`, `CHALLENGES`,
+`STREAK_TITLES`, `ICONIC_ROUNDS`).
 
 **Friendly is served per question, like the other modes.** It calls the same endpoint with the same
 payloads; what it skips is the enforcement — no progress tokens, no replay check, no timer, no
@@ -155,7 +168,7 @@ Because it plays the full deck, Friendly now _does_ give a usable read on the di
 unlike the small-pool version it replaces. `simulation.md` remains the primary instrument, but
 real play against a real deck is the check on it.
 
-Daily Ranked and Endless follow together, once enforcement is complete. Target deck at full launch
+Endless follows, with its boards, once enforcement is complete; Daily Ranked after it. Target deck at full launch
 is around 300 legends, with a couple of hundred entered early so simulation has something real to
 work with.
 
@@ -359,6 +372,13 @@ for colourblind players.
 - **The opening stat is a wheel draw too**, over basic and uncommon stats only, with the same tier
   weights. **Rare stats never open a run** — a newcomer's first question should read at a glance —
   but the wheel can switch to them from the first switch, at round 3.
+- **Which stats are viable, per mode** (`WHEEL_VIABILITY`). In Friendly and Ranked the wheel only
+  switches to a stat that has a pair within the round's own band, so a stat with nothing in the
+  band is skipped for that switch. **In Endless every stat can come up on every question**: the
+  wheel may switch to any stat the anchor can be dealt at all, at any step of relaxation, and the
+  late-round pair rules (§8) keep what it then deals hard rather than relaxing to an easy pair. If
+  a held stat can't be dealt to the new anchor at all (a narrow stat at the edge of its values), the
+  wheel switches rather than ending the run.
 - **A rare stat is never followed directly by another rare stat**, unless nothing else is viable
   at that moment. Rare stats carry a heavy weight to make up for never opening a run; without this
   rule they would crowd the later rounds — measured at 45–49% of rounds from round 6 on.
@@ -418,7 +438,43 @@ The first band keeps no ceiling deliberately — early rounds should actively fa
 available pair (a squad player against someone with sixty million followers), not merely any pair
 clearing the floor.
 
-That table is Endless and Ranked's. **Friendly's twenty questions** have their own ramp. It opens
+That table is Ranked's. **Endless** and **Friendly's twenty questions** have their own ramps.
+
+**Endless** is a bit harder than Friendly, reaching its hard zone at round 16 (Friendly's is 18)
+and still tightening past round 20 rather than levelling off. Rounds 1–5 are Friendly's exactly —
+the same uncapped band and the same iconic window — and from round 5 it never gets easier:
+
+| Rounds | Band (rank distance) | Plus, from round 16 (`PAIR_RULES`)                         |
+| ------ | -------------------- | ---------------------------------------------------------- |
+| 1–5    | ≥0.45, no ceiling    |                                                            |
+| 6–10   | 0.12–0.25            |                                                            |
+| 11–15  | 0.03–0.10            |                                                            |
+| 16–20  | 0.02–0.04            | wide stats ≥10% apart; narrow stats by value, not the band |
+| 21–30  | 0.01–0.04            | the same                                                   |
+| 31+    | 0.01–0.03            | the same                                                   |
+
+**From round 16, narrow stats are paired by value.** A rank band means little for a stat that
+clusters on a few values, so a hard pair is defined by the figures: **age** — the two ages differ
+and are within 10% of each other (50 and 54); **international trophies** and **clubs played for**
+— the two figures differ by 1 or 2. **Club trophies** keep their band: their figures spread widely
+enough that the band plus the 10% floor still holds pairs in every late round (`viability.md`).
+**Wide stats** — every other — keep their band and must also be at least 10% apart, as in
+Friendly's final stretch, on top of tie exclusion and Instagram's 2× floor. Neither rule ever
+relaxes: only the band's ceiling, its floor and the seen queue give, in the usual order. Endless
+lifts its ceiling gently when it relaxes (`RELAXATION_LADDERS`: half again at each step, rather
+than doubling once and dropping it), so a dense stat whose nearest neighbours the 10% floor rules
+out gets the next-closest pair, not a blowout.
+
+Under the `fan` model (131 players, 20,000 runs; no clock, so real Endless plays harder): median
+streak 10, 3.5% of runs reach 20 and 0.2% reach 30, none gets near the 150 cap, and rounds 16–20
+are answered right 76% of the time (rounds 6–10 89%, 11–15 76%). Two of the targets it was tuned to can't both be met with the rest: reaching 30
+in ~1% of runs needs late rounds answered right ~88% of the time, while 65–72% in rounds 16–20
+needs them far harder, and bands that never get easier can't give both. And the fan model scores
+the narrow stats' pairs (international trophies 1–2 apart sit a third of the deck apart) and the
+dense stats' closest 10%-apart pairs as easier than a real fan would find them, which holds rounds
+16–20 near 76% however tight the bands. `simulation.md` has the tables.
+
+**Friendly's twenty questions**: It opens
 on the same uncapped band for the five rounds that prefer iconic names, stays uncapped a little
 lower for five more, then tightens quickly and **never gets easier**: from round 5 each band is at
 least as hard as the one before — its floor and ceiling never rise — and round 20, the **final
@@ -481,15 +537,17 @@ When the candidate pool falls below a threshold, relax in this order:
 2. **Then the ceiling** — a too-easy question beats a repeated player.
 3. **Then the floor.**
 4. **Then shorten the recently-seen queue.**
-5. **Never relax tie exclusion**, nor Friendly's final-stretch ratio floor (below).
+5. **Never relax tie exclusion**, nor Friendly's final-stretch ratio floor (below), nor Endless's
+   pair rules from round 16 (its 10% floor for wide stats, and the value rules for narrow ones).
 
 The recently-seen queue (the last ~12 players, excluded from selection) matters more here than it
 did with floors, because bands and the queue shrink the pool at the same time.
 
 ### Run length
 
-In Endless and Ranked, a 0.45 floor through round 10 pushes the knife-edge band out to roughly
-round 43, so a strong run is 40-plus questions at 10 seconds each — six to eight minutes. Acceptable for a once-a-day puzzle,
+In Ranked, a 0.45 floor through round 10 pushes the knife-edge band out to roughly
+round 43, so a strong run is 40-plus questions at 10 seconds each — six to eight minutes. Endless
+reaches its hard zone at round 16, so a good run there is 15–25 questions and a very good one 30. Acceptable for a once-a-day puzzle,
 long by the genre's norms. Sustaining it also needs the full 300-player deck; a 50-player test deck
 will exhaust the pool long before then and sit permanently in relaxation. Friendly is capped at
 twenty questions, so it never gets there.
@@ -507,8 +565,15 @@ trying to design it away. Daily Ranked mitigates it socially: everyone hits the 
 ## 9. Timer and scoring
 
 - **10 seconds per question**, starting after the wheel lands so the animation doesn't eat
-  thinking time.
+  thinking time (`QUESTION_LIMITS` in `@bt/core`).
 - **15 seconds for question one**, while the player works out what they're looking at.
+- **The countdown sits on the plaque**: a thin bar along its bottom edge, subtle until the last
+  three seconds, then red, thicker, with a stopwatch tag and the seconds left under the plaque, so
+  colour never carries it alone. Reduced motion gets a bar that steps down a second at a time.
+  Screen readers hear "5 seconds left" once, never a count every second. It stops the moment the
+  player answers: it never runs while the answer is in flight.
+- **When it runs out**, the client sends a `timeout` so the player still sees the reveal; the run
+  ends as `timeout`.
 - **Start button before question one**, so the first timer doesn't run while the player is still
   orienting.
 - **Timeout ends the run.** With one life this is the clean answer, and it's what stops people
@@ -517,7 +582,12 @@ trying to design it away. Daily Ranked mitigates it socially: everyone hits the 
 - **Time is a tiebreaker only**, never a headline metric — rewarding speed on near-ties rewards
   lucky guessing.
 - **The server owns the clock.** Timing is measured from when the round token was issued, with a
-  short network grace allowance. Client-reported timings are telemetry, never trusted.
+  short network grace allowance: each token's deadline is its issue time plus the animation before
+  the question is answerable (the longest an honest client plays), the limit, and 3 seconds. An
+  answer after it ends the run as `timeout`, whatever it says. Client-reported timings are
+  telemetry, never trusted.
+- **Endless's start panel says so**: "Endless has a 10-second clock", with a link to Friendly for
+  anyone who'd rather play without one.
 - **Friendly Mode** (section 3) is the exception, and is excluded from all boards.
 
 ---
@@ -669,27 +739,35 @@ a number.
 ### What a finished run shares
 
 - **Streak titles** mark milestones, one table per mode in `@bt/core` (`STREAK_TITLES`):
-  - Endless and Ranked: 5 Squad player, 10 Starter, 20 Captain, 30 Legend, 45+ GOAT.
+  - Endless: 5 Squad player, 10 Starter, 15 Fan favourite, 20 Captain, 30 Club legend, 40 World
+    class, 50 Immortal. Shown mid-run too: the title the streak holds sits in a chip at the top of
+    the pitch, and the score badge names each new one.
+  - Ranked: 5 Squad player, 10 Starter, 20 Captain, 30 Legend, 45+ GOAT.
   - Friendly: 5 Squad player, 10 Starter, 15 Captain, 20 Legend — the win.
 
   Below 5 there is none. Shown on the game-over panel and in both shares.
 
 - **Share text**, Wordle-style: score and title, one square per answered round in its tier colour
   (🟨 basic, 🟦 uncommon, 🟪 rare, ten to a line), ❌ for the round that ended the run, "Ended on:
-  <stat>", and a challenge link. No player names, no values, no answers — it spoils nothing. In
-  Friendly the score is "7/20" and the grid is always two rows of ten, ⬛ for the questions the run
-  didn't reach; a won run reads "🏆 20/20 · Legend", with no "Ended on", and challenges a friend
-  to match it rather than beat it.
+  <stat>" ("Out of time on: <stat>" for a timeout), and the site's address. No values and no
+  answers. In Endless the ending names the two players, never their figures ("Ended on: Caps —
+  Zidane v Henry"); a challenge link is shared on its own, so a friend's run spoils nothing. In
+  Friendly the score is "7/20", no player is named, and the grid is always two rows of ten, ⬛ for
+  the questions the run didn't reach; a won run reads "🏆 20/20 · Legend", with no "Ended on".
 - **Share image**: the same, plus the final round's two players and the figures the player has just
   seen, in the game's type and colours; in Friendly the score out of twenty, the twenty-cell grid
   (unreached rounds as empty outlines) and a gold trophy for a win. **No player photos** — their
   CC licences require attribution that can't travel with a shared image.
-- **Challenge links** replay exactly that run for a friend, framed as "Beat <score>" ("Beat 7/20"
-  in Friendly, "Match 20/20" for a won run): the same pairs, stats and order. At the end the friend
-  sees whether they beat it, matched it or fell short; a replay can be won too. A Friendly link's
-  score is at most 20. The number is signed with the run, so it can't be edited; a link that fails the check,
-  or is more than 10 days old, opens a normal run with a short note. Friendly only for now.
-  ARCHITECTURE.md §7 has the mechanics and the limits.
+- **Challenge links, Endless only** (`CHALLENGES`): "Challenge a friend" on the game-over panel
+  shares "Beat <score>" and a link. The friend plays **a fresh run of their own** — new players,
+  new stats — framed as "Beat 23", and at the end sees whether they beat it, matched it or fell
+  short. The link sets the score, never the sequence, so challenge runs are ordinary runs, published
+  to the boards like any other. The score is signed with the run, so it can't be edited; a link that
+  fails the check, or is more than 10 days old, opens a plain run with a short note. A link's score
+  is at most 150. **This changes behaviour from Friendly**, whose links replayed the challenged run
+  round for round: Friendly has no challenge links now, and an old one arriving there shows "This
+  challenge link has expired — play Friendly" on the start panel, never an error. ARCHITECTURE.md
+  §7 has the mechanics and the limits.
 - **Local best** is kept on the device, one per deck and mode (§17), and works with storage blocked
   (it then lasts the visit). Friendly shows it as "Best 12/20". Beating it shows "New high score"
   in gold on the game-over panel, in the best line's place (with "You won" on a first win); equalling
@@ -702,10 +780,29 @@ a number.
 Resets daily. Same sequence for all players, so ranking is meaningful. Time taken breaks ties.
 This is the headline board.
 
-### Endless board
+### Endless boards
 
-**Best single submitted run**, reset daily. Framed as a personal-best board, not a ranking — see
-section 3. Nicknames are **not** required to be unique here.
+Three boards: **Today**, **This week** and **This month**. Each is the top 100 of each device's
+**best single published run** in the period — the highest streak, then the lower total answer time
+the server measured, then who published first. Framed as personal-best boards, not a ranking —
+see section 3 — and the board page says so plainly: "Personal bests — everyone gets a different
+run, so luck plays a part." Nicknames are **not** required to be unique here.
+
+- **Periods are UTC.** The day resets at 00:00 UTC; the week is the ISO week, Monday 00:00 UTC to
+  Monday 00:00 UTC (so the week of 28 December 2026 is 2026-W53, into January); the month is the
+  calendar month. The page shows a countdown to each reset, never a clock time.
+- **A run counts in the periods of the day it started**, so a run started at 23:58 finishes on
+  that day's boards, even if it is published after midnight. A run can be published for **30
+  minutes** after it ends.
+- **One entry per device per period.** A device is a random id kept in the browser (friction, not
+  identity: clearing storage makes a new one). Publishing a worse run later doesn't replace a
+  better one.
+- **Previous winners.** At each reset the closing period's top 100 is kept, so the page can name
+  "Yesterday's winner", "Last week's winner" and "Last month's winner".
+- **Retention.** Scores are deleted 100 days after the day their run started; the snapshots stay.
+- **Only fresh random runs are published.** A challenge link starts a fresh run against a score
+  (above), so challenge runs are published like any other. The server checks a run was dealt by
+  its own run start, so no sequence a player could have learned in advance reaches a board.
 
 ### Image licensing
 
@@ -726,26 +823,41 @@ expect a meaningful number of legends to have no usable free image at all.
 - **Anonymous nicknames** in v1; accounts later.
 - The nickname is entered **after the run ends**, and publishing to the global board is **opt-in**.
   Anyone who wants to appear publicly provides a name — not only those reaching the top 100 — so
-  that ranks and shares stay coherent.
+  that ranks and shares stay coherent. In Endless, "Publish to leaderboard" on the game-over panel
+  opens a small dialog: the nickname (prefilled), one line on what's stored — the nickname and
+  the score, no account — and Publish. Afterwards it shows the three ranks ("412th of 3,208 today ·
+  1,030th of 9,877 this week · …") and a link to the board, and the panel keeps the day's rank.
+- **Nicknames** are 3 to 20 characters: Latin letters (accented ones included), digits, spaces
+  and `_ - .`. Latin only because moderation can only read what its blocklist can; a name in
+  another script gets the same calm "try another name" as a blocked one.
 - **Daily Ranked nicknames are unique within that game only.** If a name is taken, the UI says so
   and asks for another. Uniqueness resets at rollover, so no name is ever owned and no account
   system is implied.
 - **The local device board always records a finished run**, published or not. It works with no
   network and is the player's own history.
-- Default to a **generated nickname** the player can change. Most people keep the suggestion, which
-  shrinks the moderation surface to the minority who type their own.
-- Moderation **normalises before checking** — strip zero-width characters, fold homoglyphs to
-  ASCII, collapse repeats — then applies the blocklist. A raw blocklist is defeated by leetspeak
-  within a day. Flagged names are retired without deleting the score.
+- Default to a **generated nickname** the player can change — an adjective, a football noun and
+  a number, like "SwiftVolley42". Most people keep the suggestion, which shrinks the moderation
+  surface to the minority who type their own.
+- Moderation **normalises before checking** — strip zero-width characters, NFKC, fold homoglyphs
+  and leetspeak to ASCII, allow for repeated letters — then applies the blocklist: slurs, sexual
+  terms and impersonation ("admin", "moderator", "biggerthan"). A raw blocklist is defeated by
+  leetspeak within a day. A refused name gets a calm "try another name". Flagged names are retired
+  without deleting the score: the board shows "Retired name".
+- **Shadow-flagging, not blocking.** A run whose answer times look automated is still published,
+  and its player sees their entry and rank as normal; it is left out of everyone else's view of
+  the boards and of the totals.
 
 ### What the player sees
 
 The board page shows the **top 100**. Every published player is also told **their own rank out of
-the day's total** — "412th of 3,208" is a real result and a reason to come back, where a bare
-"not in the top 100" is not.
+the period's total** — "412th of 3,208" is a real result and a reason to come back, where a bare
+"not in the top 100" is not. Their own row is highlighted, and shows straight away, from their own
+device, even before the board (cached for up to a minute) has caught up.
 
-Weekly and all-time views come later, and only for Daily Ranked, where cross-day comparison is
-defensible.
+The page also shows **this device's 10 best Endless runs**, with their dates and scores, published
+or not. They are kept in the browser, and need no network.
+
+All-time views come later, and only for Daily Ranked, where cross-day comparison is defensible.
 
 ---
 
@@ -805,6 +917,14 @@ an afternoon's work to defeat, and real debugging pain forever.
 Different players get different sequences, so the board measures luck alongside knowledge. This is
 a property of the format, not of the anti-cheat. Hence two boards with two different promises.
 
+### Endless gets weekly and monthly boards too
+
+Weekly and longer boards were to be Daily Ranked's alone. Endless now has **today, this week and
+this month**: a week or a month gives a player more to come back for than one day, and the
+boards stay what they always were — personal bests, each device's best run in the period, framed
+plainly as luck plus knowledge. They are still not a fair ranking, and the page says so. An
+all-time Endless board is still out: over months, whoever plays most wins.
+
 ---
 
 ## 15. Open questions
@@ -812,11 +932,10 @@ a property of the format, not of the anti-cheat. Hence two boards with two diffe
 - **Ramp validation.** The bands in section 8 are a considered guess. `simulation.md` must confirm
   the streak distribution, and in particular whether the knife-edge band is populated at all once
   the recently-seen queue and tie exclusion have taken their cut. Its skill models — `fan`, which
-  Friendly is tuned with, and the weaker `rank`, which Endless and Ranked were — are assumptions
+  Friendly and Endless are tuned with, and the weaker `rank`, which Ranked was — are assumptions
   until a calibration from real play (`--calibration`) replaces them.
 - **Whether "clubs played for" survives** the first playtest. Retained for now, banded like every
   other stat.
-- **Endless submission rate limit** numbers. Agreed in principle; set when the endpoint is built.
 - **Friendly endpoint rate limit** numbers. This is the only thing standing between the deck and a
   determined scraper, so it deserves more thought than the others — tight enough to make
   reconstruction impractical, loose enough that a fast player never notices.
@@ -827,8 +946,8 @@ Modes and their protection, game numbering and rollover, nickname identity and u
 club-trophy definition, position flags and stat eligibility, age as a rare stat, deck size and
 entry method, timer authority, disconnection behaviour, board size and rank display, launch order,
 bands versus floors, relaxation order, rank distance over ratio gaps, the per-round stat mix, the
-final ten-stat set, dropping per-stat sources, and
-error-report routing (email).
+final ten-stat set, dropping per-stat sources,
+error-report routing (email), and the Endless submission rate limit (set with the endpoint).
 
 ---
 
@@ -840,7 +959,8 @@ error-report routing (email).
 - **Current players** — they reintroduce the refresh burden that legends-only removes.
 - **Club badges, crests and kit marks** — trademarks, and not covered by any photo licence.
 - **Agency photography** (Getty, PA, Reuters) — aggressively enforced and not worth the exposure.
-- **Weekly and all-time boards** — after Daily Ranked proves out.
+- **Weekly and all-time boards for Daily Ranked** — after it proves out. Endless has today, this
+  week and this month (§13, §14) and no all-time board.
 
 ---
 
@@ -856,7 +976,10 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
     │                              card per deck (Legends today). Static, no JS.
     └── /legends                   the Legends deck: its intro and the three modes. Static,
         │                          no JS. Where "Play" goes.
-        └── /friendly              the game: Friendly Mode. Fixed-height, no scroll.
+        ├── /friendly              the game: Friendly Mode. Fixed-height, no scroll.
+        └── /endless               the game: Endless. The same screen, with a clock.
+            └── /leaderboard       Endless's boards: today, this week, this month, and this
+                                   device's own best runs. A page that scrolls.
 
 /about  /credits  /privacy         the stats and how to play; photo credits; what the site keeps
 ```
@@ -873,10 +996,11 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   everywhere; the game and a breadcrumb trail from the homepage on the football pages). The copy
   is visible text below the cards, which stay the first thing on screen. No player stat pages,
   records articles or "coming soon" pages, and no player's figure anywhere on the site.
-- **Modes on a deck's page.** Friendly links to its game page. Endless and Daily Ranked are shown
-  as "Coming soon" cards until they ship: not links, not focusable, visibly dimmed, with "Coming
-  soon" written out rather than carried by tint alone, and every piece of text still at WCAG AA.
-  They are cards on the Legends page, not pages of their own.
+- **Modes on a deck's page.** Friendly and Endless link to their game pages; the Endless card
+  also links to its leaderboard, as does the Endless start panel. Daily Ranked is shown as a
+  "Coming soon" card: not a link, not focusable, visibly dimmed, with "Coming soon" written out
+  rather than carried by tint alone, and every piece of text still at WCAG AA. It is a card on the
+  Legends page, not a page of its own.
 - **Canonical rule.** Every page is canonical to itself, with its own title and meta description;
   the 404 has none and is `noindex`. The sitemap lists exactly the canonical pages.
 - **Breadcrumb.** The Legends page shows "Football › Legends" above its heading, in a `nav`
@@ -896,8 +1020,10 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   row down to 320px; below 360px GitHub steps out so it still fits.
 - **Local best** is kept per deck and mode — `bt:best:<deck>:<mode>`, `bt:best:legends:friendly`
   today — and shown only on the game pages under `/legends`.
-- **Challenge links** point at the game page:
-  `/football-higher-or-lower/legends/friendly?challenge=…`. The footer's "Suggest a legend" and
+- **Challenge links** point at the Endless page:
+  `/football-higher-or-lower/legends/endless?challenge=…`. That page is indexed like Friendly's,
+  with its own title, description, canonical, preview tags (the site's default image) and JSON-LD;
+  so is the leaderboard page under it, with a breadcrumb. The footer's "Suggest a legend" and
   "Report a problem" open the form in place on the game page, and go to its `#suggest` and
   `#problem` from everywhere else.
 

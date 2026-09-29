@@ -3,8 +3,9 @@
  * game page sends when the player hides or closes it mid-run (ARCHITECTURE.md
  * §8, §19).
  *
- * Telemetry only. It changes nothing about the run — Friendly is stateless,
- * and this records an event and returns — and its answer is an empty 204 that
+ * Telemetry only. It changes nothing about the run — Friendly is stateless, an
+ * Endless run's Durable Object is never touched, and this records an event
+ * and returns — and its answer is an empty 204 that
  * the page never reads. The run id must be one this server signed and still
  * answers; the round must be one the run has (or 0, the title card and the
  * intro). The round is rebuilt from the seed here, and what's logged of it is
@@ -17,16 +18,13 @@ import type { ApiError, LeavePhase, LeaveRequest, LeaveTrigger, Player } from "@
 import { shownRound } from "./analytics.js";
 import type { GameEvent, ShownRound } from "./analytics.js";
 import { isRunAnswerable, parseRunId, verifyRunId } from "./run-id.js";
-import { friendlySeed } from "./seed.js";
+import { seedFor } from "./seed.js";
 import type { Parsed } from "./validate.js";
 
 export const LEAVE_PHASES: readonly LeavePhase[] = ["intro", "question", "reveal", "other"];
 export const LEAVE_TRIGGERS: readonly LeaveTrigger[] = ["hidden", "pagehide"];
 
 const LEAVE_KEYS = ["mode", "phase", "round", "runId", "trigger"];
-
-/** Friendly's last round. */
-const FRIENDLY_CAP = roundCap("friendly");
 
 export interface LeaveContext {
   readonly deck: readonly Player[];
@@ -49,12 +47,14 @@ export function parseLeaveRequest(body: unknown): Parsed<LeaveRequest> {
     return fail("expected { mode, runId, round, phase, trigger }");
   }
   const { mode, runId, round, phase, trigger } = record;
-  if (mode !== "friendly") return fail('mode must be "friendly"');
+  if (mode !== "friendly" && mode !== "endless")
+    return fail('mode must be "friendly" or "endless"');
+  const cap = roundCap(mode);
   if (typeof runId !== "string" || parseRunId(runId) === undefined) {
     return fail("runId is malformed");
   }
-  if (typeof round !== "number" || !Number.isInteger(round) || round < 0 || round > FRIENDLY_CAP) {
-    return fail(`round must be an integer from 0 to ${FRIENDLY_CAP}`);
+  if (typeof round !== "number" || !Number.isInteger(round) || round < 0 || round > cap) {
+    return fail(`round must be an integer from 0 to ${cap}`);
   }
   if (typeof phase !== "string" || !(LEAVE_PHASES as readonly string[]).includes(phase)) {
     return fail(`phase must be one of ${LEAVE_PHASES.join(", ")}`);
@@ -83,15 +83,16 @@ export async function handleLeave(body: unknown, ctx: LeaveContext): Promise<Lea
   if (!parsed.ok) return badRequest(parsed.detail);
   const req = parsed.value;
 
-  const run = await verifyRunId(req.runId, ctx.secret);
+  const run = await verifyRunId(req.runId, ctx.secret, req.mode);
   if (run === undefined) return badRequest("runId is not one this server issued");
+  if (run.replay) return badRequest("replay ids are refused: challenge links are off in Friendly");
   if (!isRunAnswerable(run, ctx.clock())) return badRequest("runId is out of date");
 
   let shown: ShownRound | undefined;
   if (req.round > 0) {
     const now = run.date;
-    const seed = await friendlySeed(ctx.secret, run.origin);
-    const rounds = buildRun({ deck: ctx.deck, seed, mode: "friendly", now, maxRounds: req.round });
+    const seed = await seedFor(req.mode, ctx.secret, run.origin);
+    const rounds = buildRun({ deck: ctx.deck, seed, mode: req.mode, now, maxRounds: req.round });
     const round = rounds[req.round - 1];
     if (round === undefined) return badRequest(`this run has no round ${req.round}`);
     shown = shownRound(round, now, req.phase);
@@ -99,9 +100,9 @@ export async function handleLeave(body: unknown, ctx: LeaveContext): Promise<Lea
 
   ctx.record?.({
     type: "leave",
-    mode: "friendly",
+    mode: req.mode,
     run: run.body,
-    runKind: run.replay ? "replay" : "fresh",
+    runKind: "fresh",
     round: req.round,
     phase: req.phase,
     trigger: req.trigger,

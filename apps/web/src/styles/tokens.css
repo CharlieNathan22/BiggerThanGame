@@ -349,6 +349,35 @@
     0 0 0 2px var(--gold), 0 0 0 5px rgba(var(--glow-rgb), 0.28), 0 4px 14px rgba(0, 0, 0, 0.45),
     var(--glow-hover);
 
+  /* A timed mode's clock (Endless): a thin bar along the plaque's bottom edge,
+     draining as the seconds go, faint until the last three. Then the bar turns
+     red and thickens, and a tag under the plaque shows a stopwatch and the
+     seconds left, so colour never carries it alone. With reduced motion the
+     bar steps down a second at a time and the tag doesn't pulse. */
+  --clock-bar-h: 3px;
+  --clock-bar-h-urgent: 5px;
+  --clock-bar: rgba(6, 18, 26, 0.34);
+  --clock-bar-urgent: var(--miss);
+  --clock-track: rgba(6, 18, 26, 0.1);
+  --clock-tag-bg: var(--miss);
+  --clock-tag-text: var(--chalk);
+  --fs-clock-tag: 12px;
+  --clock-tag-pad: 2px 9px 2px 7px;
+  --clock-tag-gap: 4px;
+  --clock-tag-icon: 12px;
+  --clock-tag-halo: 3px;
+  --dur-clock-pulse: 1000ms;
+
+  /* Endless's title chip at the top of the pitch: the streak title the run
+     holds so far, where Friendly has its progress track. */
+  --chip-bg: rgba(6, 18, 26, 0.72);
+  --chip-edge: var(--gold-rule);
+  --chip-text: var(--gold);
+  --fs-chip: 11px;
+  --chip-pad: 3px 10px;
+  --chip-top: 8px;
+  --chip-tracking: 0.1em;
+
   /* The win on the game-over panel: a trophy, "You won" in gold leaf, the
      score out of the target, and a burst of gold behind them. */
   --fs-won: clamp(30px, 8.4vw, 46px);

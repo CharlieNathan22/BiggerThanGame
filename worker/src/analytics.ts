@@ -7,32 +7,41 @@
  * writes it here. Four events: `start` when a run is begun, `answer` for every
  * answered round, `end` when an answer ends the run, and `leave` when the page
  * reports the player going mid-run (leave.ts). A run with a start and no end
- * was abandoned; its leaves say where.
+ * was abandoned; its leaves say where. A fifth, `submit`, for every attempt to
+ * publish a real run to the boards (submit.ts), published or refused.
  *
  * Every data point shares one layout, so a column means the same thing in
  * every event:
  *
  *   index1  the run key: the run id's body, before the "." (never the signature)
  *   blob1   event        "start" | "answer" | "end" | "leave"
- *   blob2   mode         "friendly"
- *   blob3   run kind     "fresh" | "replay"
+ *   blob2   mode         "friendly" | "endless"
+ *   blob3   run kind     "fresh" | "challenge" (Endless, a fresh run against a link's
+ *                        score) | "replay" (Friendly's retired challenge replays)
  *   blob4   deck version "legends-107-3f9c21e0"
  *   blob5   country      request.cf.country; "XX" when unknown
  *   answer: blob6 stat id, blob7 tier, blob8 band, blob9 final question ("1" | "0");
  *           double1 round, double2 correct (1 | 0), double3 streak after the answer,
- *           double4 relaxation step (0–3), double5 rank distance of the pair (0–1)
- *   end:    blob6 end reason ("wrong" | "won" | "deck-exhausted"); double1 final score
+ *           double4 relaxation step (0–3), double5 rank distance of the pair (0–1),
+ *           double6 server-measured answer time in ms, token issue to guess received
+ *           (Endless only; absent, so 0, in Friendly, which has no clock)
+ *   end:    blob6 end reason ("wrong" | "won" | "deck-exhausted" | "timeout" |
+ *           "disconnected"); double1 final score
  *   leave:  blob6 phase ("intro" | "question" | "reveal" | "other"), blob7 trigger
  *           ("hidden" | "pagehide"), blob8 stat id ("" on the intro); double1 round (0 on
  *           the intro)
+ *   submit: blob6 published ("1" | "0"), blob7 shadowed ("1" | "0"), blob8 the day
+ *           rank's bucket ("1-10" | "11-100" | "101-1000" | "1000+"; "" if refused),
+ *           blob9 why it was refused ("" if published); double1 the run's score
  *
  * Privacy (§19): nothing personal — no IP, not even hashed, no user agent, no
  * cookie, nothing kept in the browser. Country only. No stat value in a data
  * point: the rank distance is a position in the deck, of two figures both
  * already revealed, and never reaches the client. The `run_end` log line does
  * carry the final round's two figures, which the ending response has just
- * revealed, and a `run_leave` line the figures the player had been shown: the
- * anchor's from the question on, the challenger's only once revealed.
+ * revealed — or, for an Endless run closed as `disconnected`, only the anchor's,
+ * the figure on screen — and a `run_leave` line the figures the player had been
+ * shown: the anchor's from the question on, the challenger's only once revealed.
  *
  * Fire-and-forget: `writeDataPoint` doesn't block, and a missing or throwing
  * binding (local dev, tests, an outage) is swallowed. The response and its
@@ -42,7 +51,6 @@
 import { STATS, bandForRound, isFinalRound, percentiles, rankDistance, valueOf } from "@bt/core";
 import type {
   Band,
-  Guess,
   LeavePhase,
   LeaveTrigger,
   Mode,
@@ -52,6 +60,7 @@ import type {
   RunEnd,
   StatKey,
   Tier,
+  TimedGuess,
 } from "@bt/core";
 import type { LogLine } from "./log.js";
 import { figureFor } from "./payload.js";
@@ -65,7 +74,12 @@ export const DATASET = "biggerthan_game_events";
 /** Cloudflare's own code for a country it couldn't tell. */
 export const UNKNOWN_COUNTRY = "XX";
 
-export type RunKind = "fresh" | "replay";
+/**
+ * `fresh`: a run of its own. `challenge`: an Endless run started from a
+ * challenge link, fresh rounds against the link's score. `replay`: Friendly's
+ * old challenge replays, no longer minted, kept so older data still reads.
+ */
+export type RunKind = "fresh" | "challenge" | "replay";
 
 /** What every event knows about its run. */
 interface RunFacts {
@@ -89,6 +103,11 @@ export interface AnswerEvent extends RunFacts {
   readonly relaxation: Relaxation;
   /** How far apart the two figures sit in the deck for this stat, 0 to 1. */
   readonly rankDistance: number;
+  /**
+   * Endless: ms from the token's issue to the guess reaching the server — the
+   * server's own measure, never the client's. Absent in Friendly.
+   */
+  readonly answerMs?: number;
 }
 
 export interface EndEvent extends RunFacts {
@@ -97,6 +116,11 @@ export interface EndEvent extends RunFacts {
   readonly score: number;
   /** The answered round that ended the run, for its log line. Not in the data point. */
   readonly final?: FinalRound;
+  /**
+   * A run closed as `disconnected`: the round left unanswered, with only the
+   * figure the player had been shown. For its log line; not in the data point.
+   */
+  readonly shown?: ShownRound;
 }
 
 /** One of the final round's two players, both figures revealed by then. */
@@ -112,7 +136,8 @@ export type RevealedPlayer = {
 /** The round that ended a run: its stat, the guess, and both players with their figures. */
 export type FinalRound = {
   readonly stat: StatKey;
-  readonly guess: Guess;
+  /** The pick, or `timeout` when Endless's clock ran out. */
+  readonly guess: TimedGuess;
   readonly players: readonly [RevealedPlayer, RevealedPlayer];
 };
 
@@ -148,7 +173,32 @@ export type ShownRound = {
   readonly players: readonly [ShownPlayer, ShownPlayer];
 };
 
-export type GameEvent = StartEvent | AnswerEvent | EndEvent | LeaveEvent;
+/**
+ * An attempt to publish a run (`POST /api/run/submit`), once its token has
+ * checked out: published, or refused with a reason. Never the nickname.
+ */
+export interface SubmitEvent extends RunFacts {
+  readonly type: "submit";
+  readonly score: number;
+  readonly published: boolean;
+  readonly shadowed: boolean;
+  /** Why it was refused: `expired`, `nickname_rejected`, `verification_failed`… */
+  readonly refusal?: string;
+  /** The new entry, when published. */
+  readonly id?: string;
+  /** Where it stands, as its owner sees it, when published. */
+  readonly ranks?: { readonly day: number; readonly week: number; readonly month: number };
+}
+
+export type GameEvent = StartEvent | AnswerEvent | EndEvent | LeaveEvent | SubmitEvent;
+
+/** A day rank as a coarse bucket, so the dataset holds no exact placing. */
+export function rankBucket(rank: number): string {
+  if (rank <= 10) return "1-10";
+  if (rank <= 100) return "11-100";
+  if (rank <= 1000) return "101-1000";
+  return "1000+";
+}
 
 /** Added by app.ts: facts about the request and the build, not the run. */
 export interface EventContext {
@@ -208,7 +258,7 @@ export function pairRankDistance(deck: readonly Player[], round: Round, now: Dat
  * The answered round, as `run_end` logs it. Only for a round whose answer has
  * been judged: the response that ends the run reveals the challenger's figure.
  */
-export function finalRound(round: Round, now: Date, guess: Guess): FinalRound {
+export function finalRound(round: Round, now: Date, guess: TimedGuess): FinalRound {
   const player = (role: RevealedPlayer["role"], p: Player): RevealedPlayer => ({
     role,
     id: p.id,
@@ -268,6 +318,7 @@ export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
           event.streak,
           RELAXATION_STEP[event.relaxation],
           event.rankDistance,
+          ...(event.answerMs !== undefined ? [event.answerMs] : []),
         ],
       };
     }
@@ -278,6 +329,18 @@ export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
         indexes,
         blobs: [...common, event.phase, event.trigger, event.shown?.stat ?? ""],
         doubles: [event.round],
+      };
+    case "submit":
+      return {
+        indexes,
+        blobs: [
+          ...common,
+          event.published ? "1" : "0",
+          event.shadowed ? "1" : "0",
+          event.ranks !== undefined ? rankBucket(event.ranks.day) : "",
+          event.refusal ?? "",
+        ],
+        doubles: [event.score],
       };
   }
 }
@@ -302,7 +365,7 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
     case "start":
       return { level: "info", message: "run_start", event: "run_start", ...common };
     case "end": {
-      const { final } = event;
+      const { final, shown } = event;
       return {
         level: "info",
         message: "run_end",
@@ -315,6 +378,12 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
               endStat: { id: final.stat, label: STATS[final.stat].label },
               guess: final.guess,
               players: final.players,
+            }
+          : {}),
+        ...(final === undefined && shown !== undefined
+          ? {
+              endStat: { id: shown.stat, label: STATS[shown.stat].label },
+              players: shown.players,
             }
           : {}),
       };
@@ -334,6 +403,19 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
           : {}),
       };
     }
+    case "submit":
+      // Refusals already have their warn line from the endpoint.
+      if (!event.published) return undefined;
+      return {
+        level: "info",
+        message: "run_submit",
+        event: "run_submit",
+        ...common,
+        score: event.score,
+        shadowed: event.shadowed ? "yes" : "no",
+        ...(event.id !== undefined ? { id: event.id } : {}),
+        ...(event.ranks !== undefined ? { ranks: event.ranks } : {}),
+      };
     case "answer":
       return undefined;
   }

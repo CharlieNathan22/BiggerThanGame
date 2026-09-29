@@ -96,10 +96,64 @@ export const en = {
   "mode.friendly.body": "Twenty questions, no timer.\nGet them all right to win.",
   "mode.endless.name": "Endless",
   "mode.endless.body":
-    "Unlimited runs against a 10-second clock, with a daily board for your best of the day.",
+    "Unlimited runs against a 10-second clock, with boards for the day, the week and the month.",
+  "mode.endless.leaderboard": "Endless leaderboard",
   "mode.ranked.name": "Daily Ranked",
   "mode.ranked.body": "One run a day, the same for everyone, on a global leaderboard.",
   "mode.soon": "Coming soon",
+
+  // The Endless game page (/football-higher-or-lower/legends/endless). Drafts.
+  "endless.title": "Endless Football Legends Higher or Lower | Bigger Than Game",
+  "endless.description":
+    "How long a streak can you build? Endless higher or lower on football legends, ten seconds a question, and the stat keeps changing. Free in your browser, no sign-up.",
+
+  // The Endless leaderboard page. Drafts.
+  "leaderboard.title": "Endless Leaderboard: Football Legends | Bigger Than Game",
+  "leaderboard.description":
+    "Today's, this week's and this month's best Endless streaks on Football Legends higher or lower. Personal bests: every run is different, so luck plays a part.",
+  "leaderboard.heading": "Endless leaderboard",
+  "leaderboard.framing": "Personal bests — everyone gets a different run, so luck plays a part.",
+  "leaderboard.play": "Play Endless",
+  "leaderboard.tabs": "Leaderboard period",
+  "leaderboard.tab.day": "Today",
+  "leaderboard.tab.week": "This week",
+  "leaderboard.tab.month": "This month",
+  "leaderboard.caption.day": "Today's best Endless streaks",
+  "leaderboard.caption.week": "This week's best Endless streaks",
+  "leaderboard.caption.month": "This month's best Endless streaks",
+  "leaderboard.col.rank": "Rank",
+  "leaderboard.col.name": "Name",
+  "leaderboard.col.streak": "Streak",
+  "leaderboard.retired": "Retired name",
+  "leaderboard.you": "You",
+  "leaderboard.yourRank": "You: {rank} of {total}",
+  "leaderboard.total.one": "1 player",
+  "leaderboard.total.other": "{total} players",
+  "leaderboard.empty": "Nobody's on this board yet. Play a run and publish it to be first.",
+  "leaderboard.loading": "Loading the board…",
+  "leaderboard.failed": "Couldn't load the board. Check your connection and try again.",
+  "leaderboard.retry": "Try again",
+  "leaderboard.resets.day": "Resets in {time}",
+  "leaderboard.resets.week": "Resets in {time}",
+  "leaderboard.resets.month": "Resets in {time}",
+  "leaderboard.winner.day": "Yesterday's winner",
+  "leaderboard.winner.week": "Last week's winner",
+  "leaderboard.winner.month": "Last month's winner",
+  "leaderboard.winnerLine": "{name}, {streak}",
+  "leaderboard.noWinner": "no one yet",
+  "leaderboard.device": "On this device",
+  "leaderboard.deviceIntro":
+    "Your 10 best Endless runs on this device, published or not. Kept in this browser only.",
+  "leaderboard.deviceEmpty": "No Endless runs on this device yet.",
+  "leaderboard.col.date": "Date",
+  "leaderboard.noscript": "The leaderboard needs JavaScript to load.",
+  "time.days.one": "1 day",
+  "time.days.other": "{n} days",
+  "time.hours.one": "1 hour",
+  "time.hours.other": "{n} hours",
+  "time.minutes.one": "1 minute",
+  "time.minutes.other": "{n} minutes",
+  "time.join": "{a} {b}",
 
   // The Friendly game page (/football-higher-or-lower/legends/friendly). Drafts.
   "friendly.title": "Play Football Legends Higher or Lower | Bigger Than Game",
@@ -111,6 +165,15 @@ export const en = {
     "Football Legends features the greatest footballers of all time who no longer play professionally. Guess whether the hidden number is higher or lower. Watch the plaque, the stat changes as you play.",
   "start.introTarget":
     "Football Legends features the greatest footballers of all time who no longer play professionally. Guess whether the hidden number is higher or lower. Watch the plaque, the stat changes as you play. Get all {target} right to win.",
+  "start.introEndless":
+    "Football Legends features the greatest footballers of all time who no longer play professionally. Guess whether the hidden number is higher or lower, and keep the streak going as long as you can. Watch the plaque, the stat changes as you play.",
+  // Endless's start panel, under the intro: the clock, and where to play without one
+  "start.clock": "Endless has a 10-second clock.",
+  "start.noClock": "Rather play without one?",
+  "start.playFriendly": "Play Friendly",
+  "start.leaderboard": "See the leaderboard",
+  // Endless before it launches: the page exists, the Start button doesn't
+  "start.checkFailed": "We couldn't check your connection. Press Start to try again.",
   "start.cta": "Start the run",
   "start.starting": "Dealing…",
   "start.failed": "Couldn't reach the server. Check your connection and try again.",
@@ -130,6 +193,8 @@ export const en = {
   // On the challenger's half when the verdict lands; the live region says it too
   "verdict.correct": "Correct",
   "verdict.incorrect": "Incorrect",
+  // In place of "Incorrect" when the clock ran out
+  "verdict.timeout": "Time's up",
   "qual.fee": "{year}",
   "qual.ig": "as of {date}",
 
@@ -143,6 +208,15 @@ export const en = {
   // On the plaque and under the track while the last question is on screen
   "final.tag": "Final question",
 
+  // The countdown on the plaque, in a timed mode
+  "clock.label": "Time left",
+  "clock.seconds": "{seconds}",
+  // Said once per question by screen readers, never a count every second
+  "clock.warning": "{seconds} seconds left",
+
+  // The streak title so far, under the title bar in Endless
+  "chip.label": "Title",
+
   // Screen reader announcements
   "live.question": "{stat}. {anchor}: {value}. Is {challenger} higher or lower?",
   "live.statChanged":
@@ -151,6 +225,7 @@ export const en = {
   "live.correctOf": "{challenger}: {value}. Correct. {score} of {target}.",
   "live.won": "{challenger}: {value}. Correct — that's all {score}. You won!",
   "live.wrong": "{challenger}: {value}. Wrong. The run is over.",
+  "live.timeout": "{challenger}: {value}. Out of time. The run is over.",
   "live.newHighScore": "New high score!",
   "live.matchedBest": "You matched your best.",
 
@@ -165,6 +240,9 @@ export const en = {
   "over.separator": "·",
   "over.exhausted": "You've been through every pairing this run could deal. That's the whole deck.",
   "over.network": "The connection dropped. Your streak of {streak} stands.",
+  "over.networkSaved": "Connection lost — your streak of {streak} is saved.",
+  "over.timeout": "Out of time.",
+  "over.challenge": "Challenge a friend",
   "over.again": "Play again",
   "over.report": "Something wrong with that card?",
   "over.suggest": "Suggest a legend",
@@ -176,6 +254,43 @@ export const en = {
   "over.shareText": "Your result, to copy",
   "over.imageSaved": "Image saved.",
   "over.imageFailed": "Couldn't make the image. Try sharing the result instead.",
+  // Endless: publishing the run to the leaderboard (a dialog), and where it landed
+  "over.publish": "Publish to leaderboard",
+  "over.publishedRank": "{rank} of {total} {when}",
+  "over.leaderboard": "Leaderboard",
+  "publish.title": "Publish your run",
+  "publish.intro":
+    "Put your streak of {streak} on the Endless leaderboards for today, this week and this month.",
+  "publish.nickname": "Nickname",
+  "publish.shuffle": "Another name",
+  "publish.stored":
+    "We store your nickname and your score, and nothing else about you. There's no account.",
+  "publish.checking": "Checking you're a person…",
+  "publish.send": "Publish",
+  "publish.sending": "Publishing…",
+  "publish.cancel": "Cancel",
+  "publish.close": "Close",
+  "publish.done": "Published.",
+  "publish.rank": "{rank} of {total} {when}",
+  "publish.see": "See the leaderboard",
+  "publish.rejected": "That name isn't available — try another name.",
+  "publish.tooShort": "Names are 3 to 20 characters, with at least one letter or number.",
+  "publish.tooLong": "Names are 3 to 20 characters.",
+  "publish.characters": "Use letters, numbers, spaces, and _ - or . only.",
+  "publish.expired":
+    "Runs can be published for 30 minutes after they end, and this one's past that.",
+  "publish.already": "This run is already on the leaderboard.",
+  "publish.slowDown":
+    "Lots of runs are being published from your connection. Try again in a minute.",
+  "publish.checkFailed": "The check didn't go through. Try again.",
+  "publish.failed": "Couldn't reach the server. Check your connection and try again.",
+  "publish.unpublishable": "This run can't go on the leaderboard.",
+  "period.day.current": "today",
+  "period.week.current": "this week",
+  "period.month.current": "this month",
+  "period.day.previous": "yesterday",
+  "period.week.previous": "last week",
+  "period.month.previous": "last month",
 
   // Feedback forms: "Suggest a legend", "Report an error" and "Report a problem"
   "feedback.suggest.title": "Suggest a legend",
@@ -219,17 +334,25 @@ export const en = {
   "title.captain": "Captain",
   "title.legend": "Legend",
   "title.goat": "GOAT",
+  "title.favourite": "Fan favourite",
+  "title.clubLegend": "Club legend",
+  "title.worldClass": "World class",
+  "title.immortal": "Immortal",
 
   // Challenge links
   "challenge.heading": "Beat {score}",
   "challenge.intro":
-    "A friend scored {score} on this run. Same players, same stats, same order. Can you beat it?",
+    "A friend's streak was {score}. You get a run of your own: new players, new stats. Can you beat it?",
   "challenge.headingPerfect": "Match {score}",
   "challenge.introPerfect":
     "A friend won this run, {score}. Same players, same stats, same order. Can you match it?",
   "challenge.cta": "Take the challenge",
   "challenge.invalid": "That challenge link didn't check out, so here's a fresh run instead.",
   "challenge.expired": "That challenge has expired — links last 10 days — so here's a fresh run.",
+  // A challenge link on the Friendly page, from before challenges moved to Endless
+  "challenge.retired": "This challenge link has expired — play Friendly.",
+  // What the "Challenge a friend" button shares: "Beat 12 — <link>"
+  "challenge.share": "{heading} — {url}",
   "challenge.beat": "You beat {score}.",
   "challenge.matched": "You matched {score}. So close.",
   "challenge.short": "{score} to beat. Not this time.",
@@ -247,9 +370,11 @@ export const en = {
   "share.score.other": "{score} in a row",
   "share.endedOn": "Ended on: {stat}",
   "share.endedLabel": "Ended on",
+  "share.timedOut": "Out of time on: {stat}",
+  "share.timedOutLabel": "Out of time on",
+  // Endless names the two players that ended the run, never their figures
+  "share.endedPlayers": "{lead} — {anchor} v {challenger}",
   "share.exhausted": "Went the distance: every pairing dealt",
-  "share.challenge": "Can you beat {score}? {url}",
-  "share.challengePerfect": "Can you match {score}? {url}",
   "share.fileName": "bigger-than-{score}.png",
 
   // Stat labels, by StatKey

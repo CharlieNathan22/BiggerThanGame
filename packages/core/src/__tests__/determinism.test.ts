@@ -55,6 +55,12 @@ describe("golden fingerprints", () => {
     );
   });
 
+  it("an endless run is stable", () => {
+    expect(fingerprint("endless:1", "endless")).toMatchInlineSnapshot(
+      `"1:ig:hotel>lima|2:ig:lima>alpha|3:ct:alpha>bravo|4:ct:bravo>echo|5:ct:echo>juliet|6:ct:juliet>kilo|7:apps:kilo>india|8:apps:india>charlie|9:apps:charlie>golf|10:igoals:golf>foxtrot|11:igoals:foxtrot>delta|12:it:delta>india|13:it:india>echo|14:it:echo>india|15:it:india>echo|16:ig:echo>kilo|17:ig:kilo>echo|18:fee:echo>bravo|19:fee:bravo>echo|20:fee:echo>bravo|21:club_goals:bravo>hotel|22:club_goals:hotel>charlie|23:club_goals:charlie>india|24:age:india>alpha|25:age:alpha>delta"`,
+    );
+  });
+
   it("a second ranked run is stable", () => {
     expect(fingerprint("ranked:2")).toMatchInlineSnapshot(
       `"1:club_goals:bravo>delta|2:club_goals:delta>alpha|3:ct:alpha>hotel|4:ct:hotel>echo|5:ct:echo>juliet|6:ct:juliet>charlie|7:ct:charlie>foxtrot|8:igoals:foxtrot>kilo|9:igoals:kilo>lima|10:apps:lima>golf|11:apps:golf>india|12:apps:india>golf|13:apps:golf>hotel|14:apps:hotel>india|15:apps:india>lima|16:apps:lima>bravo|17:apps:bravo>delta|18:apps:delta>foxtrot|19:apps:foxtrot>bravo|20:apps:bravo>delta|21:apps:delta>bravo|22:apps:bravo>india|23:apps:india>golf|24:apps:golf>alpha|25:apps:alpha>echo"`,

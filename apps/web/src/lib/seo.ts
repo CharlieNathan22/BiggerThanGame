@@ -13,7 +13,14 @@ import { SITE_PAGES } from "@bt/core";
 import type { SitePage } from "@bt/core";
 import { SITE_URL } from "../config";
 import { t } from "../i18n";
-import { FOOTBALL_PATH, FRIENDLY_PATH, HOME_PATH, LEGENDS_PATH } from "./paths";
+import {
+  ENDLESS_PATH,
+  FOOTBALL_PATH,
+  FRIENDLY_PATH,
+  HOME_PATH,
+  LEADERBOARD_PATH,
+  LEGENDS_PATH,
+} from "./paths";
 
 /** `og:site_name`, the WebSite's name, and the end of every title. */
 export const SITE_NAME = "Bigger Than Game";
@@ -149,6 +156,8 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
   const football = { name: t("breadcrumb.football"), path: FOOTBALL_PATH };
   const legends = { name: t("breadcrumb.legends"), path: LEGENDS_PATH };
   const friendly = { name: t("mode.friendly.name"), path: FRIENDLY_PATH };
+  const endless = { name: t("mode.endless.name"), path: ENDLESS_PATH };
+  const leaderboard = { name: t("over.leaderboard"), path: LEADERBOARD_PATH };
   switch (path) {
     case FOOTBALL_PATH:
       return [home, football];
@@ -156,6 +165,10 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
       return [home, football, legends];
     case FRIENDLY_PATH:
       return [home, football, legends, friendly];
+    case ENDLESS_PATH:
+      return [home, football, legends, endless];
+    case LEADERBOARD_PATH:
+      return [home, football, legends, endless, leaderboard];
     default:
       return [];
   }

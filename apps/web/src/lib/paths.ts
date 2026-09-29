@@ -15,6 +15,12 @@ export const LEGENDS_PATH = "/football-higher-or-lower/legends";
 /** The game: Friendly Mode on the Legends deck. */
 export const FRIENDLY_PATH = "/football-higher-or-lower/legends/friendly";
 
+/** Endless on the Legends deck: a streak against the clock. */
+export const ENDLESS_PATH = "/football-higher-or-lower/legends/endless";
+
+/** Endless's boards: today, this week and this month. */
+export const LEADERBOARD_PATH = "/football-higher-or-lower/legends/endless/leaderboard";
+
 export const ABOUT_PATH = "/about";
 export const CREDITS_PATH = "/credits";
 export const PRIVACY_PATH = "/privacy";

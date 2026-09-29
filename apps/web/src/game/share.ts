@@ -10,14 +10,18 @@
  * Everything takes the mode. A mode with a win target (`WIN_ROUNDS`: Friendly's
  * twenty) scores out of it ("7/20"), lays the grid out as every round of the
  * challenge — two rows of ten, the rounds not reached left empty — and gives a
- * won run a trophy. The other modes keep the plain streak.
+ * won run a trophy. The other modes (Endless) keep the plain streak, and name
+ * the two players that ended the run — names only, never their figures.
+ *
+ * The share text ends with the site's address. A challenge link is its own
+ * share, in a mode that has them (`CHALLENGES`: Endless): "Beat n" and the link.
  */
 
-import { WIN_ROUNDS, challengeOutcome, streakTitle } from "@bt/core";
+import { CHALLENGES, WIN_ROUNDS, challengeOutcome, streakTitle } from "@bt/core";
 import type { ChallengeLink, ChallengeOutcome, Mode, Tier } from "@bt/core";
 import { statLabel, t } from "../i18n";
 import { challengeUrl } from "./challenge";
-import type { EndReason, GameState, RoundRecord } from "./machine";
+import type { EndReason, GameMode, GameState, RoundRecord } from "./machine";
 import { overCaption, scoreFigure } from "./view";
 
 /** One square per answered round, in its tier's colour. */
@@ -90,12 +94,41 @@ export function gridLabel(history: readonly RoundRecord[], mode: Mode): string {
   return parts.join(" ");
 }
 
-/** What ended the run, as the share says it. */
-export function endedText(history: readonly RoundRecord[], end: EndReason | null): string {
+/** The two players of the round that ended a run: the anchor's name, then the challenger's. */
+export type EndingNames = readonly [string, string];
+
+/**
+ * What ended the run, as the share says it: "Ended on: Caps", or "Out of time
+ * on: Caps"; with the two players' names when given ("Ended on: Caps — Zidane
+ * v Henry"), never their figures.
+ */
+export function endedText(
+  history: readonly RoundRecord[],
+  end: EndReason | null,
+  names: EndingNames | null = null,
+): string {
   const miss = history.find((r) => !r.correct);
-  if (miss !== undefined) return t("share.endedOn", { stat: statLabel(miss.stat) });
+  if (miss !== undefined) {
+    const stat = statLabel(miss.stat);
+    const lead = end === "timeout" ? t("share.timedOut", { stat }) : t("share.endedOn", { stat });
+    return names === null
+      ? lead
+      : t("share.endedPlayers", { lead, anchor: names[0], challenger: names[1] });
+  }
   if (end === "deck-exhausted") return t("share.exhausted");
   return "";
+}
+
+/**
+ * The names the share text carries: the round that ended the run, in a mode
+ * without a win target (Endless). Friendly's text stays spoiler-free.
+ */
+export function endingNames(
+  state: Pick<GameState, "round" | "reveal">,
+  mode: Mode,
+): EndingNames | null {
+  if (WIN_ROUNDS[mode] !== null || state.round === null || state.reveal === null) return null;
+  return [state.round.anchor.name, state.round.challenger.name];
 }
 
 /**
@@ -161,42 +194,60 @@ export function challengeResult(
 }
 
 /**
- * The share text, in Friendly:
+ * The share text. In Friendly:
  *
  *   Bigger Than — Football Legends
  *   12/20 · Starter
  *   🟨🟨🟦🟨🟪🟨🟨🟨🟦🟨
  *   🟨🟨❌⬛⬛⬛⬛⬛⬛⬛
  *   Ended on: Club trophies
- *   Can you beat 12/20? https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=…
+ *   biggerthangame.com
  *
- * A won run's score line is "🏆 20/20 · Legend", with no "Ended on", and its
- * challenge is to match it. In a mode without a win target the score is "12 in
- * a row" and the grid stops at the miss.
+ * A won run's score line is "🏆 20/20 · Legend", with no "Ended on". In a mode
+ * without a win target (Endless) the score is "12 in a row", the grid stops at
+ * the miss, and the ending names the two players ("Ended on: Caps — Zidane v
+ * Henry"; "Out of time on: …" when the clock ran out).
  *
- * No player names, no values, no answers. Without a signed link — a run
- * banked after the connection dropped — it ends with the site's address.
+ * No values and no answers anywhere, and no player names in Friendly. The
+ * challenge link, where the mode has one, is shared on its own
+ * (`challengeText`).
  */
 export function shareText(
   score: number,
   history: readonly RoundRecord[],
   end: EndReason | null,
-  link: ChallengeLink | null,
   site: string,
   mode: Mode,
+  names: EndingNames | null = null,
 ): string {
   const title = titleText(score, mode);
   const line = scoreText(score, mode, end);
-  const figure = scoreFigure(score, mode);
-  const challenge = isPerfectTarget(score, mode) ? "share.challengePerfect" : "share.challenge";
   const lines = [
     t("share.heading"),
     title === "" ? line : `${line} · ${title}`,
     shareGrid(history, mode),
-    endedText(history, end),
-    link === null ? site : t(challenge, { score: figure, url: challengeUrl(site, link) }),
+    endedText(history, end, names),
+    site,
   ];
   return lines.filter((l) => l !== "").join("\n");
+}
+
+/**
+ * The challenge to share, in a mode that has them: "Beat 12" and the link,
+ * which starts the friend on a fresh run of their own against that score.
+ * Null in a mode without challenges, or without a signed link (a run banked
+ * after the connection dropped).
+ */
+export function challengeText(
+  link: ChallengeLink | null,
+  site: string,
+  mode: GameMode,
+): string | null {
+  if (!CHALLENGES[mode] || link === null) return null;
+  return t("challenge.share", {
+    heading: challengeHeading(link.score, mode),
+    url: challengeUrl(site, link, mode),
+  });
 }
 
 /** A card's name and the figure the player saw for it. */
@@ -238,7 +289,11 @@ export function shareCard(state: GameState, siteLabel: string, mode: Mode): Shar
     ended:
       miss === undefined
         ? null
-        : { label: t("share.endedLabel"), stat: statLabel(miss.stat), tier: miss.tier },
+        : {
+            label: end === "timeout" ? t("share.timedOutLabel") : t("share.endedLabel"),
+            stat: statLabel(miss.stat),
+            tier: miss.tier,
+          },
     note: miss === undefined ? endedText(history, end) : "",
     players:
       round !== null && reveal !== null

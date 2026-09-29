@@ -5,7 +5,7 @@
 // logged or measured changes this page too.
 import Page from "../layouts/Page.astro";
 import { CORRECTIONS_EMAIL } from "../config";
-import { FRIENDLY_PATH } from "../lib/paths";
+import { FRIENDLY_PATH, LEADERBOARD_PATH } from "../lib/paths";
 
 const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-policy/";
 ---
@@ -26,6 +26,10 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
     <li>No cookies, no accounts and no sign-up.</li>
     <li>No advertising, and nothing that tracks you from site to site.</li>
     <li>Your best score is kept in your own browser, not by us.</li>
+    <li>
+      Putting a run on the Endless leaderboard is up to you. If you do, we keep the nickname you
+      choose and the score for 100 days, and nothing else about you.
+    </li>
     <li>Game statistics are anonymous: the only thing about you they record is your country.</li>
     <li>
       Feedback you send is emailed to us and also kept in our server logs for three days. Please
@@ -38,6 +42,13 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
     Your best score is saved in your browser's local storage, one number per game mode, so the game
     can show it next time and tell you when you've beaten it. It never leaves your device, and
     clearing this site's data in your browser removes it. We don't set any cookies.
+  </p>
+  <p>
+    In Endless, your browser also keeps your 10 best runs, with their dates and scores, so the{" "}
+    <a href={LEADERBOARD_PATH}>leaderboard page</a> can show them to you; and, the first time you
+    publish a run, a random number made for this browser. Only that random number is ever sent, and
+    only when you publish. Clearing this site's data removes all of it, and the next run you publish
+    gets a new number.
   </p>
 
   <h2>When you play</h2>
@@ -56,13 +67,51 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
     browser, and nothing that links one run to another or to you. These events are kept for three
     months.
   </p>
+  <p>
+    In Endless, which has a clock, each answer's event also records how long it took to reach our
+    server, measured by the server itself. While an Endless run is in play, the server keeps a short
+    record of it — the question you're on, each answer and its time — so that no question can be
+    answered twice. That record carries the run number and your country, nothing else, and is
+    deleted a few hours after the run ends.
+  </p>
+
+  <h2>The Endless leaderboard</h2>
+  <p>
+    Publishing a run is opt-in: nothing reaches the leaderboard unless you press Publish at the end
+    of a run. When you do, we store:
+  </p>
+  <ul>
+    <li>the nickname you chose (a made-up one is suggested, and you can keep it);</li>
+    <li>
+      the run's score, the day it started and how long your answers took in total, as our server
+      measured them (only to break ties);
+    </li>
+    <li>
+      a scrambled form of the random number your browser keeps. We can't turn it back into the
+      number, and it isn't tied to you or your device in any other way: its only job is to keep one
+      entry per browser on each board. Clear your browser's data and it's gone.
+    </li>
+  </ul>
+  <p>
+    Your nickname and score appear on the public boards for today, this week and this month. We
+    don't ask for an email address or any other details, and there's no account. Scores are deleted
+    100 days after the day their run started; a copy of each day's, week's and month's top 100 is
+    kept, so the page can name each period's winner. A nickname we find offensive is retired: the
+    score stays, shown as "Retired name". A score that looks automated may be left off the public
+    boards.
+  </p>
+  <p>
+    Cloudflare Turnstile (below) checks each publish too, and the server's usual limit on how fast a
+    connection can send applies.
+  </p>
 
   <h2>Server logs</h2>
   <p>
     For three days, our server logs keep a short record of what happened: the start and end of each
-    run (with the country, the score and the question that ended it), requests the server refused,
-    and errors. Cloudflare can also log every request automatically, with its IP address and browser
-    details; we've switched that off.
+    run (with the country, the score and the question that ended it), each run published to the
+    leaderboard (its score and rank, never the nickname), requests the server refused, and errors.
+    Cloudflare can also log every request automatically, with its IP address and browser details;
+    we've switched that off.
   </p>
 
   <h2>Feedback forms</h2>
@@ -81,10 +130,11 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
 
   <h3>Cloudflare Turnstile</h3>
   <p>
-    Before a form sends, Cloudflare Turnstile checks that it's being sent by a person and not a bot.
-    It loads only when you open a form, never while you're just playing. To make that check,
-    Cloudflare processes your IP address, details of your connection and your browser's user agent,
-    to detect and block bots, under the{" "}
+    Before a form sends, when you start an Endless run, and when you publish one, Cloudflare
+    Turnstile checks that it's a person and not a bot. It loads when you open a form, or on the
+    Endless page once the page has loaded — never while you're playing Friendly. Most of the time
+    you won't see it. To make that check, Cloudflare processes your IP address, details of your
+    connection and your browser's user agent, to detect and block bots, under the{" "}
     <a href={TURNSTILE_ADDENDUM}>Cloudflare Turnstile Privacy Addendum</a>. We receive only whether
     the check passed.
   </p>

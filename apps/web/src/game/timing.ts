@@ -8,6 +8,8 @@
  * can't drift.
  */
 
+import { ANSWER_TIMINGS } from "@bt/core";
+
 export interface Timings {
   /**
    * The title card at a run's start: "Question 1 of 20" large in the centre,
@@ -67,23 +69,20 @@ export interface Timings {
   readonly noticeFade: number;
 }
 
+/**
+ * The animations before a question can be answered come from @bt/core
+ * (`ANSWER_TIMINGS`): the Worker works out each question's deadline from the
+ * same numbers, and the test that holds these to tokens.css holds the server's
+ * clock to them too.
+ */
 export const TIMINGS: Timings = {
-  title: 1800,
+  ...ANSWER_TIMINGS,
   titleQuick: 900,
-  holdMin: 1000,
-  holdExtra: 3000,
-  introMin: 1000,
-  beat: 700,
-  hold: 340,
-  spin: 1800,
-  land: 40,
   pop: 420,
   spinTintAt: 0.62,
   count: 2500,
   countEase: 3,
   settle: 380,
-  verdict: 2540,
-  next: 1400,
   slide: 600,
   over: 1400,
   modal: 180,

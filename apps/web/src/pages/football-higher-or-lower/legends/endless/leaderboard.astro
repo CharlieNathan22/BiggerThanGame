@@ -1,0 +1,65 @@
+---
+// The Endless leaderboard (DESIGN.md §13, §17): today's, this week's and this
+// month's personal bests, and this device's own best runs. A static page; the
+// island fetches the boards (GET /api/board/endless/:period), which are
+// served from a cache up to a minute old. Framed plainly as personal bests:
+// every run is different, so luck plays a part. No player's figure anywhere.
+import Page from "../../../../layouts/Page.astro";
+import Breadcrumb from "../../../../components/Breadcrumb.astro";
+import Leaderboard from "../../../../components/Leaderboard.svelte";
+import { t } from "../../../../i18n";
+import { ENDLESS_PATH, LEADERBOARD_PATH } from "../../../../lib/paths";
+import { breadcrumbLd, breadcrumbTrail } from "../../../../lib/seo";
+
+const trail = breadcrumbTrail(LEADERBOARD_PATH);
+---
+
+<Page
+  title={t("leaderboard.title")}
+  description={t("leaderboard.description")}
+  structuredData={[breadcrumbLd(trail)]}
+>
+  <Breadcrumb items={trail.slice(1).map((crumb) => ({ label: crumb.name, href: crumb.path }))} />
+  <h1>{t("leaderboard.heading")}</h1>
+  <p class="framing">{t("leaderboard.framing")}</p>
+  <p>
+    <a class="play" href={ENDLESS_PATH}>
+      {t("leaderboard.play")}
+    </a>
+  </p>
+
+  <Leaderboard client:load />
+  <noscript>
+    <p>{t("leaderboard.noscript")}</p>
+  </noscript>
+
+  <p class="again">
+    <a class="play" href={ENDLESS_PATH}>
+      {t("leaderboard.play")}
+    </a>
+  </p>
+</Page>
+
+<style>
+  .framing {
+    color: var(--chalk);
+  }
+  .play {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-min);
+    padding: 0 22px;
+    border-radius: var(--radius-pill);
+    background: var(--gold);
+    color: var(--ink);
+    font-variation-settings: var(--fv-cta);
+    text-decoration: none;
+  }
+  .play:focus-visible {
+    outline: var(--focus-ring) solid var(--chalk);
+    outline-offset: var(--focus-offset);
+  }
+  .again {
+    margin-top: 28px;
+  }
+</style>

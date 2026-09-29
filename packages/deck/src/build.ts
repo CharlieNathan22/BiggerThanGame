@@ -189,8 +189,9 @@ export function runBuild(opts: BuildOptions = {}): number {
   } else {
     const runs = opts.simulationRuns ?? 20_000;
     const model = opts.model ?? PLAYER_MODELS.fan!;
-    // Friendly is also scored by every other model, on the same runs, for the
-    // report's comparison table. Scoring is cheap; dealing the rounds is not.
+    // Friendly and Endless are also scored by every other model, on the same
+    // runs, for the report's comparison tables. Scoring is cheap; dealing the
+    // rounds is not.
     const compare = Object.values(PLAYER_MODELS).filter((m) => m.id !== model.id);
     console.log(
       `deck: simulating ${runs.toLocaleString("en-GB")} runs per mode, model ${model.id}`,
@@ -203,7 +204,7 @@ export function runBuild(opts: BuildOptions = {}): number {
         mode,
         runs,
         model,
-        ...(mode === "friendly" ? { compare } : {}),
+        ...(mode === "friendly" || mode === "endless" ? { compare } : {}),
       }),
     );
     console.log(`  ${((Date.now() - started) / 1000).toFixed(1)}s`);

@@ -1,5 +1,10 @@
 /**
- * Friendly run ids: `YYYYMMDD-<uuid>.<sig>`, the date in UTC.
+ * Run ids: `YYYYMMDD-<uuid>.<sig>`, the date in UTC.
+ *
+ * **Per mode.** Friendly signs `"run:" + body`, as it always has; Endless
+ * signs `"run:endless:" + body`. An id is only ever verified against the mode
+ * it is used in, so an Endless id can't be played as Friendly or the other way
+ * round, and a Friendly id minted before Endless existed still verifies.
  *
  * The body, `YYYYMMDD-<uuid>`, names the run. The date does two jobs. It fixes
  * `now` for the whole run — age is computed from it, so a run straddling
@@ -13,14 +18,12 @@
  * a fresh run id per request to dodge it. Unsigned, tampered and malformed ids
  * are all refused.
  *
- * **Replays.** A challenge link (challenge.ts) replays someone else's run. The
- * server mints the friend a replay id, `YYYYMMDD-<uuid>~<uuid>.<sig>`: the
- * original run's body, then a fresh uuid of the friend's own. The original
- * body (`origin`) gives the seed and the date, so the replay deals exactly the
- * same rounds; the whole body is the rate-limit key, so everyone replaying one
- * shared link gets their own answer allowance instead of sharing one run's.
- * The two forms can't be confused — only a replay body contains `~` — so both
- * are signed the same way.
+ * **Replay ids, retired.** Friendly's challenge links used to replay someone
+ * else's run under a replay id, `YYYYMMDD-<uuid>~<uuid>.<sig>`: the original
+ * run's body, then a fresh uuid of the friend's own. Challenge links have moved
+ * to Endless, where they set a score to beat on a fresh run, so no replay id is
+ * minted any more. The form is still recognised (`replay`), so one arriving
+ * from before the change is refused by name rather than as malformed.
  *
  * The seed derives from the origin alone (seed.ts). The signature is itself a
  * function of the body and the secret, so it adds nothing to the seed, and
@@ -29,6 +32,15 @@
  */
 
 import { hmacSha256, timingSafeEqual, toBase64Url } from "./hmac.js";
+
+/** The modes with run ids. Ranked will number its games instead. */
+export type RunMode = "friendly" | "endless";
+
+/** What each mode's run-id signature covers, before the body. */
+const RUN_PREFIX: Readonly<Record<RunMode, string>> = {
+  friendly: "run:",
+  endless: "run:endless:",
+};
 
 /** 128 bits of the HMAC: far beyond guessing, and 22 characters in a link. */
 export const SIGNATURE_BYTES = 16;
@@ -67,22 +79,26 @@ export interface RunId {
   readonly replay: boolean;
 }
 
-/** A fresh, signed run id for today (UTC). */
-export async function mintRunId(now: Date, uuid: string, secret: string): Promise<string> {
+/** A fresh, signed run id of `mode` for today (UTC). */
+export async function mintRunId(
+  now: Date,
+  uuid: string,
+  secret: string,
+  mode: RunMode = "friendly",
+): Promise<string> {
   const y = now.getUTCFullYear();
   const m = String(now.getUTCMonth() + 1).padStart(2, "0");
   const d = String(now.getUTCDate()).padStart(2, "0");
-  return signRunBody(secret, `${y}${m}${d}-${uuid}`);
+  return signRunBody(secret, `${y}${m}${d}-${uuid}`, mode);
 }
 
-/** A replay id for `run`: its origin and date, with a fresh uuid of its own. */
-export async function mintReplayId(run: RunId, uuid: string, secret: string): Promise<string> {
-  return signRunBody(secret, `${run.origin}~${uuid}`);
-}
-
-/** `body` with this server's signature: a run id it will answer. */
-export async function signRunBody(secret: string, body: string): Promise<string> {
-  return `${body}.${await signature(secret, body)}`;
+/** `body` with this server's signature for `mode`: a run id it will answer there. */
+export async function signRunBody(
+  secret: string,
+  body: string,
+  mode: RunMode = "friendly",
+): Promise<string> {
+  return `${body}.${await signature(secret, body, mode)}`;
 }
 
 /**
@@ -100,12 +116,19 @@ export function parseRunId(runId: string): RunId | undefined {
   return { body, origin, date, replay: body !== origin };
 }
 
-/** The run id's parts if this server signed it; undefined if not, or if malformed. */
-export async function verifyRunId(runId: string, secret: string): Promise<RunId | undefined> {
+/**
+ * The run id's parts if this server signed it for `mode`; undefined if not, if
+ * it was signed for another mode, or if malformed.
+ */
+export async function verifyRunId(
+  runId: string,
+  secret: string,
+  mode: RunMode = "friendly",
+): Promise<RunId | undefined> {
   const parsed = parseRunId(runId);
   if (parsed === undefined) return undefined;
   const given = runId.slice(parsed.body.length + 1);
-  return timingSafeEqual(given, await signature(secret, parsed.body)) ? parsed : undefined;
+  return timingSafeEqual(given, await signature(secret, parsed.body, mode)) ? parsed : undefined;
 }
 
 /** True when a fresh run's date is within the tolerance of today (UTC). */
@@ -115,7 +138,7 @@ export function isRunDateCurrent(date: Date, clock: Date): boolean {
 }
 
 /**
- * True when a challenge link for a run of this date may still start a replay:
+ * True when a challenge link naming a run of this date may still be taken up:
  * up to `CHALLENGE_DAYS` old, and never further ahead than a fresh run may be.
  */
 export function isChallengeDateCurrent(date: Date, clock: Date): boolean {
@@ -124,14 +147,11 @@ export function isChallengeDateCurrent(date: Date, clock: Date): boolean {
 }
 
 /**
- * Whether an answer on this run is still taken. A fresh run keeps the ±1-day
- * rule. A replay is taken for the challenge window plus that same day's grace,
- * so a replay started just before the link expires can be finished.
+ * Whether a request about this run is still taken: within the ±1-day rule, and
+ * never a replay id — those were retired with Friendly's challenge links.
  */
 export function isRunAnswerable(run: RunId, clock: Date): boolean {
-  if (!run.replay) return isRunDateCurrent(run.date, clock);
-  const age = ageInDays(run.date, clock);
-  return age >= -RUN_DATE_TOLERANCE_DAYS && age <= CHALLENGE_DAYS + RUN_DATE_TOLERANCE_DAYS;
+  return !run.replay && isRunDateCurrent(run.date, clock);
 }
 
 /** Whole days from the run's date to the server's UTC date; negative if ahead. */
@@ -140,7 +160,7 @@ function ageInDays(date: Date, clock: Date): number {
   return Math.round((today - date.getTime()) / DAY_MS);
 }
 
-async function signature(secret: string, body: string): Promise<string> {
-  const mac = await hmacSha256(secret, `run:${body}`);
+async function signature(secret: string, body: string, mode: RunMode): Promise<string> {
+  const mac = await hmacSha256(secret, `${RUN_PREFIX[mode]}${body}`);
   return toBase64Url(mac.subarray(0, SIGNATURE_BYTES));
 }

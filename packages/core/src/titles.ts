@@ -11,7 +11,16 @@
 
 import type { Mode } from "./types.js";
 
-export type StreakTitleId = "squad" | "starter" | "captain" | "legend" | "goat";
+export type StreakTitleId =
+  | "squad"
+  | "starter"
+  | "favourite"
+  | "captain"
+  | "clubLegend"
+  | "worldClass"
+  | "legend"
+  | "immortal"
+  | "goat";
 
 export interface StreakTitle {
   readonly id: StreakTitleId;
@@ -19,13 +28,27 @@ export interface StreakTitle {
   readonly min: number;
 }
 
-/** Endless and Ranked: no finish line. Ascending by `min`. */
+/** Ranked: no finish line. Ascending by `min`. */
 const LONG_TITLES: readonly StreakTitle[] = [
   { id: "squad", min: 5 },
   { id: "starter", min: 10 },
   { id: "captain", min: 20 },
   { id: "legend", min: 30 },
   { id: "goat", min: 45 },
+];
+
+/**
+ * Endless: no finish line, and harder than Friendly, so the titles come closer
+ * together early and keep going past 30. Ascending by `min`; edit freely.
+ */
+const ENDLESS_TITLES: readonly StreakTitle[] = [
+  { id: "squad", min: 5 },
+  { id: "starter", min: 10 },
+  { id: "favourite", min: 15 },
+  { id: "captain", min: 20 },
+  { id: "clubLegend", min: 30 },
+  { id: "worldClass", min: 40 },
+  { id: "immortal", min: 50 },
 ];
 
 /** Friendly: twenty questions, Legend for the win. Ascending by `min`. */
@@ -39,7 +62,7 @@ const FRIENDLY_TITLES: readonly StreakTitle[] = [
 /** The titles per mode, each table ascending by `min`. DESIGN.md §13. */
 export const STREAK_TITLES: Readonly<Record<Mode, readonly StreakTitle[]>> = {
   friendly: FRIENDLY_TITLES,
-  endless: LONG_TITLES,
+  endless: ENDLESS_TITLES,
   ranked: LONG_TITLES,
 };
 

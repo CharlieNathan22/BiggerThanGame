@@ -2,19 +2,24 @@ import { describe, expect, it } from "vitest";
 import {
   BAND_SCHEDULES,
   FINAL_STRETCH,
+  FINE_CEILING_STEP,
+  PAIR_RULES,
+  RELAXATION_LADDERS,
   VOLATILE_FLOOR,
   bandFor,
   bandForRound,
   gap,
+  meetsValueRule,
   pairFits,
   percentiles,
   rankDistance,
   relaxations,
   withinBand,
 } from "../ramp.js";
+import { STATS, STAT_KEYS } from "../stats.js";
 import { NOW } from "../__fixtures__/deck.js";
 import { WIN_ROUNDS } from "../sequence.js";
-import type { Player } from "../types.js";
+import type { Player, StatKey } from "../types.js";
 
 const forward = (id: string, caps: number, extra: Partial<Player> = {}): Player => ({
   id,
@@ -26,11 +31,11 @@ const forward = (id: string, caps: number, extra: Partial<Player> = {}): Player 
   ...extra,
 });
 
-describe("bandForRound, the long schedule (Endless and Ranked)", () => {
+describe("bandForRound, the long schedule (Ranked)", () => {
   const band = (round: number) => bandForRound(round, "ranked");
 
-  it("is shared by Endless and Ranked", () => {
-    expect(BAND_SCHEDULES.endless).toBe(BAND_SCHEDULES.ranked);
+  it("is Ranked's alone: Endless has its own", () => {
+    expect(BAND_SCHEDULES.endless).not.toBe(BAND_SCHEDULES.ranked);
   });
 
   it("opens uncapped so blowouts can be dealt", () => {
@@ -131,15 +136,189 @@ describe("the final stretch", () => {
   });
 
   it("never touches Endless or Ranked", () => {
-    for (const mode of ["endless", "ranked"] as const) {
-      for (const r of [1, 18, 19, 20, 43]) {
-        expect(bandFor("caps", r, mode)).toEqual(bandForRound(r, mode));
-        expect(bandFor("ig", r, mode)).toEqual({
-          ...bandForRound(r, mode),
-          minRatio: VOLATILE_FLOOR,
+    for (const r of [1, 18, 19, 20, 43]) {
+      expect(bandFor("caps", r, "ranked")).toEqual(bandForRound(r, "ranked"));
+      expect(bandFor("ig", r, "ranked")).toEqual({
+        ...bandForRound(r, "ranked"),
+        minRatio: VOLATILE_FLOOR,
+      });
+    }
+    // Endless's late rounds have their own rules (PAIR_RULES), tested below.
+    for (const r of [1, 5, 10, 15]) {
+      expect(bandFor("caps", r, "endless")).toEqual(bandForRound(r, "endless"));
+    }
+  });
+});
+
+describe("Endless's schedule", () => {
+  const rows = BAND_SCHEDULES.endless;
+  const band = (round: number) => bandForRound(round, "endless");
+
+  it("opens exactly as Friendly for the five rounds that prefer iconic names", () => {
+    for (let r = 1; r <= 5; r++) {
+      for (const key of STAT_KEYS) {
+        expect(bandFor(key, r, "endless")).toEqual(bandFor(key, r, "friendly"));
+      }
+      expect(band(r)).toEqual({ floor: 0.45, ceiling: null });
+    }
+  });
+
+  it("never gets easier from round 5 on: floor and ceiling never rise", () => {
+    for (let r = 5; r < 200; r++) {
+      const a = band(r);
+      const b = band(r + 1);
+      expect(b.floor).toBeLessThanOrEqual(a.floor);
+      expect(b.ceiling ?? Infinity).toBeLessThanOrEqual(a.ceiling ?? Infinity);
+    }
+  });
+
+  it("is capped from round 6", () => {
+    for (let r = 6; r <= 150; r++) expect(band(r).ceiling).not.toBeNull();
+  });
+
+  it("keeps tightening after round 20 rather than levelling off", () => {
+    const after20 = rows.filter((row, i) => i > 0 && rows[i - 1]!.upTo >= 20);
+    expect(after20.length).toBeGreaterThanOrEqual(2);
+    expect(band(150).ceiling!).toBeLessThan(band(20).ceiling!);
+  });
+
+  it("is written to two decimals, so the analytics labels are exact", () => {
+    for (const { band: b } of rows) {
+      for (const v of [b.floor, b.ceiling ?? 0]) {
+        expect(Math.round(v * 100) / 100).toBe(v);
+      }
+    }
+  });
+});
+
+describe("Endless's pair rules", () => {
+  const rules = PAIR_RULES.endless!;
+  const narrow = Object.keys(rules.narrow) as StatKey[];
+  const wide = STAT_KEYS.filter((k) => !narrow.includes(k));
+  const band = (round: number) => bandForRound(round, "endless");
+
+  it("start at round 16 for age, international trophies and clubs played for", () => {
+    expect(rules.from).toBe(16);
+    expect(rules.wideMinRatio).toBe(0.1);
+    expect(rules.narrow).toEqual({
+      age: { kind: "relative", max: 0.1 },
+      it: { kind: "difference", min: 1, max: 2 },
+      clubs: { kind: "difference", min: 1, max: 2 },
+    });
+    expect(PAIR_RULES.friendly).toBeNull();
+    expect(PAIR_RULES.ranked).toBeNull();
+  });
+
+  it("pair a narrow stat by value in place of the band from round 16, and not before", () => {
+    for (const key of narrow) {
+      expect(bandFor(key, 15, "endless").valueRule).toBeUndefined();
+      for (const r of [16, 20, 30, 150]) {
+        expect(bandFor(key, r, "endless")).toEqual({
+          floor: 0,
+          ceiling: null,
+          valueRule: rules.narrow[key],
         });
       }
     }
+  });
+
+  it("add a 10% floor to every wide stat from round 16, on top of Instagram's", () => {
+    for (const key of wide) {
+      expect(bandFor(key, 15, "endless").strictMinRatio).toBeUndefined();
+      for (const r of [16, 25, 150]) {
+        const b = bandFor(key, r, "endless");
+        expect(b.strictMinRatio).toBe(0.1);
+        expect(b.floor).toBe(band(r).floor);
+        expect(b.minRatio).toBe(STATS[key].volatile === true ? VOLATILE_FLOOR : undefined);
+      }
+    }
+  });
+
+  it("are kept at every relaxation step", () => {
+    for (const key of STAT_KEYS) {
+      for (const r of [16, 21, 31]) {
+        const b = bandFor(key, r, "endless");
+        for (const step of relaxations(b, RELAXATION_LADDERS.endless)) {
+          if (b.valueRule !== undefined) expect(step).toEqual(b);
+          else expect(step.strictMinRatio).toBe(0.1);
+        }
+      }
+    }
+  });
+});
+
+describe("value rules", () => {
+  const age = { kind: "relative", max: 0.1 } as const;
+  const small = { kind: "difference", min: 1, max: 2 } as const;
+
+  it("never admit a tie", () => {
+    expect(meetsValueRule(50, 50, age)).toBe(false);
+    expect(meetsValueRule(2, 2, small)).toBe(false);
+  });
+
+  it("take ages within 10% of each other, 50 against 54 or 55, not 56", () => {
+    expect(meetsValueRule(50, 54, age)).toBe(true);
+    expect(meetsValueRule(55, 50, age)).toBe(true);
+    expect(meetsValueRule(50, 56, age)).toBe(false);
+  });
+
+  it("take small counts one or two apart", () => {
+    expect(meetsValueRule(0, 1, small)).toBe(true);
+    expect(meetsValueRule(3, 1, small)).toBe(true);
+    expect(meetsValueRule(1, 4, small)).toBe(false);
+  });
+
+  it("replace the rank band in pairFits, and need both values in the deck", () => {
+    const table = new Map([
+      [1, 0],
+      [2, 0.5],
+      [5, 1],
+    ]);
+    const b = { floor: 0.9, ceiling: 0.95, valueRule: small };
+    expect(pairFits(table, 1, 2, b)).toBe(true); // rank 0.5, far outside the band
+    expect(pairFits(table, 2, 5, b)).toBe(false); // 3 apart
+    expect(pairFits(table, 1, 3, b)).toBe(false); // 3 isn't in the table
+  });
+
+  it("can't relax: a value-rule band's ladder is the band alone", () => {
+    const b = { floor: 0, ceiling: null, valueRule: age };
+    expect(relaxations(b)).toEqual([b]);
+    expect(relaxations(b, "fine")).toEqual([b]);
+  });
+});
+
+describe("relaxation ladders", () => {
+  it("are coarse for Friendly and Ranked, fine for Endless", () => {
+    expect(RELAXATION_LADDERS).toEqual({ friendly: "coarse", endless: "fine", ranked: "coarse" });
+  });
+
+  it("fine lifts the ceiling by half again at each step up to 1, then drops it, then the floor", () => {
+    const steps = relaxations({ floor: 0.02, ceiling: 0.04, strictMinRatio: 0.1 }, "fine");
+    const ceilings = steps.map((s) => s.ceiling);
+    const lifted = ceilings.slice(1, ceilings.indexOf(null));
+    expect(lifted[0]).toBeCloseTo(0.04 * FINE_CEILING_STEP);
+    for (let i = 1; i < lifted.length; i++) {
+      expect(lifted[i]!).toBeGreaterThan(lifted[i - 1]!);
+    }
+    expect(lifted.at(-1)).toBe(1);
+    expect(steps.at(-1)).toEqual({ floor: 0, ceiling: null, strictMinRatio: 0.1 });
+    for (const s of steps) expect(s.strictMinRatio).toBe(0.1);
+  });
+
+  it("coarse is the ladder every existing run was dealt with", () => {
+    expect(relaxations({ floor: 0.25, ceiling: 0.7 })).toEqual(
+      relaxations({ floor: 0.25, ceiling: 0.7 }, "coarse"),
+    );
+    expect(relaxations({ floor: 0.25, ceiling: 0.7 }).map((b) => b.ceiling)).toEqual([
+      0.7,
+      1,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
   });
 });
 

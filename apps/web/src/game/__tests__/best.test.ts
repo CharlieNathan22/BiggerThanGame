@@ -77,16 +77,22 @@ describe("local best", () => {
 describe("challenge links", () => {
   const search = `?challenge=${RUN_ID}&score=12&sig=${SIG}`;
 
-  it("reads a well-formed link", () => {
-    expect(readChallenge(search, "friendly")).toEqual({
+  it("reads a well-formed link in Endless", () => {
+    expect(readChallenge(search, "endless")).toEqual({
       kind: "link",
       link: { runId: RUN_ID, score: 12, sig: SIG },
     });
   });
 
   it("reads nothing from a page without one", () => {
+    expect(readChallenge("", "endless")).toEqual({ kind: "none" });
+    expect(readChallenge("?delay=800", "endless")).toEqual({ kind: "none" });
     expect(readChallenge("", "friendly")).toEqual({ kind: "none" });
-    expect(readChallenge("?delay=800", "friendly")).toEqual({ kind: "none" });
+  });
+
+  it("calls any link on the Friendly page retired, whole or broken: challenges moved to Endless", () => {
+    expect(readChallenge(search, "friendly")).toEqual({ kind: "retired" });
+    expect(readChallenge(`?challenge=${RUN_ID}`, "friendly")).toEqual({ kind: "retired" });
   });
 
   it.each([
@@ -94,27 +100,27 @@ describe("challenge links", () => {
     ["a missing score", `?challenge=${RUN_ID}&sig=${SIG}`],
     ["a truncated run id", `?challenge=${RUN_ID.slice(0, -3)}&score=12&sig=${SIG}`],
     ["a word for a score", `?challenge=${RUN_ID}&score=twelve&sig=${SIG}`],
-    ["a score past Friendly's twenty", `?challenge=${RUN_ID}&score=21&sig=${SIG}`],
+    ["a score past Endless's cap of 150", `?challenge=${RUN_ID}&score=151&sig=${SIG}`],
     ["a padded sig", `?challenge=${RUN_ID}&score=12&sig=${SIG}=`],
   ])("calls a link with %s broken", (_, s) => {
-    expect(readChallenge(s, "friendly")).toEqual({ kind: "broken" });
+    expect(readChallenge(s, "endless")).toEqual({ kind: "broken" });
   });
 
-  it("reads a link to a won run, at twenty", () => {
-    expect(readChallenge(`?challenge=${RUN_ID}&score=20&sig=${SIG}`, "friendly")).toMatchObject({
+  it("reads a link to a long streak, up to the cap", () => {
+    expect(readChallenge(`?challenge=${RUN_ID}&score=150&sig=${SIG}`, "endless")).toMatchObject({
       kind: "link",
-      link: { score: 20 },
+      link: { score: 150 },
     });
   });
 
-  it("round-trips through the URL it builds, on the game page", () => {
+  it("round-trips through the URL it builds, on the Endless page", () => {
     const url = challengeUrl("https://biggerthangame.com", { runId: RUN_ID, score: 7, sig: SIG });
     expect(
       url.startsWith(
-        "https://biggerthangame.com/football-higher-or-lower/legends/friendly?challenge=",
+        "https://biggerthangame.com/football-higher-or-lower/legends/endless?challenge=",
       ),
     ).toBe(true);
-    expect(readChallenge(new URL(url).search, "friendly")).toEqual({
+    expect(readChallenge(new URL(url).search, "endless")).toEqual({
       kind: "link",
       link: { runId: RUN_ID, score: 7, sig: SIG },
     });

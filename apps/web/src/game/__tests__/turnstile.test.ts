@@ -37,7 +37,12 @@ function fakeDocument(): ScriptDocument & { scripts: FakeScript[] } {
   };
 }
 
-const api: Turnstile = { render: () => "w1", reset: () => {}, remove: () => {} };
+const api: Turnstile = {
+  render: () => "w1",
+  reset: () => {},
+  remove: () => {},
+  execute: () => {},
+};
 
 describe("createTurnstileLoader", () => {
   it("adds nothing until it's asked", () => {
