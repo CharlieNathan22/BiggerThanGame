@@ -824,7 +824,8 @@ expect a meaningful number of legends to have no usable free image at all.
 - The nickname is entered **after the run ends**, and publishing to the global board is **opt-in**.
   Anyone who wants to appear publicly provides a name — not only those reaching the top 100 — so
   that ranks and shares stay coherent. In Endless, "Publish to leaderboard" on the game-over panel
-  opens a small dialog: the nickname (prefilled), one line on what's stored — the nickname and
+  opens a small dialog: the nickname (prefilled with the last name published from this device,
+  or a generated one the first time), one line on what's stored — the nickname and
   the score, no account — and Publish. Afterwards it shows the three ranks ("412th of 3,208 today ·
   1,030th of 9,877 this week · …") and a link to the board, and the panel keeps the day's rank.
 - **Nicknames** are 3 to 20 characters: Latin letters (accented ones included), digits, spaces

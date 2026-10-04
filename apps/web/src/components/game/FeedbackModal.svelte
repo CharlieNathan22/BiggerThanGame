@@ -6,8 +6,11 @@
   before. All text comes from ../../i18n.
 
   A modal dialog: focus moves in when it opens and is held there (Tab wraps,
-  and focus that lands outside is brought back); Esc and the close button shut
-  it; the island puts focus back on whatever opened it. After a send goes
+  and focus that lands outside is brought back); Esc, the close button and a
+  click on the backdrop shut it (a press that starts inside the dialog doesn't,
+  and nothing closes it mid-send); the island puts focus back on whatever
+  opened it. What was typed is handed back on the way out (`ondraft`) and
+  comes back as `draft` when the form opens again; a send clears it. After a send goes
   through, "Thanks" is announced and stays up for `--dur-thanks`, then the
   modal closes itself; Esc, the close button or a click anywhere closes it
   straight away.
@@ -15,7 +18,7 @@
 <script lang="ts">
   import { FEEDBACK_LIMITS } from "@bt/core";
   import type { FeedbackRequest, SitePage } from "@bt/core";
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { statLabel, t } from "../../i18n";
   import {
     afterSent,
@@ -25,7 +28,14 @@
     statusText,
     wrapFocus,
   } from "../../game/feedback";
-  import type { FeedbackKind, FormStatus, ReportedRound, SendOutcome } from "../../game/feedback";
+  import type {
+    Draft,
+    FeedbackKind,
+    FormStatus,
+    ReportedRound,
+    SendOutcome,
+  } from "../../game/feedback";
+  import { createBackdropDismiss } from "../../game/modal";
   import type { Timings } from "../../game/timing";
   import type { Turnstile } from "../../game/turnstile";
   import type { MessageKey } from "../../i18n";
@@ -41,11 +51,26 @@
     siteKey: string;
     loadTurnstile: () => Promise<Turnstile>;
     send: (body: FeedbackRequest) => Promise<SendOutcome>;
+    /** What was typed last time this form closed unsent. */
+    draft?: Draft | undefined;
+    /** Told what's typed as the form closes, or null once it has been sent. */
+    ondraft?: (draft: Draft | null) => void;
     onclose: () => void;
   }
 
-  let { kind, report, page, timings, reducedMotion, siteKey, loadTurnstile, send, onclose }: Props =
-    $props();
+  let {
+    kind,
+    report,
+    page,
+    timings,
+    reducedMotion,
+    siteKey,
+    loadTurnstile,
+    send,
+    draft,
+    ondraft,
+    onclose,
+  }: Props = $props();
 
   const TEXT: Readonly<
     Record<FeedbackKind, { title: MessageKey; intro: MessageKey; note: MessageKey }>
@@ -74,8 +99,15 @@
   let noteInput: HTMLTextAreaElement | undefined = $state();
   let check: HTMLDivElement | undefined = $state();
 
-  let name = $state("");
-  let note = $state("");
+  /**
+   * Where this form's draft goes, as the form was opened: a send that ends
+   * after the form has closed still clears this form's draft.
+   */
+  const keepDraft = untrack(() => ondraft);
+
+  // From the draft, once: after that the fields are the player's.
+  let name = $state(untrack(() => draft?.name) ?? "");
+  let note = $state(untrack(() => draft?.note) ?? "");
   let token = $state<string | null>(null);
   let status = $state<FormStatus>("editing");
   /** Problems with the draft show once the player has tried to send it. */
@@ -104,12 +136,23 @@
     if (closed) return;
     closed = true;
     for (const timer of timers) clearTimeout(timer);
+    keepDraft?.(status === "sent" ? null : { name, note });
     onclose();
   }
 
-  /** Once "Thanks" is up, a click anywhere closes the modal rather than waiting. */
-  function onBackdropClick(): void {
-    if (status === "sent") close();
+  const backdrop = createBackdropDismiss({ canClose: () => !sending, close });
+
+  /**
+   * A click on the backdrop closes the form, as long as the press began there
+   * too and nothing is being sent. Once "Thanks" is up, a click anywhere does,
+   * rather than waiting.
+   */
+  function onBackdropClick(event: MouseEvent): void {
+    if (status === "sent") {
+      close();
+      return;
+    }
+    backdrop.click(event.target === event.currentTarget);
   }
 
   onMount(() => {
@@ -167,6 +210,7 @@
     const outcome = await send(feedbackRequest(kind, { name, note }, { report, page }, token));
     status = outcome;
     if (outcome === "sent") {
+      keepDraft?.(null);
       removeWidget();
       // The form has gone; keep focus in the dialog while "Thanks" is read out.
       await tick();
@@ -218,9 +262,15 @@
 
 <svelte:document onfocusin={onFocusIn} />
 
-<!-- A click only adds a shortcut once "Thanks" is showing; the keyboard has Esc and the close button. -->
+<!-- A click on the backdrop is a pointer shortcut; the keyboard has Esc and the close button. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="scrim" class:closing class:sent={status === "sent"} onclick={onBackdropClick}>
+<div
+  class="scrim"
+  class:closing
+  class:sent={status === "sent"}
+  onpointerdown={(event) => backdrop.pointerdown(event.target === event.currentTarget)}
+  onclick={onBackdropClick}
+>
   <div
     bind:this={dialog}
     class="dialog"

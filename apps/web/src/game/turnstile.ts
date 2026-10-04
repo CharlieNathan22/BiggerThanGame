@@ -125,55 +125,116 @@ export const HUMAN_CHECK_TIMEOUT_MS = 30_000;
 
 /**
  * The run start's check, as a function that resolves with a fresh Turnstile
- * token: the widget is rendered into `container` on first use, invisible
- * unless Turnstile wants an interaction, and executed on each call (reset
- * first, since a token is spent by the server once). Rejects if the script
+ * token: the widget is rendered into `container`, invisible unless Turnstile
+ * wants an interaction, and executed on each call (reset first, since a token
+ * is spent by the server once and never sent twice). Rejects if the script
  * won't load, the check errors or times out; the start panel then offers a
- * calm retry.
+ * calm retry, which runs a new check.
+ *
+ * **Every call checks where the widget lives.** The start panel is unmounted
+ * while a run is played and mounted afresh for the next start (Play again, or
+ * a retry), so the element the widget was rendered into can be gone. Resetting
+ * a widget whose element has gone fails ("Cannot find Widget"), and every start
+ * after it would fail the same way. So when the container is a different
+ * element, or detached, or the widget won't reset, the old widget is removed
+ * and a new one rendered into the current container.
+ *
+ * `release()` removes the widget while its element is still in the page: the
+ * game calls it as the start panel unmounts, so no widget is left behind for
+ * Turnstile to look for, and the next start renders a fresh one.
  */
+export interface HumanCheck {
+  /** A fresh Turnstile token, never one handed out before. */
+  (): Promise<string>;
+  /** Removes the widget; the next check renders a new one. */
+  release(): void;
+}
+
 export function createHumanCheck(
   load: () => Promise<Turnstile>,
   container: () => HTMLElement | null,
   siteKey: string,
   schedule: (fn: () => void, ms: number) => () => void,
-): () => Promise<string> {
-  let widget: string | null = null;
-  let waiting: { resolve: (token: string) => void; reject: (err: Error) => void } | null = null;
+): HumanCheck {
+  /** Turnstile, once it has loaded. */
+  let api: Turnstile | null = null;
+  /** The widget, and the element it was rendered into. */
+  let widget: { readonly id: string; readonly box: HTMLElement } | null = null;
+  /** The check in progress: only its widget's callbacks can settle it. */
+  let waiting: {
+    readonly id: string;
+    readonly resolve: (token: string) => void;
+    readonly reject: (err: Error) => void;
+  } | null = null;
 
-  const settle = (outcome: string | Error): void => {
+  const settle = (from: string, outcome: string | Error): void => {
     const pending = waiting;
+    // A callback from a widget since removed, or with no check waiting, is ignored.
+    if (pending === null || pending.id !== from) return;
     waiting = null;
-    if (pending === null) return;
     if (typeof outcome === "string") pending.resolve(outcome);
     else pending.reject(outcome);
   };
 
-  return async () => {
+  const discard = (turnstile: Turnstile): void => {
+    if (widget === null) return;
+    try {
+      turnstile.remove(widget.id);
+    } catch {
+      // Gone with its element already.
+    }
+    widget = null;
+  };
+
+  const render = (turnstile: Turnstile, box: HTMLElement): string => {
+    let id: string | null = null;
+    const from = (): string => id ?? "";
+    id =
+      turnstile.render(box, {
+        sitekey: siteKey,
+        action: "run-start",
+        appearance: "interaction-only",
+        execution: "execute",
+        callback: (token) => settle(from(), token),
+        "error-callback": () => settle(from(), new Error("the check failed")),
+        "expired-callback": () => settle(from(), new Error("the check expired")),
+      }) ?? null;
+    if (id === null) throw new Error("the check didn't render");
+    widget = { id, box };
+    return id;
+  };
+
+  const check = async (): Promise<string> => {
     const turnstile = await load();
+    api = turnstile;
     const box = container();
     if (box === null) throw new Error("no place for the check");
-    if (widget === null) {
-      widget =
-        turnstile.render(box, {
-          sitekey: siteKey,
-          action: "run-start",
-          appearance: "interaction-only",
-          execution: "execute",
-          callback: (token) => settle(token),
-          "error-callback": () => settle(new Error("the check failed")),
-          "expired-callback": () => settle(new Error("the check expired")),
-        }) ?? null;
-      if (widget === null) throw new Error("the check didn't render");
-    } else {
-      turnstile.reset(widget);
+    // A check still waiting (a start abandoned mid-check) can't take this one's token.
+    if (waiting !== null) settle(waiting.id, new Error("superseded"));
+
+    if (widget !== null && (widget.box !== box || widget.box.isConnected === false)) {
+      discard(turnstile);
     }
-    const id = widget;
+    let id: string;
+    if (widget === null) {
+      id = render(turnstile, box);
+    } else {
+      try {
+        turnstile.reset(widget.id);
+        id = widget.id;
+      } catch {
+        discard(turnstile);
+        id = render(turnstile, box);
+      }
+    }
+
     return new Promise<string>((resolve, reject) => {
       const cancel = schedule(
-        () => settle(new Error("the check timed out")),
+        () => settle(id, new Error("the check timed out")),
         HUMAN_CHECK_TIMEOUT_MS,
       );
       waiting = {
+        id,
         resolve: (token) => {
           cancel();
           resolve(token);
@@ -183,7 +244,19 @@ export function createHumanCheck(
           reject(err);
         },
       };
-      turnstile.execute(id);
+      try {
+        turnstile.execute(id);
+      } catch {
+        // The widget won't run: forget it, so the next start renders a new one.
+        discard(turnstile);
+        settle(id, new Error("the check didn't run"));
+      }
     });
   };
+
+  return Object.assign(check, {
+    release: (): void => {
+      if (api !== null) discard(api);
+    },
+  });
 }

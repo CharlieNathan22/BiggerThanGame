@@ -12,16 +12,22 @@
  * - `bt:published:<deck>:<mode>` — where the device's published best stood in
  *   each current period, from the submit response, so the board page shows the
  *   player straight away even before the cached board catches up.
+ * - `bt:nickname` — the name last published from this device, which the
+ *   publish dialog starts with next time. Saved only once a publish has gone
+ *   through, so a refused or abandoned name is never kept.
  *
  * Storage can be missing, blocked, full or throw (best.ts has the list), so
  * every read and write is wrapped; without it the game carries on and these
  * last as long as the page.
  */
 
+import { checkNickname } from "@bt/core";
 import type { BoardPeriod, Mode, RunEnd, SubmitResponse } from "@bt/core";
 import type { BestDeck, StorageAccess } from "./best";
 
 export const DEVICE_KEY = "bt:device";
+
+export const NICKNAME_KEY = "bt:nickname";
 
 /** How many runs the local board keeps. */
 export const LOCAL_RUNS = 10;
@@ -197,5 +203,35 @@ export function saveStandings(
     storage()?.setItem(key, JSON.stringify([...kept, ...standings]));
   } catch {
     // The board page will just not know until the cache catches up.
+  }
+}
+
+/**
+ * The nickname last published from this device, or null when there's none,
+ * storage can't be read, or the stored value no longer passes the rules (they
+ * may have changed since): the dialog then generates one.
+ */
+export function readNickname(storage: StorageAccess): string | null {
+  try {
+    const raw = storage()?.getItem(NICKNAME_KEY);
+    if (typeof raw !== "string") return null;
+    const check = checkNickname(raw);
+    return check.ok && check.nickname === raw ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps the name a run was just published under. False when storage refused it. */
+export function saveNickname(storage: StorageAccess, nickname: string): boolean {
+  const check = checkNickname(nickname);
+  if (!check.ok) return false;
+  try {
+    const store = storage();
+    if (store === null) return false;
+    store.setItem(NICKNAME_KEY, check.nickname);
+    return true;
+  } catch {
+    return false;
   }
 }

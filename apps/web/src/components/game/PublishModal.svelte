@@ -7,8 +7,10 @@
   from ../../i18n.
 
   A modal dialog like the feedback form (FeedbackModal.svelte): focus moves in
-  and is held there, Esc and the close button shut it, and the island puts
-  focus back on whatever opened it. Refusals are calm and say what to do next.
+  and is held there, Esc, the close button and a click on the backdrop shut it
+  (not a press that starts inside, and not mid-publish), and the island puts
+  focus back on whatever opened it. A name typed and left unpublished comes
+  back next time (`ondraft`). Refusals are calm and say what to do next.
 -->
 <script lang="ts">
   import { NICKNAME_LIMITS, generateNickname } from "@bt/core";
@@ -16,6 +18,7 @@
   import { onMount, tick, untrack } from "svelte";
   import { t } from "../../i18n";
   import { wrapFocus } from "../../game/feedback";
+  import { createBackdropDismiss } from "../../game/modal";
   import { canRetry, cryptoRandom, nicknameText, outcomeText, ranksText } from "../../game/publish";
   import type { PublishOutcome } from "../../game/publish";
   import type { Turnstile } from "../../game/turnstile";
@@ -23,7 +26,7 @@
   interface Props {
     streak: number;
     /** A name to start with; a fresh one is generated when absent. */
-    nickname?: string;
+    nickname?: string | undefined;
     siteKey: string;
     loadTurnstile: () => Promise<Turnstile>;
     /** Sends the run with this name and a fresh Turnstile token. */
@@ -32,6 +35,8 @@
     boardHref: string;
     /** Told once it's published, with the ranks. */
     onpublished: (response: SubmitResponse, nickname: string) => void;
+    /** Told the name as it closes unpublished, or null once published. */
+    ondraft?: (nickname: string | null) => void;
     onclose: () => void;
   }
 
@@ -43,6 +48,7 @@
     publish,
     boardHref,
     onpublished,
+    ondraft,
     onclose,
   }: Props = $props();
 
@@ -85,8 +91,11 @@
   function close(): void {
     if (closed) return;
     closed = true;
+    ondraft?.(published !== null ? null : nickname);
     onclose();
   }
+
+  const backdrop = createBackdropDismiss({ canClose: () => !sending, close });
 
   onMount(() => {
     nameInput?.focus();
@@ -198,7 +207,13 @@
 
 <svelte:document onfocusin={onFocusIn} />
 
-<div class="scrim">
+<!-- A click on the backdrop is a pointer shortcut; the keyboard has Esc and the close button. -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div
+  class="scrim"
+  onpointerdown={(event) => backdrop.pointerdown(event.target === event.currentTarget)}
+  onclick={(event) => backdrop.click(event.target === event.currentTarget)}
+>
   <div
     bind:this={dialog}
     class="dialog"

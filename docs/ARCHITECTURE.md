@@ -1259,8 +1259,13 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
     start panel says "We couldn't check your connection. Press Start to try again."
   - **Turnstile** (`game/turnstile.ts`): `loadWhenIdle` loads the script once the page is idle
     (`requestIdleCallback`, else the `load` event); `createHumanCheck` renders the widget into
-    the start panel on first use, `appearance: "interaction-only"` and `execution: "execute"`,
-    and executes it on each Start press (reset first), with a 30 s time-out.
+    the start panel, `appearance: "interaction-only"` and `execution: "execute"`, and executes
+    it on each Start press (reset first), with a 30 s time-out. Every start gets a fresh token,
+    never a reused one. The start panel unmounts while a run is played, so the widget is
+    removed with it (`release()`, from an `{@attach}` on its element) and rendered afresh in the
+    next panel; a widget whose element has gone, or that won't reset, is replaced the same way.
+    (Before this, Play again reset a widget whose element had gone, and every later start failed
+    with "We couldn't check your connection" until a reload; `play-again.test.ts` holds it.)
   - **The clock**: the machine sets `clock` (`{ startedAt, limitMs }`) as a question becomes
     answerable — the `dealt` or `spun` event carries the time — and clears it at the guess; the
     controller's one timer in `awaiting` fires `timeout`, which goes to the server as a guess.
@@ -1278,16 +1283,20 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
     `bt:best:legends:endless`, saved as the streak grows.
   - **Publishing** (`PublishModal.svelte`, `game/publish.ts`): a run that scored offers "Publish to
     leaderboard", a row of its own under the shares. It opens a dialog (the feedback form's
-    pattern and focus handling): the nickname, prefilled with a generated one and a button for
-    another; the line "We store your nickname and your score, and nothing else about you. There's
+    pattern and focus handling): the nickname, prefilled with the last name published from this
+    device (`bt:nickname`), or a generated one the first time, with storage blocked, or when the
+    stored name no longer passes the rules, and a button for a generated one; the line "We store your nickname and your score, and nothing else about you. There's
     no account."; Turnstile (`action: "submit"`, a fresh token per try); Publish. Refusals are
     calm and say what to do: another name, too late (30 minutes), already published, try again.
     Once published it shows the three ranks and a link to the board, and the panel's row becomes
     the day's rank and a "Leaderboard" link.
   - **This device** (`game/device.ts`): `bt:device`, the random id sent with a publish;
     `bt:runs:legends:endless`, the 10 best runs with their date and score, recorded at every end
-    (the controller's `onOver`), published or not; and `bt:published:legends:endless`, the
-    standings from the last publish per period, for the board page. All wrapped: without storage
+    (the controller's `onOver`), published or not; `bt:published:legends:endless`, the
+    standings from the last publish per period, for the board page; and `bt:nickname`, the name
+    last published, saved only once a publish has gone through (`rememberPublished`), so a
+    refused or abandoned name is never kept. A name typed and left unpublished still comes back
+    within the same visit, from memory. All wrapped: without storage
     they last the visit.
 - **The leaderboard page** (`/football-higher-or-lower/legends/endless/leaderboard`, a static page
   with the `Leaderboard.svelte` island): tabs for Today, This week and This month (the ARIA tabs
@@ -1590,7 +1599,12 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   `#problem`, which open the form on load. A problem report names the page it came from — the
   referrer's path when it is one of the site's pages (`SITE_PAGES`), else the game page — and
   nothing else. One modal dialog in the island: labelled, `aria-modal`, focus held inside and
-  returned to the opener, Esc and a close button, 44px targets. After a send goes through,
+  returned to the opener, Esc and a close button, 44px targets. **A click on the backdrop closes
+  it too** (`game/modal.ts`, shared with the publish dialog): only when the press both starts and
+  ends on the backdrop, so selecting text in a field and letting go outside doesn't, and never
+  while a send is in flight. What was typed comes back if the form is opened again (kept in
+  memory for the page's lifetime, never in storage; a report's draft is about its own card), and
+  is cleared once the send goes through. After a send goes through,
   "Thanks" is announced and shows for `--dur-thanks` (5 s), then the modal fades and closes itself
   (no fade with reduced motion; the pause stays). Esc, the close button or a click anywhere closes
   it at once, and focus goes back to the button or link that opened it.

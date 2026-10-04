@@ -1,6 +1,6 @@
 # Deck viability
 
-Generated 2026-09-29 from 131 players.
+Generated 2026-10-04 from 131 players.
 
 Counts are **unordered pairs that clear the band**, before the recently-seen
 queue takes its cut. Bands are in rank distance — how far apart two players sit
@@ -40,7 +40,7 @@ Endless's rows from round 16 count under its pair rules: age, international trop
 | Club trophies | 131 | 33 | 297 | 2594 | 4052 | 4050 | 3200 | 2872 | 1471 | 3742 | 1451 | 917 | 72 | 35 | 1893 | 1195 | 72 | 86 | 35 |
 | International trophies | 131 | 6 | 2307 | 2580 | 4486 | 3210 | 3292 | 1204 | 126 | 2790 | 464 | 14 | 14 | 0 | 1092 | 126 | 4498 | 4498 | 4498 |
 | Clubs played for | 131 | 14 | 944 | 2600 | 4007 | 4173 | 3429 | 2791 | 795 | 3767 | 1837 | 222 | 10 | 7 | 2038 | 363 | 3214 | 3214 | 3214 |
-| Age | 123 | 32 | 263 | 2356 | 3582 | 3616 | 2950 | 2608 | 1334 | 3202 | 1356 | 845 | 1 | 0 | 1614 | 993 | 1993 | 1993 | 1993 |
+| Age | 123 | 31 | 270 | 2353 | 3594 | 3647 | 2956 | 2584 | 1324 | 3201 | 1318 | 840 | 2 | 0 | 1631 | 987 | 1978 | 1978 | 1978 |
 
 ## Problems
 
@@ -80,7 +80,7 @@ the correlated-pair exclusion in `wheel.ts` exists to prevent.
 | Instagram followers / Highest transfer fee | 0.52 |  |
 | Highest transfer fee / Age | -0.51 |  |
 | International caps / Club appearances | 0.38 |  |
-| Club trophies / Age | -0.35 |  |
+| Club trophies / Age | -0.34 |  |
 | Club goals / Clubs played for | 0.33 |  |
 | Club appearances / Club trophies | 0.33 |  |
 | International caps / Instagram followers | 0.33 |  |

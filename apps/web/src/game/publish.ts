@@ -24,11 +24,34 @@ import type {
 import { LOCALE, t } from "../i18n";
 import type { MessageKey } from "../i18n";
 import type { Fetch } from "./api";
+import type { StorageAccess } from "./best";
+import { saveNickname } from "./device";
 
 export const SUBMIT_ENDPOINT = "/api/run/submit";
 
 /** Past a slow publish; the server does a Turnstile check and a few writes. */
 export const PUBLISH_TIMEOUT_MS = 15_000;
+
+/**
+ * The name the publish dialog starts with: what the player typed and left
+ * unpublished earlier this visit (an in-memory draft), else the name last
+ * published from this device (`bt:nickname`), else a generated one.
+ */
+export function startingNickname(
+  draft: string | undefined,
+  remembered: string | null,
+  generate: () => string,
+): string {
+  return draft ?? remembered ?? generate();
+}
+
+/**
+ * After a publish attempt: remembers the name only if the run was published,
+ * as the server stored it. A refused name is never remembered.
+ */
+export function rememberPublished(storage: StorageAccess, outcome: PublishOutcome): void {
+  if (outcome.kind === "published") saveNickname(storage, outcome.response.nickname);
+}
 
 /** How a publish went. */
 export type PublishOutcome =

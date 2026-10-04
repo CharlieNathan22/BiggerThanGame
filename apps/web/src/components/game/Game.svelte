@@ -9,7 +9,7 @@
   challenge links.
 -->
 <script lang="ts">
-  import { CHALLENGES, WIN_ROUNDS } from "@bt/core";
+  import { CHALLENGES, WIN_ROUNDS, generateNickname } from "@bt/core";
   import type { Guess, SitePage } from "@bt/core";
   import type { PitchCard } from "../../game/view";
   import { onMount, tick } from "svelte";
@@ -23,12 +23,19 @@
   import {
     deviceId,
     publishedKey,
+    readNickname,
     recordRun,
     runsKey,
     saveStandings,
     standingsOf,
   } from "../../game/device";
-  import { publishRun, rankText } from "../../game/publish";
+  import {
+    cryptoRandom,
+    publishRun,
+    rankText,
+    rememberPublished,
+    startingNickname,
+  } from "../../game/publish";
   import type { PublishOutcome } from "../../game/publish";
   import type { BestDeck } from "../../game/best";
   import { readChallenge, withoutChallenge } from "../../game/challenge";
@@ -40,7 +47,8 @@
     sendFeedback,
     sitePage,
   } from "../../game/feedback";
-  import type { FeedbackKind, ReportedRound } from "../../game/feedback";
+  import type { Draft, FeedbackKind, ReportedRound } from "../../game/feedback";
+  import { createDraftStore, focusAfterClose } from "../../game/modal";
   import { initialState, shouldSpin } from "../../game/machine";
   import { NO_NOTICE, TimedNotice } from "../../game/notice";
   import type { NoticeState } from "../../game/notice";
@@ -70,7 +78,13 @@
   import type { Timings } from "../../game/timing";
   import { LEAVE_ENDPOINT, createLeaveReporter } from "../../game/leave";
   import { createHumanCheck, createTurnstileLoader, loadWhenIdle } from "../../game/turnstile";
-  import type { IdleHost, ScriptDocument, Turnstile, TurnstileHost } from "../../game/turnstile";
+  import type {
+    HumanCheck,
+    IdleHost,
+    ScriptDocument,
+    Turnstile,
+    TurnstileHost,
+  } from "../../game/turnstile";
   import {
     anchorFading,
     anchorFigure,
@@ -131,6 +145,9 @@
   let startButton: HTMLButtonElement | undefined = $state();
   /** Where Endless's Turnstile check renders, if it ever needs the player. */
   let turnstileBox: HTMLElement | undefined = $state();
+  /** Endless's run-start check. Its widget goes when the start panel does. */
+  let humanCheck: HumanCheck | null = null;
+  const releaseCheck = () => () => humanCheck?.release();
 
   /** The open feedback form, if any; the round a report is about; the page a problem names. */
   let feedback = $state<FeedbackKind | null>(null);
@@ -148,7 +165,6 @@
   /** After publishing: "412th of 3,208 today". */
   let publishedLine = $state<string | null>(null);
   /** The name last published under, offered again for the next run. */
-  let lastNickname = $state<string | undefined>(undefined);
   let publishButton: HTMLButtonElement | undefined = $state();
 
   let platform: SharePlatform | null = $state(null);
@@ -264,7 +280,12 @@
     if (mode === "endless") {
       endlessApi = createEndlessApi(
         fetchFn,
-        createHumanCheck(loader, () => turnstileBox ?? null, TURNSTILE_SITE_KEY, schedule),
+        (humanCheck = createHumanCheck(
+          loader,
+          () => turnstileBox ?? null,
+          TURNSTILE_SITE_KEY,
+          schedule,
+        )),
       );
     }
     const api: GameApi = endlessApi ?? createApi(fetchFn);
@@ -387,20 +408,49 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
 
-  function publish(nickname: string, turnstileToken: string): Promise<PublishOutcome> {
-    if (publishable === null) return Promise.resolve({ kind: "unpublishable" });
-    return publishRun((input, init) => fetch(input, init), {
+  /** Publishes the run; a name it went through under is the next dialog's starting name. */
+  async function publish(nickname: string, turnstileToken: string): Promise<PublishOutcome> {
+    if (publishable === null) return { kind: "unpublishable" };
+    const outcome = await publishRun((input, init) => fetch(input, init), {
       token: publishable,
       nickname,
       deviceId: deviceId(browserStorage, () => crypto.randomUUID()),
       turnstileToken,
     });
+    rememberPublished(browserStorage, outcome);
+    return outcome;
   }
 
   function closePublish(): void {
     publishOpen = false;
-    void tick().then(() => (publishButton?.isConnected ? publishButton : againButton)?.focus());
+    void tick().then(() => focusAfterClose(publishButton, againButton)?.focus());
   }
+
+  /**
+   * What was typed into a form closed without sending, by form, for this page
+   * visit only (memory, never storage): it comes back when the form opens
+   * again. A report's draft is about its own card.
+   */
+  const feedbackDrafts = createDraftStore<Draft>(
+    (d) => d.name.trim() === "" && d.note.trim() === "",
+  );
+  function draftKey(kind: FeedbackKind, report: ReportedRound | null): string {
+    return kind === "correction" && report !== null
+      ? `correction:${report.runId}:${report.round}`
+      : kind;
+  }
+  /** The open form's draft key, set as it opens. */
+  let feedbackDraftKey = $state("");
+  /**
+   * Keeps a draft under the key of the form that is open now: a send that
+   * ends after its form has closed still clears that form's draft, not
+   * whichever form is open by then.
+   */
+  function keepDraftFor(key: string): (draft: Draft | null) => void {
+    return (draft) => feedbackDrafts.keep(key, draft);
+  }
+  /** The nickname typed into the publish dialog and left unpublished. */
+  let publishDraft = $state<string | undefined>(undefined);
 
   function start(): void {
     publishable = null;
@@ -487,13 +537,14 @@
     if (kind === "correction" && report === null) return;
     feedbackOpener = opener;
     feedbackReport = kind === "correction" ? report : null;
+    feedbackDraftKey = draftKey(kind, feedbackReport);
     feedbackPage = page;
     feedback = kind;
   }
 
   function closeFeedback(): void {
     if (feedback === null) return;
-    const back = feedbackOpener?.isConnected ? feedbackOpener : (againButton ?? startButton);
+    const back = focusAfterClose(feedbackOpener, againButton, startButton);
     feedback = null;
     feedbackOpener = null;
     void tick().then(() => back?.focus());
@@ -755,7 +806,7 @@
             </button>
             {#if mode === "endless"}
               <!-- Turnstile's widget, shown only when it needs the player. -->
-              <div class="turnstile" bind:this={turnstileBox}></div>
+              <div class="turnstile" bind:this={turnstileBox} {@attach releaseCheck}></div>
             {/if}
             {#if game.startFailed}
               <p class="problem" role="alert">
@@ -921,16 +972,18 @@
 {#if publishOpen && publishable !== null && loadTurnstile !== null}
   <PublishModal
     streak={game.streak}
-    {...lastNickname !== undefined ? { nickname: lastNickname } : {}}
+    nickname={startingNickname(publishDraft, readNickname(browserStorage), () =>
+      generateNickname(cryptoRandom),
+    )}
     siteKey={TURNSTILE_SITE_KEY}
     {loadTurnstile}
     {publish}
     boardHref={LEADERBOARD_PATH}
-    onpublished={(response, nickname) => {
-      lastNickname = nickname;
+    onpublished={(response) => {
       publishedLine = rankText("day", response.periods.day);
       saveStandings(browserStorage, publishedKey(deck, mode), standingsOf(response), Date.now());
     }}
+    ondraft={(nickname) => (publishDraft = nickname ?? undefined)}
     onclose={closePublish}
   />
 {/if}
@@ -945,6 +998,8 @@
     siteKey={TURNSTILE_SITE_KEY}
     {loadTurnstile}
     send={(body) => sendFeedback((input, init) => fetch(input, init), body)}
+    draft={feedbackDrafts.get(feedbackDraftKey)}
+    ondraft={keepDraftFor(feedbackDraftKey)}
     onclose={closeFeedback}
   />
 {/if}
