@@ -133,7 +133,8 @@
   font-variation-settings: var(--fv-strong);
 }
 
-/* The start panel's call to action, as a link. */
+/* The start panel's call to action, as a link: its gold pill, glow, hover,
+   press and focus ring (Game.svelte's .cta). */
 .prose .cta {
   display: inline-block;
   margin-top: 20px;
@@ -144,7 +145,56 @@
   font-size: var(--fs-cta);
   font-variation-settings: var(--fv-cta);
   text-decoration: none;
+  box-shadow: var(--glow);
+  transition:
+    box-shadow var(--dur-hover),
+    transform var(--dur-press);
+}
+.prose .cta:hover,
+.prose .cta:active,
+.prose .cta:focus-visible {
+  box-shadow: var(--glow-hover);
+}
+.prose .cta:active {
+  transform: scale(var(--press-scale));
 }
 .prose .cta:focus-visible {
   outline: var(--focus-ring) solid var(--chalk);
+  outline-offset: var(--focus-offset);
+}
+
+/* The game-over panel's secondary button (Game.svelte's .secondary): gold
+   outline and text over a dark fill, the same glow, hover and press. */
+.prose .secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--cta-h);
+  padding: 0 var(--btn2-pad-x);
+  border: var(--btn2-border) solid var(--btn2-edge);
+  border-radius: var(--radius-pill);
+  background: var(--btn2-bg);
+  color: var(--btn2-text);
+  font-size: var(--fs-btn2);
+  font-variation-settings: var(--fv-cta);
+  white-space: nowrap;
+  box-shadow: var(--glow);
+  text-shadow: var(--glow);
+  transition:
+    background-color var(--dur-hover),
+    box-shadow var(--dur-hover),
+    transform var(--dur-press);
+}
+.prose .secondary:hover,
+.prose .secondary:active,
+.prose .secondary:focus-visible {
+  background: var(--btn2-bg-hover);
+  box-shadow: var(--glow-hover);
+}
+.prose .secondary:active {
+  transform: scale(var(--press-scale));
+}
+.prose .secondary:focus-visible {
+  outline: var(--focus-ring) solid var(--chalk);
+  outline-offset: var(--focus-offset);
 }

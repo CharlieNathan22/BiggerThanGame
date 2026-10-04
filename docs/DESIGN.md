@@ -569,7 +569,8 @@ trying to design it away. Daily Ranked mitigates it socially: everyone hits the 
 - **15 seconds for question one**, while the player works out what they're looking at.
 - **A big clock at the top of the pitch** counts the whole seconds down (15, then 10), centred
   where Friendly has its progress track (on a landscape phone, at the top left beside the plaque).
-  Calm above five seconds; from five, orange with a soft glow; from three, urgent: the pill turns
+  Calm above five seconds: gold figures with the site's glow in a dark pill with a gold edge, like
+  the title chip under it; from five, orange with a soft glow; from three, urgent: the pill turns
   red, grows a little and gives one short shake as each of the last seconds ticks (3, 2, 1). It
   reaches 0 exactly as time runs out. A thin line along the plaque's bottom edge drains with it,
   in the same colours. When the player answers, the clock freezes on that second, dimmed, through

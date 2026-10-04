@@ -93,7 +93,7 @@
   }
 </script>
 
-<section class="boards" aria-labelledby="{uid}-tabs-label">
+<section class="boards glass" aria-labelledby="{uid}-tabs-label">
   <h2 class="sr" id="{uid}-tabs-label">{t("leaderboard.tabs")}</h2>
   <div class="tabs" role="tablist" aria-label={t("leaderboard.tabs")}>
     {#each PERIODS as p, i (p)}
@@ -120,55 +120,66 @@
     aria-labelledby="{uid}-tab-{period}"
     tabindex="0"
   >
-    {#if board !== null && view !== null}
-      <p class="meta">
-        <span>{totalText(view.total)}</span>
-        <span aria-hidden="true">·</span>
-        <span
-          >{t(`leaderboard.resets.${period}`, { time: countdownText(board.resetsAt, now) })}</span
-        >
-      </p>
-      <p class="winner">
-        <span class="lab">{t(`leaderboard.winner.${period}`)}</span>
-        {winnerText(board.previous)}
-      </p>
-      {#if view.rows.length === 0}
-        <p class="empty">{t("leaderboard.empty")}</p>
-      {:else}
-        <table>
-          <caption class="sr">{t(`leaderboard.caption.${period}`)}</caption>
-          <thead>
-            <tr>
-              <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
-              <th scope="col">{t("leaderboard.col.name")}</th>
-              <th scope="col" class="num">{t("leaderboard.col.streak")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each view.rows as row (row.key)}
-              <tr class:mine={row.mine} aria-current={row.mine ? "true" : undefined}>
-                <td class="rank">{row.rank}</td>
-                <td class:retired={row.nickname === null}>
-                  {row.nickname ?? t("leaderboard.retired")}
-                  {#if row.mine}<span class="you">{t("leaderboard.you")}</span>{/if}
-                </td>
-                <td class="num">{row.streak}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      {/if}
-      {#if view.ownLine !== null}
-        <p class="ownline">{view.ownLine}</p>
-      {/if}
-    {:else if load?.status === "failed"}
-      <p class="empty" role="alert">{t("leaderboard.failed")}</p>
-      <button type="button" class="retry" onclick={() => open(period, true)}>
-        {t("leaderboard.retry")}
-      </button>
-    {:else}
-      <p class="empty" role="status">{t("leaderboard.loading")}</p>
-    {/if}
+    <!-- Each board, and each state of it, fades in as the game's cards' text does. -->
+    {#key `${period}:${load?.status ?? "loading"}`}
+      <div class="develop">
+        {#if board !== null && view !== null}
+          <p class="meta">
+            <span>{totalText(view.total)}</span>
+            <span aria-hidden="true">{t("over.separator")}</span>
+            <span
+              >{t(`leaderboard.resets.${period}`, {
+                time: countdownText(board.resetsAt, now),
+              })}</span
+            >
+          </p>
+          <p class="winner">
+            <span class="winnerlab">{t(`leaderboard.winner.${period}`)}</span>
+            <span class="winnername" class:none={board.previous.winner === null}
+              >{winnerText(board.previous)}</span
+            >
+          </p>
+          {#if view.rows.length === 0}
+            <p class="empty">{t("leaderboard.empty")}</p>
+          {:else}
+            <table>
+              <caption class="sr">{t(`leaderboard.caption.${period}`)}</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
+                  <th scope="col">{t("leaderboard.col.name")}</th>
+                  <th scope="col" class="streak">{t("leaderboard.col.streak")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each view.rows as row (row.key)}
+                  <tr class:mine={row.mine} aria-current={row.mine ? "true" : undefined}>
+                    <td class="rank num">{row.rank}</td>
+                    <td class:retired={row.nickname === null}>
+                      {row.nickname ?? t("leaderboard.retired")}
+                      {#if row.mine}<span class="you">{t("leaderboard.you")}</span>{/if}
+                    </td>
+                    <td class="streak num">{row.streak}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+          {#if view.ownLine !== null}
+            <p class="ownline">{view.ownLine}</p>
+          {/if}
+        {:else if load?.status === "failed"}
+          <p class="empty" role="alert">{t("leaderboard.failed")}</p>
+          <p class="retryrow">
+            <button type="button" class="secondary" onclick={() => open(period, true)}>
+              {t("leaderboard.retry")}
+            </button>
+          </p>
+        {:else}
+          <p class="empty" role="status">{t("leaderboard.loading")}</p>
+        {/if}
+      </div>
+    {/key}
   </div>
 </section>
 
@@ -176,31 +187,37 @@
   <h2 id="{uid}-device">{t("leaderboard.device")}</h2>
   <p>{t("leaderboard.deviceIntro")}</p>
   {#if ready && runs.length > 0}
-    <table>
-      <caption class="sr">{t("leaderboard.device")}</caption>
-      <thead>
-        <tr>
-          <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
-          <th scope="col">{t("leaderboard.col.date")}</th>
-          <th scope="col" class="num">{t("leaderboard.col.streak")}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each runs as run, i (i)}
+    <div class="glass develop">
+      <table>
+        <caption class="sr">{t("leaderboard.device")}</caption>
+        <thead>
           <tr>
-            <td class="rank">{i + 1}</td>
-            <td>{formatDate(run.date)}</td>
-            <td class="num">{run.score}</td>
+            <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
+            <th scope="col">{t("leaderboard.col.date")}</th>
+            <th scope="col" class="streak">{t("leaderboard.col.streak")}</th>
           </tr>
-        {/each}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {#each runs as run, i (i)}
+            <tr>
+              <td class="rank num">{i + 1}</td>
+              <td>{formatDate(run.date)}</td>
+              <td class="streak num">{run.score}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
   {:else if ready}
     <p class="empty">{t("leaderboard.deviceEmpty")}</p>
   {/if}
 </section>
 
 <style>
+  /* The boards in the cards' glass (Card.astro): the same surface, edge,
+     radius and shadow. Tabs are the secondary button's outlined pills; the
+     previous winner and the streaks are in the game's gold. Every value is a
+     token (tokens.css, "The Endless leaderboard page"). */
   .sr {
     position: absolute;
     width: 1px;
@@ -209,113 +226,212 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  .boards,
-  .device {
-    margin-top: 24px;
+  .glass {
+    padding: var(--board-pad);
+    border: var(--border) solid var(--card-edge);
+    border-radius: var(--card-radius);
+    background: var(--card-surface);
+    box-shadow: var(--card-shadow);
   }
+  .boards {
+    margin-top: var(--board-top);
+  }
+  .device .glass {
+    margin-top: var(--board-inner-gap);
+  }
+
   .tabs {
     display: flex;
-    gap: 6px;
-    border-bottom: var(--border) solid var(--rule);
+    justify-content: center;
+    gap: var(--board-tab-gap);
   }
   [role="tab"] {
     flex: 1 1 0;
+    max-width: var(--board-tab-max-w);
     min-height: var(--target-min);
-    padding: 0 10px;
-    border-bottom: 3px solid transparent;
+    padding: var(--board-tab-pad);
+    border: var(--btn2-border) solid transparent;
+    border-radius: var(--radius-pill);
     color: var(--dim);
     font-size: var(--fs-body);
-    font-variation-settings: var(--fv-caption);
-  }
-  [role="tab"][aria-selected="true"] {
-    border-bottom-color: var(--gold);
-    color: var(--chalk);
-    font-variation-settings: var(--fv-strong);
+    font-variation-settings: var(--fv-cta);
+    white-space: nowrap;
+    transition:
+      color var(--dur-hover),
+      background-color var(--dur-hover),
+      box-shadow var(--dur-hover),
+      transform var(--dur-press);
   }
   [role="tab"]:hover {
     color: var(--chalk);
   }
-  [role="tab"]:focus-visible,
-  .panel:focus-visible,
-  .retry:focus-visible {
-    outline: var(--focus-ring) solid var(--gold);
+  [role="tab"]:active {
+    transform: scale(var(--press-scale));
+  }
+  [role="tab"][aria-selected="true"] {
+    border-color: var(--btn2-edge);
+    background: var(--btn2-bg);
+    color: var(--btn2-text);
+    box-shadow: var(--glow);
+    text-shadow: var(--glow);
+  }
+  [role="tab"][aria-selected="true"]:hover {
+    background: var(--btn2-bg-hover);
+    box-shadow: var(--glow-hover);
+  }
+  [role="tab"]:focus-visible {
+    outline: var(--focus-ring) solid var(--chalk);
     outline-offset: var(--focus-offset);
   }
-  .panel {
-    padding-top: 14px;
+  .panel:focus-visible {
+    outline: var(--focus-ring) solid var(--gold);
+    outline-offset: var(--focus-offset);
+    border-radius: var(--field-radius);
   }
-  .meta,
-  .winner {
-    margin: 0 0 6px;
+
+  /* The board keeps its height while it loads, fails or is empty, so what's
+     below doesn't jump as the states change. */
+  .panel {
+    min-height: var(--board-min-h);
+    margin-top: var(--board-inner-gap);
+  }
+  .develop {
+    animation: board-in var(--dur-intro-fade) var(--ease-intro) both;
+  }
+  @keyframes board-in {
+    from {
+      opacity: 0;
+      transform: translateY(var(--board-rise));
+    }
+  }
+
+  .meta {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 0 8px;
+    font-size: var(--fs-lab);
     color: var(--dim);
+    font-variation-settings: var(--fv-meta);
+    text-align: center;
   }
-  .winner .lab {
-    color: var(--chalk);
+  /* The previous period's winner: the game-over panel's small label, then the
+     name in gold with its glow. */
+  .winner {
+    margin-top: var(--board-inner-gap);
+    text-align: center;
+  }
+  .winnerlab {
+    display: block;
+    font-size: var(--fs-lab);
+    color: var(--dim);
+    font-variation-settings: var(--fv-caps);
+  }
+  .winnername {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--fs-body);
+    color: var(--gold);
+    text-shadow: var(--glow);
     font-variation-settings: var(--fv-strong);
   }
-  .winner .lab::after {
-    content: ":";
+  .winnername.none {
+    color: var(--dim);
+    text-shadow: none;
+    font-variation-settings: var(--fv-caption);
   }
+
   table {
     width: 100%;
-    margin-top: 12px;
+    margin-top: var(--board-inner-gap);
     border-collapse: collapse;
-    font-variant-numeric: tabular-nums;
+  }
+  .device table {
+    margin-top: 0;
   }
   th,
   td {
-    padding: 10px 8px;
+    padding: var(--board-cell-pad);
     border-bottom: var(--border) solid var(--rule);
     text-align: left;
     overflow-wrap: anywhere;
+  }
+  tbody tr:last-child td {
+    border-bottom: 0;
   }
   th {
     font-size: var(--fs-lab);
     color: var(--dim);
     font-variation-settings: var(--fv-caps);
   }
-  .rank {
-    width: 4.5em;
+  td {
+    font-size: var(--fs-body);
+    color: var(--chalk);
   }
-  .num {
-    width: 5em;
+  .rank {
+    width: var(--board-rank-w);
+  }
+  td.rank {
+    color: var(--dim);
+  }
+  th.streak,
+  td.streak {
+    width: var(--board-streak-w);
     text-align: right;
+  }
+  td.streak {
+    color: var(--gold);
   }
   .retired {
     color: var(--dim);
     font-style: italic;
   }
+  /* The player's own row: a gold wash and a "You" pill. */
   tr.mine td {
-    background: var(--btn2-bg-hover);
-    color: var(--chalk);
+    background: var(--board-mine-bg);
     font-variation-settings: var(--fv-strong);
   }
+  tr.mine td.num {
+    font-variation-settings: var(--fv-num);
+  }
+  tr.mine td:first-child {
+    border-radius: var(--field-radius) 0 0 var(--field-radius);
+  }
+  tr.mine td:last-child {
+    border-radius: 0 var(--field-radius) var(--field-radius) 0;
+  }
   .you {
+    display: inline-block;
     margin-left: 8px;
-    padding: 0 8px;
+    padding: var(--badge-pad);
     border: var(--border) solid var(--gold);
     border-radius: var(--radius-pill);
-    font-size: var(--fs-lab);
+    font-size: var(--fs-badge);
+    line-height: var(--lh-body);
     color: var(--gold);
+    font-variation-settings: var(--fv-caps);
+    vertical-align: middle;
   }
   .ownline {
-    margin-top: 12px;
-    color: var(--chalk);
+    margin-top: var(--board-inner-gap);
+    text-align: center;
+    color: var(--gold);
+    text-shadow: var(--glow);
     font-variation-settings: var(--fv-strong);
   }
   .empty {
-    margin-top: 12px;
-    color: var(--dim);
+    margin-top: var(--board-inner-gap);
+    text-align: center;
   }
-  .retry {
-    min-height: var(--target-min);
-    margin-top: 8px;
-    padding: 0 20px;
-    border: var(--btn2-border) solid var(--btn2-edge);
-    border-radius: var(--radius-pill);
-    color: var(--btn2-text);
+  .retryrow {
+    text-align: center;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .develop {
+      animation: none;
+    }
+    [role="tab"] {
+      transition: none;
+    }
   }
 </style>

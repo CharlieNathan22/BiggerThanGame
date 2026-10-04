@@ -1326,6 +1326,12 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   cached board doesn't have it yet (or it's shadowed), it is put in at its rank, or shown as "You:
   412th of 3,209" under the table (`boardView` in `game/leaderboard.ts`). Loading and a failure
   are calm, with a retry. The Legends page's Endless card and the Endless start panel link here.
+  It looks like the Legends page: its centred two-line heading in the gold glow and drifting gold
+  lights, the site's call to action (prose.css `.cta`, which now has the game's glow, hover and
+  press), the boards in the cards' glass, tabs as the secondary button's outlined pills (prose.css
+  `.secondary`, which "Try again" uses too), the previous winner and the streaks in gold. The board
+  keeps a minimum height while it loads, fails or is empty, so "On this device" doesn't jump, and
+  each board fades up as the game's card text does.
   - **Friendly** hides challenges entirely; an old `?challenge=` link there is `retired`
     (`readChallenge`), never sent, and noted on the start panel.
 - **Site navigation** is in the title bar on every page (`lib/nav.ts`): the brand links to `/`,

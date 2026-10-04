@@ -113,7 +113,8 @@ export const en = {
   "leaderboard.title": "Endless Leaderboard: Football Legends | Bigger Than Game",
   "leaderboard.description":
     "Today's, this week's and this month's best Endless streaks on Football Legends higher or lower. Personal bests: every run is different, so luck plays a part.",
-  "leaderboard.heading": "Endless leaderboard",
+  "leaderboard.headingMode": "Endless",
+  "leaderboard.headingBoard": "Leaderboard",
   "leaderboard.framing": "Personal bests — everyone gets a different run, so luck plays a part.",
   "leaderboard.play": "Play Endless",
   "leaderboard.tabs": "Leaderboard period",

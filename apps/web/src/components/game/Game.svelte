@@ -830,7 +830,7 @@
         <!-- The brand, the deck and the mode, then what to do; side by side on
              a landscape phone, so it fits. The deck is the page's heading; the
              brand above it is a line of its own. -->
-        <div class="panel start">
+        <div class="panel start" class:clocked={mode === "endless"}>
           <div class="head">
             <div class="brand">
               {t("brand.bigger")} <em>{t("brand.than")}</em>
@@ -841,14 +841,16 @@
           </div>
           <div class="lead">
             <div class="blurb">
-              {#if offered}
-                <p class="beat">{challengeHeading(offered.score, mode)}</p>
-                <p>{challengeIntro(offered.score, mode)}</p>
-              {:else if target !== null}
-                <p>{t("start.introTarget", { target })}</p>
-              {:else}
-                <p>{t(mode === "endless" ? "start.introEndless" : "start.intro")}</p>
-              {/if}
+              <div class="intro">
+                {#if offered}
+                  <p class="beat">{challengeHeading(offered.score, mode)}</p>
+                  <p>{challengeIntro(offered.score, mode)}</p>
+                {:else if target !== null}
+                  <p>{t("start.introTarget", { target })}</p>
+                {:else}
+                  <p>{t(mode === "endless" ? "start.introEndless" : "start.intro")}</p>
+                {/if}
+              </div>
               {#if mode === "endless"}
                 <p class="clockline">
                   {t("start.clock")}
@@ -858,6 +860,8 @@
                 </p>
               {/if}
             </div>
+            <!-- The room above Start, which gives way on a small screen. -->
+            <div class="startgap" aria-hidden="true"></div>
             <button
               class="cta"
               bind:this={startButton}
@@ -1291,6 +1295,7 @@
     font-size: var(--fs-score-badge);
     font-variation-settings: var(--fv-caps);
     letter-spacing: var(--tracking-score-badge);
+    text-indent: var(--tracking-score-badge);
     line-height: var(--lh-tight);
     white-space: nowrap;
     pointer-events: none;
@@ -1484,6 +1489,37 @@
     max-width: var(--start-w);
     margin: var(--start-top) auto auto;
   }
+  /* The panel takes the veil's height, so the room above Start
+     (--start-cta-top) can give way, down to --cta-top, when there's more to
+     say than the screen has room for (Endless's clock note on a 568px-tall
+     phone) and Start stays on screen. Where it all fits, nothing moves. */
+  @media not ((orientation: landscape) and (max-height: 500px)) {
+    .panel.start {
+      align-self: stretch;
+      margin-bottom: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .start .lead {
+      flex: 1 1 auto;
+      /* Its height is the panel's, not its content's, so the gap can give way. */
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .start .lead > * {
+      flex-shrink: 0;
+      align-self: stretch;
+    }
+    .start .lead > .cta {
+      align-self: center;
+    }
+    .start .lead > .startgap {
+      flex: 0 1 var(--start-cta-top);
+      min-height: var(--cta-top);
+    }
+  }
   .start .brand {
     font-size: var(--fs-start-brand);
     white-space: nowrap;
@@ -1495,6 +1531,8 @@
     font-weight: var(--fw-legends);
     font-size: var(--fs-deckname);
     letter-spacing: var(--tracking-legends);
+    /* Balances the tracking after the last letter, so the line centres. */
+    text-indent: var(--tracking-legends);
     line-height: var(--lh-tight);
     white-space: nowrap;
     background: var(--legends-gradient);
@@ -1509,6 +1547,7 @@
     font-size: var(--fs-modename);
     font-variation-settings: var(--fv-caps);
     letter-spacing: var(--tracking-modename);
+    text-indent: var(--tracking-modename);
     text-transform: uppercase;
     color: var(--gold);
   }
@@ -1518,7 +1557,7 @@
   /* Start the run: bigger than the panel's other buttons, with more room
      above it, so on a desktop it sits near the middle of the screen. */
   .start .cta {
-    margin-top: var(--start-cta-top);
+    margin-top: 0;
     min-height: var(--start-cta-h);
     padding: 0 var(--start-cta-pad-x);
     font-size: var(--fs-start-cta);
@@ -1539,8 +1578,40 @@
     .start .lead {
       display: contents;
     }
-    .start .blurb > p:first-child {
+    .start .intro > p:first-child {
       margin-top: 0;
+    }
+    .startgap {
+      display: none;
+    }
+    /* Endless has its clock note too: Start and the note go under the names,
+       the intro beside them, so it all fits a phone's height. */
+    .start.clocked {
+      grid-template-rows: auto auto auto;
+    }
+    .start.clocked .head {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .start.clocked .blurb {
+      display: contents;
+    }
+    .start.clocked .intro {
+      grid-column: 2;
+      grid-row: 1 / span 3;
+    }
+    .start.clocked .cta {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .start.clocked .clockline {
+      grid-column: 1;
+      grid-row: 3;
+      margin-top: 0;
+      align-self: start;
+      /* As wide as the names' column, never widening it. */
+      width: 0;
+      min-width: 100%;
     }
     .start .cta,
     .start .problem {
@@ -1557,6 +1628,7 @@
     font-weight: var(--fw-sublegend);
     font-size: var(--fs-sublegend);
     letter-spacing: var(--tracking-sublegend);
+    text-indent: var(--tracking-sublegend);
     background: var(--legends-gradient);
     -webkit-background-clip: text;
     background-clip: text;
@@ -1633,6 +1705,7 @@
     font-size: var(--fs-chip);
     font-variation-settings: var(--fv-caps);
     letter-spacing: var(--chip-tracking);
+    text-indent: var(--chip-tracking);
     text-transform: uppercase;
     white-space: nowrap;
     pointer-events: none;
@@ -1901,6 +1974,7 @@
     font-size: var(--fs-won);
     line-height: var(--lh-tight);
     letter-spacing: var(--tracking-sublegend);
+    text-indent: var(--tracking-sublegend);
     background: var(--won-shine), var(--legends-gradient);
     background-size:
       250% 100%,
@@ -1967,6 +2041,7 @@
     font-size: var(--fs-highscore);
     font-variation-settings: var(--fv-caps);
     letter-spacing: var(--tracking-highscore);
+    text-indent: var(--tracking-highscore);
     text-transform: uppercase;
     color: var(--gold);
     text-shadow: var(--glow-hover);

@@ -17,49 +17,38 @@ const trail = breadcrumbTrail(LEADERBOARD_PATH);
 <Page
   title={t("leaderboard.title")}
   description={t("leaderboard.description")}
+  legendsLights
   structuredData={[breadcrumbLd(trail)]}
 >
   <Breadcrumb items={trail.slice(1).map((crumb) => ({ label: crumb.name, href: crumb.path }))} />
-  <h1>{t("leaderboard.heading")}</h1>
-  <p class="framing">{t("leaderboard.framing")}</p>
-  <p>
-    <a class="play" href={ENDLESS_PATH}>
+  <!-- The Legends page's heading: two short lines, centred, in the gold glow. -->
+  <h1 class="twoline glow">
+    {t("leaderboard.headingMode")}
+    <br />
+    <em>{t("leaderboard.headingBoard")}</em>
+  </h1>
+  <p class="centred">{t("leaderboard.framing")}</p>
+  <p class="next">
+    <a class="cta" href={ENDLESS_PATH}>
       {t("leaderboard.play")}
     </a>
   </p>
 
   <Leaderboard client:load />
   <noscript>
-    <p>{t("leaderboard.noscript")}</p>
+    <p class="centred">{t("leaderboard.noscript")}</p>
   </noscript>
 
-  <p class="again">
-    <a class="play" href={ENDLESS_PATH}>
+  <p class="next">
+    <a class="cta" href={ENDLESS_PATH}>
       {t("leaderboard.play")}
     </a>
   </p>
 </Page>
 
 <style>
-  .framing {
-    color: var(--chalk);
-  }
-  .play {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--target-min);
-    padding: 0 22px;
-    border-radius: var(--radius-pill);
-    background: var(--gold);
-    color: var(--ink);
-    font-variation-settings: var(--fv-cta);
-    text-decoration: none;
-  }
-  .play:focus-visible {
-    outline: var(--focus-ring) solid var(--chalk);
-    outline-offset: var(--focus-offset);
-  }
-  .again {
-    margin-top: 28px;
+  /* As the Legends page's "Play Friendly": the site's call to action, centred. */
+  .next {
+    text-align: center;
   }
 </style>

@@ -359,7 +359,8 @@
   --clock-track: rgba(6, 18, 26, 0.1);
 
   /* And the big clock at the top of the pitch (Clock.svelte): the whole
-     seconds left in a dark pill, centred where Friendly has its track.
+     seconds left in gold in a dark pill with a gold edge, like the title chip
+     under it, centred where Friendly has its track.
      Orange with a glow from five seconds out; from three the pill turns red,
      grows by --game-clock-urgent-scale and shakes once a second. Dimmed once
      answered. On a landscape phone it sits at the top left, beside the plaque. */
@@ -372,8 +373,9 @@
   /* What sits under the clock (the title chip, a challenge notice) starts here. */
   --game-clock-under: calc(var(--game-clock-top) + var(--game-clock-h) + 8px);
   --game-clock-bg: rgba(6, 18, 26, 0.74);
-  --game-clock-edge: rgba(238, 243, 241, 0.16);
-  --game-clock-text: var(--chalk);
+  --game-clock-edge: var(--gold-rule);
+  --game-clock-text: var(--gold);
+  --game-clock-glow: var(--glow);
   --game-clock-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   --game-clock-warn: #ff9f43;
   --game-clock-warn-glow: 0 0 12px rgba(255, 159, 67, 0.7);
@@ -626,6 +628,24 @@
   --card-chevron-inset: 24px;
   /* A card with a second link (Endless's leaderboards): text and button apart. */
   --card-split-gap: 24px;
+
+  /* The Endless leaderboard page (Leaderboard.svelte): the boards in the
+     cards' glass, tabs as the secondary button's outlined pills, the player's
+     own row in a gold wash. The board keeps --board-min-h while it loads,
+     fails or is empty, so the section under it doesn't jump; each board
+     fades up --board-rise as the game's card text fades in. */
+  --board-top: 24px;
+  --board-pad: 14px;
+  --board-inner-gap: 14px;
+  --board-min-h: 320px;
+  --board-tab-gap: 6px;
+  --board-tab-pad: 0 12px;
+  --board-tab-max-w: 160px;
+  --board-cell-pad: 10px 6px;
+  --board-rank-w: 3.2em;
+  --board-streak-w: 4.2em;
+  --board-mine-bg: rgba(var(--glow-rgb), 0.12);
+  --board-rise: 6px;
   --cards-top: 28px;
   --card-gap: 12px;
   /* The homepage's games: more room above and between them. */
@@ -880,6 +900,8 @@
 
 @media (min-width: 560px) {
   :root {
+    --board-pad: 22px;
+    --board-cell-pad: 11px 10px;
     --title-grow: 2.1;
     --fs-brand: 16px;
     --fs-sub: 14.5px;

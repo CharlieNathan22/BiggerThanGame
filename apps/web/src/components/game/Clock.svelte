@@ -101,6 +101,7 @@
     border-radius: var(--radius-pill);
     background: var(--game-clock-bg);
     color: var(--game-clock-text);
+    text-shadow: var(--game-clock-glow);
     font-size: var(--fs-game-clock);
     font-variation-settings: var(--fv-num);
     font-variant-numeric: tabular-nums;
@@ -121,6 +122,7 @@
     box-shadow: var(--game-clock-shadow), var(--game-clock-warn-halo);
   }
   .urgent .face {
+    text-shadow: none;
     border-color: var(--game-clock-urgent-edge);
     background: var(--game-clock-urgent-bg);
     color: var(--game-clock-urgent-text);
