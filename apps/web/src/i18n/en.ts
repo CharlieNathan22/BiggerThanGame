@@ -257,6 +257,7 @@ export const en = {
   "over.publish": "Publish to leaderboard",
   "over.publishedRank": "{rank} of {total} {when}",
   "over.leaderboard": "Leaderboard",
+  "over.beatBest": "Your best {when} is {best} — beat it to move up the leaderboard",
   "publish.title": "Publish your run",
   "publish.intro":
     "Put your streak of {streak} on the Endless leaderboards for today, this week and this month.",
@@ -270,6 +271,7 @@ export const en = {
   "publish.cancel": "Cancel",
   "publish.close": "Close",
   "publish.done": "Published.",
+  "publish.kept": "Your best {when} is still {best}, so the leaderboard keeps that run.",
   "publish.rank": "{rank} of {total} {when}",
   "publish.see": "See the leaderboard",
   "publish.rejected": "That name isn't available — try another name.",

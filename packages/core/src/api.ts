@@ -290,7 +290,14 @@ export interface PeriodRank {
   readonly resetsAt: number;
   /** The device's best entry in the period: this run, or a better one already published. */
   readonly entryId: string;
-  readonly streak: number;
+  /** That entry's streak: the device's best in the period, shadowed runs included. */
+  readonly best: number;
+  /**
+   * Whether this run is now the device's entry in the period. False when an
+   * earlier run of the device's still beats it (a higher streak, or an equal
+   * one in less time): the board keeps that one and nothing on it moved.
+   */
+  readonly improved: boolean;
 }
 
 export interface SubmitResponse {

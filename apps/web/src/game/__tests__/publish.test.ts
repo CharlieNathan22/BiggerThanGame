@@ -50,7 +50,8 @@ const RESPONSE: SubmitResponse = {
       total: 3208,
       resetsAt: 1,
       entryId: "e1",
-      streak: 23,
+      best: 23,
+      improved: true,
     },
     week: {
       key: "2026-W40",
@@ -59,7 +60,8 @@ const RESPONSE: SubmitResponse = {
       total: 9877,
       resetsAt: 2,
       entryId: "e1",
-      streak: 23,
+      best: 23,
+      improved: true,
     },
     month: {
       key: "2026-09",
@@ -68,7 +70,8 @@ const RESPONSE: SubmitResponse = {
       total: 20551,
       resetsAt: 3,
       entryId: "e0",
-      streak: 30,
+      best: 30,
+      improved: false,
     },
   },
 };

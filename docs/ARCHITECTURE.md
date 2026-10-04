@@ -701,7 +701,8 @@ presses Publish.
 ```jsonc
 ← { "id": "<uuid>", "nickname": "SwiftVolley42", "streak": 23,
     "periods": { "day":   { "key": "2026-09-29", "current": true, "rank": 412, "total": 3208,
-                            "resetsAt": 1790726400000, "entryId": "<uuid>", "streak": 23 },
+                            "resetsAt": 1790726400000, "entryId": "<uuid>", "best": 23,
+                            "improved": true },
                  "week":  { "key": "2026-W40", … }, "month": { "key": "2026-09", … } } }
 ← 400 { "error": "bad_request", "detail": "zero" | "nickname_short" | … }
 ← 403 { "error": "verification_failed" }
@@ -732,7 +733,12 @@ presses Publish.
    among every other device's public best, out of those and itself (`ownStanding`, §10). A
    shadowed player sees an ordinary rank. The periods are the run's own — the UTC date its run id
    carries — so a run started at 23:58 counts on that day's boards; `current` is false once that
-   period has reset, and the page says "yesterday" instead of "today".
+   period has reset, and the page says "yesterday" instead of "today". Each period also says
+   whether this run is now the device's entry (`improved`) and what that entry's streak is
+   (`best`, the device's own rows counted even if shadowed). A run that doesn't beat the device's
+   best is still stored and answered `200`: the page offers Publish only for a run that beats the
+   day's best it knows of (`bt:published`), but storage can be cleared and another tab can
+   publish, so the server's answer is the one the dialog words, and the page keeps it either way.
 
 The device id is a random id the browser keeps (`bt:device`). Only `HMAC(RUN_SECRET, "device:" +
 id)` is stored, never the id; it is friction, not identity — clearing storage makes a new one.

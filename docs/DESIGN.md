@@ -802,7 +802,10 @@ run, so luck plays a part." Nicknames are **not** required to be unique here.
   minutes** after it ends.
 - **One entry per device per period.** A device is a random id kept in the browser (friction, not
   identity: clearing storage makes a new one). Publishing a worse run later doesn't replace a
-  better one.
+  better one, so the game-over panel offers Publish only for a run that beats the best this
+  device has published on the run's day (a run that can't beat the day's best can't beat the
+  week's or the month's either); an equal score doesn't. Otherwise it says "Your best today is 18
+  — beat it to move up the leaderboard", with a link to the board.
 - **Previous winners.** At each reset the closing period's top 100 is kept, so the page can name
   "Yesterday's winner", "Last week's winner" and "Last month's winner".
 - **Retention.** Scores are deleted 100 days after the day their run started; the snapshots stay.
@@ -834,6 +837,9 @@ expect a meaningful number of legends to have no usable free image at all.
   or a generated one the first time), one line on what's stored — the nickname and
   the score, no account — and Publish. Afterwards it shows the three ranks ("412th of 3,208 today ·
   1,030th of 9,877 this week · …") and a link to the board, and the panel keeps the day's rank.
+  If the device turns out to have a better run that day already (its storage was cleared, or it
+  published from another tab), the dialog says "Your best today is still 18, so the leaderboard
+  keeps that run" rather than "Published".
 - **Nicknames** are 3 to 20 characters: Latin letters (accented ones included), digits, spaces
   and `_ - .`. Latin only because moderation can only read what its blocklist can; a name in
   another script gets the same calm "try another name" as a blocked one.

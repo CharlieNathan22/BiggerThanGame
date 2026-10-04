@@ -24,15 +24,18 @@
     deviceId,
     publishedKey,
     readNickname,
+    readStandings,
     recordRun,
     runsKey,
     saveStandings,
     standingsOf,
   } from "../../game/device";
   import {
+    beatText,
     cryptoRandom,
+    panelText,
+    publishOffer,
     publishRun,
-    rankText,
     rememberPublished,
     startingNickname,
   } from "../../game/publish";
@@ -164,8 +167,11 @@
   /** The token that publishes the run just ended; null when there's nothing to publish. */
   let publishable = $state<string | null>(null);
   let publishOpen = $state(false);
-  /** After publishing: "412th of 3,208 today". */
-  let publishedLine = $state<string | null>(null);
+  /**
+   * In Publish's place: after publishing, "412th of 3,208 today"; for a run
+   * that can't move the boards, "Your best today is 18 — beat it…".
+   */
+  let boardLine = $state<{ readonly text: string; readonly beat: boolean } | null>(null);
   /** The name last published under, offered again for the next run. */
   let publishButton: HTMLButtonElement | undefined = $state();
 
@@ -305,7 +311,7 @@
       saveBest: (best) => void saveBest(browserStorage, key, best),
       challenge,
       // Endless: every run goes on this device's board, published or not, and
-      // one that scored can be published.
+      // one that scored can be published if it beats the day's published best.
       onOver: (over) => {
         if (endlessApi === null || over.end === null) return;
         recordRun(browserStorage, runsKey(deck, mode), {
@@ -313,7 +319,16 @@
           date: localDate(),
           end: over.end,
         });
-        publishable = over.streak > 0 ? endlessApi.publishToken() : null;
+        const offer =
+          over.streak > 0
+            ? publishOffer(
+                over.streak,
+                over.runId,
+                readStandings(browserStorage, publishedKey(deck, mode), Date.now()),
+              )
+            : null;
+        publishable = offer?.kind === "publish" ? endlessApi.publishToken() : null;
+        boardLine = offer?.kind === "beat" ? { text: beatText(offer.best), beat: true } : null;
       },
     });
     const unsubscribe = c.subscribe((s) => (game = s));
@@ -492,7 +507,7 @@
 
   function start(): void {
     publishable = null;
-    publishedLine = null;
+    boardLine = null;
     publishOpen = false;
     shareNotes.clear();
     copyByHand = null;
@@ -977,11 +992,11 @@
                 </button>
               {/if}
             </div>
-            {#if publishedLine !== null}
-              <!-- Endless, once published: where it landed today, and the board. -->
-              <p class="published">
-                {publishedLine}
-                <span aria-hidden="true">{t("over.separator")}</span>
+            {#if boardLine !== null}
+              <!-- Endless, once published: where it landed today; or the best to beat. And the board. -->
+              <p class="published" class:stacked={boardLine.beat}>
+                {boardLine.text}
+                {#if !boardLine.beat}<span aria-hidden="true">{t("over.separator")}</span>{/if}
                 <a href={LEADERBOARD_PATH}>{t("over.leaderboard")}</a>
               </p>
             {:else if publishable !== null}
@@ -1031,7 +1046,7 @@
     {publish}
     boardHref={LEADERBOARD_PATH}
     onpublished={(response) => {
-      publishedLine = rankText("day", response.periods.day);
+      boardLine = { text: panelText(response), beat: !response.periods.day.improved };
       saveStandings(browserStorage, publishedKey(deck, mode), standingsOf(response), Date.now());
     }}
     ondraft={(nickname) => (publishDraft = nickname ?? undefined)}
@@ -1718,7 +1733,7 @@
     width: 100%;
     margin-top: var(--btn2-gap);
   }
-  /* Once published: the day's rank and the board, in the row's place. */
+  /* In Publish's place: the day's rank once published, or the best to beat; and the board. */
   .published {
     margin-top: var(--btn2-gap);
     min-height: var(--target-min);
@@ -1730,6 +1745,11 @@
     font-size: var(--fs-lab);
     color: var(--chalk);
     font-variation-settings: var(--fv-caption);
+  }
+  /* The best to beat is a sentence of its own: the link goes under it. */
+  .published.stacked {
+    flex-direction: column;
+    text-align: center;
   }
   .published a {
     display: inline-flex;

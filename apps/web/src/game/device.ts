@@ -11,7 +11,9 @@
  *   not. Needs no network.
  * - `bt:published:<deck>:<mode>` — where the device's published best stood in
  *   each current period, from the submit response, so the board page shows the
- *   player straight away even before the cached board catches up.
+ *   player straight away even before the cached board catches up, and the
+ *   game-over panel offers Publish only for a run that beats the day's best
+ *   (publish.ts `publishOffer`).
  * - `bt:nickname` — the name last published from this device, which the
  *   publish dialog starts with next time. Saved only once a publish has gone
  *   through, so a refused or abandoned name is never kept.
@@ -178,10 +180,10 @@ export function standingsOf(response: SubmitResponse): Standing[] {
       period,
       key: p.key,
       entryId: p.entryId,
-      // The period's best may be an earlier run under another name; the board
-      // shows that one's own name once it has caught up. Until then, this one.
+      // The period's best may be an earlier run under another name: saveStandings
+      // keeps the name it already has for that entry.
       nickname: response.nickname,
-      streak: p.streak,
+      streak: p.best,
       rank: p.rank,
       total: p.total,
       resetsAt: p.resetsAt,
@@ -189,18 +191,27 @@ export function standingsOf(response: SubmitResponse): Standing[] {
   });
 }
 
-/** Keeps the new standings, replacing any for the same periods. */
+/**
+ * Keeps the new standings, replacing any for the same periods: after every
+ * publish, whether or not it moved the boards, so the game-over panel knows the
+ * best to beat next time. An entry already kept keeps the name it was
+ * published under.
+ */
 export function saveStandings(
   storage: StorageAccess,
   key: string,
   standings: readonly Standing[],
   now: number,
 ): void {
-  const kept = readStandings(storage, key, now).filter(
-    (old) => !standings.some((s) => s.period === old.period && s.key === old.key),
-  );
+  const before = readStandings(storage, key, now);
+  const same = (a: Standing, b: Standing) => a.period === b.period && a.key === b.key;
+  const kept = before.filter((old) => !standings.some((s) => same(s, old)));
+  const fresh = standings.map((s) => {
+    const old = before.find((o) => same(o, s) && o.entryId === s.entryId);
+    return old === undefined ? s : { ...s, nickname: old.nickname };
+  });
   try {
-    storage()?.setItem(key, JSON.stringify([...kept, ...standings]));
+    storage()?.setItem(key, JSON.stringify([...kept, ...fresh]));
   } catch {
     // The board page will just not know until the cache catches up.
   }

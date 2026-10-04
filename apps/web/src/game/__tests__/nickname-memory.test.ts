@@ -52,7 +52,8 @@ function published(nickname: string): PublishOutcome {
     total: 1,
     resetsAt: 0,
     entryId: "e",
-    streak: 5,
+    best: 5,
+    improved: true,
   };
   const response: SubmitResponse = {
     id: "e",

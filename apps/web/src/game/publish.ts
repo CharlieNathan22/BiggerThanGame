@@ -13,7 +13,7 @@
  * and is kept on the device (device.ts) for the board page.
  */
 
-import { checkNickname } from "@bt/core";
+import { checkNickname, dayKeyDate, periodOf } from "@bt/core";
 import type {
   BoardPeriod,
   NicknameProblem,
@@ -26,6 +26,7 @@ import type { MessageKey } from "../i18n";
 import type { Fetch } from "./api";
 import type { StorageAccess } from "./best";
 import { saveNickname } from "./device";
+import type { Standing } from "./device";
 
 export const SUBMIT_ENDPOINT = "/api/run/submit";
 
@@ -51,6 +52,67 @@ export function startingNickname(
  */
 export function rememberPublished(storage: StorageAccess, outcome: PublishOutcome): void {
   if (outcome.kind === "published") saveNickname(storage, outcome.response.nickname);
+}
+
+/**
+ * The day a run counts on, as its period key (`2026-09-29`): the UTC date in
+ * its run id (`YYYYMMDD-<uuid>.<sig>`), as the server ranks it. Null for an
+ * id that doesn't carry one.
+ */
+export function runDay(runId: string): string | null {
+  const match = /^(\d{8})-/.exec(runId);
+  const date = match === null ? undefined : dayKeyDate(Number(match[1]));
+  return date === undefined ? null : periodOf(date, "day").key;
+}
+
+/**
+ * What the game-over panel offers for a run that scored: Publish, or — when
+ * this device has already published a run at least as good on the run's day
+ * — the best to beat. A run that can't beat the day's best can't beat the
+ * week's or the month's either (they are at least as high), so publishing it
+ * would move nothing. An equal score doesn't beat it: the board would keep
+ * the earlier run in all but a rare tie on time.
+ *
+ * `standings` are what this device kept from its last publishes (device.ts);
+ * with none for the run's day — the first run of the day, or storage cleared —
+ * Publish it is, and the server's answer settles it (`improved`).
+ */
+export type PublishOffer =
+  { readonly kind: "publish" } | { readonly kind: "beat"; readonly best: number };
+
+export function publishOffer(
+  score: number,
+  runId: string | null,
+  standings: readonly Standing[],
+): PublishOffer {
+  const day = runId === null ? null : runDay(runId);
+  const kept = standings.find((s) => s.period === "day" && s.key === day);
+  return kept !== undefined && score <= kept.streak
+    ? { kind: "beat", best: kept.streak }
+    : { kind: "publish" };
+}
+
+/** The panel's line in Publish's place: "Your best today is 18 — beat it to move up the leaderboard". */
+export function beatText(best: number, current = true): string {
+  return t("over.beatBest", { when: periodWords("day", current), best: count(best) });
+}
+
+/**
+ * What the dialog says once a run is published: "Published." when it moved
+ * today's board, or, when the device's earlier run still stands, that the
+ * board keeps that one.
+ */
+export function publishedText(response: SubmitResponse): string {
+  const day = response.periods.day;
+  return day.improved
+    ? t("publish.done")
+    : t("publish.kept", { when: periodWords("day", day.current), best: count(day.best) });
+}
+
+/** The panel's line after a publish: the day's rank, or the best still to beat. */
+export function panelText(response: SubmitResponse): string {
+  const day = response.periods.day;
+  return day.improved ? rankText("day", day) : beatText(day.best, day.current);
 }
 
 /** How a publish went. */

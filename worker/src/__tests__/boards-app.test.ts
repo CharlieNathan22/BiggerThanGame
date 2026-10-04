@@ -109,7 +109,7 @@ describe("POST /api/run/submit", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as SubmitResponse;
-    expect(body.periods.day).toMatchObject({ rank: 1, total: 1, streak: 6 });
+    expect(body.periods.day).toMatchObject({ rank: 1, total: 1, best: 6, improved: true });
 
     const board = (await (await s.call(`${BOARD_PATH}/day`)).json()) as BoardResponse;
     expect(board.entries).toEqual([{ id: body.id, rank: 1, nickname: "SwiftVolley42", streak: 6 }]);

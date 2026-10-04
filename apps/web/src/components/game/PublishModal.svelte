@@ -1,8 +1,9 @@
 <!--
   The publish dialog, from Endless's game-over panel: a nickname (a generated
   one to start with, which most players keep), one line on what's stored,
-  Turnstile, and Publish. Afterwards, where the run landed today, this week
-  and this month, and a link to the board. Renders the flow's state and passes
+  Turnstile, and Publish. Afterwards, where the device stands today, this week
+  and this month, and a link to the board — and, if an earlier run of the
+  device's still beats this one today, that the board keeps that run. Renders the flow's state and passes
   the player's input on; the rules are in ../../game/publish.ts. All text comes
   from ../../i18n.
 
@@ -19,7 +20,14 @@
   import { t } from "../../i18n";
   import { wrapFocus } from "../../game/feedback";
   import { createBackdropDismiss } from "../../game/modal";
-  import { canRetry, cryptoRandom, nicknameText, outcomeText, ranksText } from "../../game/publish";
+  import {
+    canRetry,
+    cryptoRandom,
+    nicknameText,
+    outcomeText,
+    publishedText,
+    ranksText,
+  } from "../../game/publish";
   import type { PublishOutcome } from "../../game/publish";
   import type { Turnstile } from "../../game/turnstile";
 
@@ -76,7 +84,7 @@
   const final = $derived(outcome !== null && outcome.kind !== "published" && !canRetry(outcome));
   const message = $derived(
     published !== null
-      ? t("publish.done")
+      ? publishedText(published)
       : outcome !== null && outcome.kind !== "published"
         ? outcomeText(outcome)
         : checkFailed

@@ -130,7 +130,13 @@ describe("publishing a run", () => {
     const body = ok(await w.submit({ token: end?.result }));
     expect(body).toMatchObject({ nickname: "SwiftVolley42", streak: 5 });
     for (const period of ["day", "week", "month"] as const) {
-      expect(body.periods[period]).toMatchObject({ rank: 1, total: 1, current: true, streak: 5 });
+      expect(body.periods[period]).toMatchObject({
+        rank: 1,
+        total: 1,
+        current: true,
+        best: 5,
+        improved: true,
+      });
     }
     expect(body.periods.day.key).toBe("2026-09-19");
     expect(body.periods.week.key).toBe("2026-W38");
@@ -205,10 +211,98 @@ describe("publishing a run", () => {
     const body = ok(await w.submit({ token: second.end?.result }));
     expect(body.streak).toBe(2);
     // The device's best in the period is still the 6.
-    expect(body.periods.day).toMatchObject({ streak: 6, rank: 1, total: 1 });
+    expect(body.periods.day).toMatchObject({ best: 6, improved: false, rank: 1, total: 1 });
     const third = await play(w, 4);
     const other = ok(await w.submit({ token: third.end?.result, deviceId: OTHER_DEVICE }));
-    expect(other.periods.day).toMatchObject({ streak: 4, rank: 2, total: 2 });
+    expect(other.periods.day).toMatchObject({ best: 4, improved: true, rank: 2, total: 2 });
+  });
+});
+
+describe("whether a publish moved the boards", () => {
+  const PERIODS = ["day", "week", "month"] as const;
+  const flags = (body: SubmitResponse) =>
+    PERIODS.map((p) => [p, body.periods[p].improved, body.periods[p].best]);
+
+  it("a better run improves every period, and becomes the device's entry", async () => {
+    const w = world();
+    ok(await w.submit({ token: (await play(w, 3)).end?.result }));
+    const body = ok(await w.submit({ token: (await play(w, 5)).end?.result }));
+    expect(flags(body)).toEqual([
+      ["day", true, 5],
+      ["week", true, 5],
+      ["month", true, 5],
+    ]);
+    for (const p of PERIODS) expect(body.periods[p].entryId).toBe(body.id);
+  });
+
+  it("a worse run is accepted but improves nothing: the best stays", async () => {
+    const w = world();
+    const best = ok(await w.submit({ token: (await play(w, 5)).end?.result }));
+    const body = ok(await w.submit({ token: (await play(w, 2)).end?.result }));
+    expect(body.streak).toBe(2);
+    expect(flags(body)).toEqual([
+      ["day", false, 5],
+      ["week", false, 5],
+      ["month", false, 5],
+    ]);
+    for (const p of PERIODS) expect(body.periods[p].entryId).toBe(best.id);
+    const board = await publicBoard(w.db, "endless", { from: 20260919, to: 20260919 });
+    expect(board.entries.map((e) => [e.id, e.streak])).toEqual([[best.id, 5]]);
+  });
+
+  it("an equal run in no less time improves nothing: the earlier one keeps its place", async () => {
+    const w = world();
+    const best = ok(await w.submit({ token: (await play(w, 4)).end?.result }));
+    const body = ok(await w.submit({ token: (await play(w, 4)).end?.result }));
+    expect(flags(body)).toEqual([
+      ["day", false, 4],
+      ["week", false, 4],
+      ["month", false, 4],
+    ]);
+    expect(body.periods.day.entryId).toBe(best.id);
+  });
+
+  it("an equal run in less time does take the entry, so it says so", async () => {
+    const w = world();
+    ok(await w.submit({ token: (await play(w, 4)).end?.result }));
+    const quicker = (round: number) => human(round) - 1000;
+    const body = ok(await w.submit({ token: (await play(w, 4, { pace: quicker })).end?.result }));
+    expect(flags(body)).toEqual([
+      ["day", true, 4],
+      ["week", true, 4],
+      ["month", true, 4],
+    ]);
+  });
+
+  it("a new day: today's board improves, the week's and the month's keep the better run", async () => {
+    const w = world();
+    // Saturday 19 September 2026; Sunday is the same ISO week and month.
+    const saturday = ok(await w.submit({ token: (await play(w, 6)).end?.result }));
+    w.h.wait(86_400_000);
+    const body = ok(await w.submit({ token: (await play(w, 3)).end?.result }));
+    expect(body.periods.day.key).toBe("2026-09-20");
+    expect(body.periods.week.key).toBe("2026-W38");
+    expect(flags(body)).toEqual([
+      ["day", true, 3],
+      ["week", false, 6],
+      ["month", false, 6],
+    ]);
+    expect(body.periods.week.entryId).toBe(saturday.id);
+    expect(body.periods.day.entryId).toBe(body.id);
+  });
+
+  it("counts the device's shadowed runs, as its owner's view does", async () => {
+    const w = world();
+    // Answers far too quick: stored, shadowed.
+    const quick = await play(w, 8, { pace: () => THINK_FLOOR_MS + 50 });
+    ok(await w.submit({ token: quick.end?.result }));
+    expect(w.db.rows<{ shadow: number }>("SELECT shadow FROM scores")[0]?.shadow).toBe(1);
+    const body = ok(await w.submit({ token: (await play(w, 5)).end?.result }));
+    expect(flags(body)).toEqual([
+      ["day", false, 8],
+      ["week", false, 8],
+      ["month", false, 8],
+    ]);
   });
 });
 

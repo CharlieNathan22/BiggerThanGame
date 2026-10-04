@@ -22,7 +22,10 @@
  * 7. the insert — `run_id` is unique, the last word on "once" — and then the
  *    Durable Object marks the run published;
  * 8. the response: the entry, and where it stands today, this week and this
- *    month as its owner sees it (scores.ts `ownStanding`).
+ *    month as its owner sees it (scores.ts `ownStanding`): the device's best
+ *    in each, and whether this run is now it (`improved`). A worse run is
+ *    still accepted — the page may not know about the better one, after its
+ *    storage was cleared or from another tab — but the board keeps the best.
  *
  * The periods are the run's own — the date it started — so a run begun at
  * 23:58 is ranked on that day's board even if published after midnight.
@@ -195,7 +198,8 @@ export async function handleSubmit(body: unknown, ctx: SubmitContext): Promise<S
         total: standing.total,
         resetsAt: p.resetsAt,
         entryId: standing.entryId,
-        streak: standing.streak,
+        best: standing.streak,
+        improved: standing.entryId === id,
       };
     };
     const [day, week, month] = await Promise.all([rank("day"), rank("week"), rank("month")]);
