@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { t } from "../../i18n";
-import { NAV_LINKS, currentPage } from "../nav";
+import { NAV_LINKS, currentPage, navCurrent } from "../nav";
 
 describe("the title bar's navigation", () => {
-  it("is Play, How to play and About, in that order", () => {
+  it("is Play, Leaderboards, How to play and About, in that order", () => {
     expect(NAV_LINKS.map((link) => [t(link.label), link.href])).toEqual([
       ["Play", "/football-higher-or-lower/legends"],
+      ["Leaderboards", "/football-higher-or-lower/legends/endless/leaderboard"],
       ["How to play", "/about#how-to-play"],
       ["About", "/about"],
     ]);
@@ -21,6 +22,26 @@ describe("the title bar's navigation", () => {
     for (const path of ["/", "/about", "/credits", "/404", "/football-higher-or-lower-extra"]) {
       expect(on(path), path).toBeUndefined();
     }
+  });
+
+  it("marks Leaderboards, and only Leaderboards, current on the leaderboard page", () => {
+    const marks = (path: string) =>
+      Object.fromEntries(NAV_LINKS.map((link) => [t(link.label), navCurrent(link, path)]));
+    expect(marks("/football-higher-or-lower/legends/endless/leaderboard")).toEqual({
+      Play: undefined,
+      Leaderboards: "page",
+      "How to play": undefined,
+      About: undefined,
+    });
+    // Elsewhere in the football pages Play is still the current section.
+    expect(marks("/football-higher-or-lower/legends/endless")).toEqual({
+      Play: "true",
+      Leaderboards: undefined,
+      "How to play": undefined,
+      About: undefined,
+    });
+    expect(marks("/football-higher-or-lower/legends")).toMatchObject({ Play: "page" });
+    expect(marks("/about")).toMatchObject({ Play: undefined, About: "page" });
   });
 });
 

@@ -5,7 +5,14 @@
  */
 
 import type { MessageKey } from "../i18n";
-import { ABOUT_PATH, FOOTBALL_PATH, HOW_TO_PLAY_PATH, LEGENDS_PATH, isWithin } from "./paths";
+import {
+  ABOUT_PATH,
+  FOOTBALL_PATH,
+  HOW_TO_PLAY_PATH,
+  LEADERBOARD_PATH,
+  LEGENDS_PATH,
+  isWithin,
+} from "./paths";
 
 export interface NavLink {
   readonly href: string;
@@ -16,6 +23,7 @@ export interface NavLink {
 
 export const NAV_LINKS: readonly NavLink[] = [
   { href: LEGENDS_PATH, label: "nav.play", section: FOOTBALL_PATH },
+  { href: LEADERBOARD_PATH, label: "nav.leaderboards" },
   { href: HOW_TO_PLAY_PATH, label: "nav.howToPlay" },
   { href: ABOUT_PATH, label: "nav.about" },
 ];
@@ -35,4 +43,19 @@ export function currentPage(
   if (current === undefined || href.includes("#")) return undefined;
   if (href === current) return "page";
   return section !== undefined && isWithin(current, section) ? "true" : undefined;
+}
+
+/**
+ * A nav link's `aria-current` among `links`: as `currentPage`, except that a
+ * link current only for its section stands down when another link is the
+ * page itself — on the leaderboard page, Leaderboards is current, not Play.
+ */
+export function navCurrent(
+  link: NavLink,
+  current: string | undefined,
+  links: readonly NavLink[] = NAV_LINKS,
+): "page" | "true" | undefined {
+  const mark = currentPage(link.href, current, link.section);
+  if (mark !== "true") return mark;
+  return links.some((other) => currentPage(other.href, current) === "page") ? undefined : mark;
 }

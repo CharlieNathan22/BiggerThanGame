@@ -17,8 +17,10 @@ interface Props {
   /** Takes a whole row of its list, the others sharing the rows below. */
   wide?: boolean;
   /**
-   * A second, smaller link under the text (Endless's leaderboard), above the
-   * card's own so it can be reached on its own. Only on an open card.
+   * A second link, a secondary button (Endless's leaderboards): on the card's
+   * right on a wide screen, under its text below that. It sits above the
+   * card's own link, never inside it, so each is its own target and its own
+   * tab stop. Only on an open card.
    */
   extra?: { readonly href: string; readonly label: string };
 }
@@ -27,9 +29,11 @@ const { name, body, href, large = false, wide = false, extra } = Astro.props;
 const soon = href === undefined;
 ---
 
-<li class:list={["card", { large, soon, wide, open: !soon }]}>
-  <h2>{soon ? name : <a href={href}>{name}</a>}</h2>
-  <p class="body">{body}</p>
+<li class:list={["card", { large, soon, wide, open: !soon, split: !soon && extra !== undefined }]}>
+  <div class="text">
+    <h2>{soon ? name : <a href={href}>{name}</a>}</h2>
+    <p class="body">{body}</p>
+  </div>
   {!soon && extra !== undefined && (
     <a class="extra" href={extra.href}>
       {extra.label}
@@ -163,25 +167,82 @@ const soon = href === undefined;
     z-index: 1;
     border-radius: inherit;
   }
-  /* A second link sits above the card's: its own target, 44px tall, underlined. */
+  /* The title and text: laid out as the card's own children, except on a
+       card with a second link, where they are one block beside it. */
+  .text {
+    display: contents;
+  }
+  .split .text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--card-inner-gap);
+  }
+  /* The second link sits above the card's, a secondary button (the game's
+       outlined gold pill, from the same tokens): its own target and focus
+       ring. Under the text: full width on a phone, its own width from 560px.
+       From 900px, where the cards take the wide band, on the right — with an
+       equal empty column on the left, so the text stays centred on the card
+       like every other card's. */
   .card .extra {
     position: relative;
     z-index: 2;
+    align-self: stretch;
     display: inline-flex;
     align-items: center;
-    min-height: var(--target-min);
-    padding: 0 8px;
-    font-size: var(--fs-body);
-    color: var(--gold);
-    text-decoration: underline;
-    text-underline-offset: 3px;
+    justify-content: center;
+    min-height: var(--cta-h);
+    margin-top: var(--card-inner-gap);
+    padding: 0 var(--btn2-pad-x);
+    border: var(--btn2-border) solid var(--btn2-edge);
+    border-radius: var(--radius-pill);
+    background: var(--btn2-bg);
+    color: var(--btn2-text);
+    font-size: var(--fs-btn2);
+    font-variation-settings: var(--fv-cta);
+    white-space: nowrap;
+    box-shadow: var(--glow);
+    transition:
+      background-color var(--dur-hover),
+      box-shadow var(--dur-hover),
+      transform var(--dur-press);
   }
   .card .extra::after {
     content: none;
   }
+  .card .extra:hover,
+  .card .extra:active,
   .card .extra:focus-visible {
-    outline: var(--focus-ring) solid var(--gold);
+    background: var(--btn2-bg-hover);
+    box-shadow: var(--glow-hover);
+  }
+  .card .extra:active {
+    transform: scale(var(--press-scale));
+  }
+  .card .extra:focus-visible {
+    outline: var(--focus-ring) solid var(--chalk);
     outline-offset: var(--focus-offset);
+  }
+  @media (min-width: 560px) {
+    .card .extra {
+      align-self: center;
+    }
+  }
+  @media (min-width: 900px) {
+    .card.split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      column-gap: var(--card-split-gap);
+    }
+    .split .text {
+      grid-column: 2;
+    }
+    .card .extra {
+      grid-column: 3;
+      justify-self: end;
+      margin-top: 0;
+    }
   }
   /* The focus ring goes round the card, not the heading inside it. */
   .card:has(h2 a:focus-visible) {

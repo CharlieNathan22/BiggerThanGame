@@ -30,6 +30,7 @@ export const en = {
   "nav.label": "Main",
   "nav.menu": "Menu",
   "nav.play": "Play",
+  "nav.leaderboards": "Leaderboards",
   "nav.howToPlay": "How to play",
   "nav.about": "About",
 
@@ -45,6 +46,7 @@ export const en = {
   "footer.nav": "Site",
   "footer.credits": "Credits",
   "footer.privacy": "Privacy",
+  "footer.leaderboards": "Leaderboards",
   "footer.github": "GitHub",
   "footer.feedbackNav": "Feedback",
   "footer.suggest": "Suggest a legend",
@@ -97,7 +99,7 @@ export const en = {
   "mode.endless.name": "Endless",
   "mode.endless.body":
     "Unlimited runs against a 10-second clock, with boards for the day, the week and the month.",
-  "mode.endless.leaderboard": "Endless leaderboard",
+  "mode.endless.leaderboard": "See leaderboards",
   "mode.ranked.name": "Daily Ranked",
   "mode.ranked.body": "One run a day, the same for everyone, on a global leaderboard.",
   "mode.soon": "Coming soon",

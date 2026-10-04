@@ -65,14 +65,15 @@ const tiers =
   <p class="centred">{t("legends.intro")}</p>
 
   <Cards label={t("legends.modes")} stack>
-    <Card name={t("mode.friendly.name")} body={t("mode.friendly.body")} href={FRIENDLY_PATH} wide />
     <Card
       name={t("mode.endless.name")}
       body={t("mode.endless.body")}
       href={ENDLESS_PATH}
       extra={{ href: LEADERBOARD_PATH, label: t("mode.endless.leaderboard") }}
+      wide
     />
-    <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} />
+    <Card name={t("mode.friendly.name")} body={t("mode.friendly.body")} href={FRIENDLY_PATH} wide />
+    <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} wide />
   </Cards>
 
   <article class="reading">

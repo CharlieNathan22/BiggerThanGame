@@ -1329,11 +1329,14 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   - **Friendly** hides challenges entirely; an old `?challenge=` link there is `retired`
     (`readChallenge`), never sent, and noted on the start panel.
 - **Site navigation** is in the title bar on every page (`lib/nav.ts`): the brand links to `/`,
-  then Play (`/football-higher-or-lower/legends`), How to play (`/about#how-to-play`) and About.
-  The current page's link carries `aria-current="page"`; a link to a section never does. Play
-  also stands for its `section`, the football pages: on `/football-higher-or-lower` and the game
-  page it carries `aria-current="true"`, styled the same.
-  From 780px the links sit inline. Below that, and on short landscape screens, a "Menu" built on
+  then Play (`/football-higher-or-lower/legends`), Leaderboards (Endless's board page), How to
+  play (`/about#how-to-play`) and About. The current page's link carries `aria-current="page"`; a
+  link to a section never does. Play also stands for its `section`, the football pages: on
+  `/football-higher-or-lower` and the game page it carries `aria-current="true"`, styled the
+  same, except where another link is the page itself — on the leaderboard page only Leaderboards
+  is current (`navCurrent`).
+  From 860px the links sit inline (below that the game page's scores and four links would wrap
+  the bar). Below that, and on short landscape screens, a "Menu" built on
   `<details>`/`<summary>` opens them with no JS and from the keyboard. Esc (returning focus to
   "Menu" when it was inside) and a click outside close it: on the game page through the island,
   which hydrates the bar, and on the static pages through a few lines of inline script in

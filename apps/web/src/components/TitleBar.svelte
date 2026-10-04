@@ -7,7 +7,8 @@
   one row.
 
   Site navigation: the brand links home, then Play (the Legends page, marked
-  current across the football pages), How to play and About.
+  current across the football pages but for the leaderboard), Leaderboards
+  (Endless's), How to play and About.
   Desktop shows them inline. Phones and short landscape screens get a "Menu"
   built on <details>/<summary>, so it opens with no JS and from the keyboard.
   Esc and a click outside close it: here on the game page, where the island
@@ -18,7 +19,7 @@
 -->
 <script lang="ts">
   import { t } from "../i18n";
-  import { NAV_LINKS, currentPage, type NavLink } from "../lib/nav";
+  import { NAV_LINKS, currentPage, navCurrent, type NavLink } from "../lib/nav";
   import { HOME_PATH } from "../lib/paths";
 
   interface Props {
@@ -41,7 +42,7 @@
 
   /** A nav link's `aria-current` on this page. */
   function marked(link: NavLink): "page" | "true" | undefined {
-    return currentPage(link.href, current, link.section);
+    return navCurrent(link, current);
   }
 
   // The element's own `open` is the state, never a binding: hydration would
@@ -379,7 +380,8 @@
     font-variation-settings: var(--fv-nav);
   }
 
-  @media (min-width: 780px) {
+  /* From 860px: below that, the game page's scores and four links would wrap the bar. */
+  @media (min-width: 860px) {
     .links {
       display: block;
     }

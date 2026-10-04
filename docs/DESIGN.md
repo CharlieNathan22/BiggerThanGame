@@ -1026,11 +1026,16 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   very short landscape screens (500px tall or less) the game page's bar drops "— Football Legends"
   too, so it stays one row and the game fits.
 - **Navigation** is in the title bar on every page: the brand to `/`, then Play (the Legends
-  page), How to play and About, with the current page marked. Play is marked current on the
-  football hub and every page under it. Inline on desktop; a "Menu" on phones and short
+  page), Leaderboards (Endless's), How to play and About, with the current page marked. Play is
+  marked current on the football hub and every page under it but the leaderboard, where
+  Leaderboards is. Inline on desktop (from 860px); a "Menu" on phones, tablets and short
   landscape screens, which opens over the page rather than pushing it down.
-  The footer keeps Credits, Privacy, GitHub, "Suggest a legend" and "Report a problem", on one
-  row down to 320px; below 360px GitHub steps out so it still fits.
+  The footer keeps Leaderboards, Credits, Privacy, GitHub, "Suggest a legend" and "Report a
+  problem", on one row down to 320px: below 440px Leaderboards steps out (it is in the Menu and
+  on the Endless card), and below 360px GitHub, so it still fits.
+- **The Legends page's modes**: Endless first, on a row of its own, with a "See leaderboards"
+  button on the right of its card from 900px wide (under its text below that, so the text stays
+  centred like the other cards') — a second link beside the card's own, never inside it; then Friendly, then Daily Ranked, each on a full row of its own.
 - **Local best** is kept per deck and mode — `bt:best:<deck>:<mode>`, `bt:best:legends:friendly`
   today — and shown only on the game pages under `/legends`.
 - **Challenge links** point at the Endless page:

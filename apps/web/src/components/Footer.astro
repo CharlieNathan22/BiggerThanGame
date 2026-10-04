@@ -2,15 +2,28 @@
 // The prototype's footer line, carrying site links instead of the prototype
 // notice, and the two general feedback forms. About and How to play are in the
 // title bar's navigation, so they aren't repeated here: that keeps the footer
-// to one row on a 360px phone, and the game its height. Below 360px GitHub
-// steps out, so Credits · Privacy and the forms still fit one row at 320px;
-// with it the row wraps and the game's Start button goes under the footer.
+// to one row on a 360px phone, and the game its height. Links step out as the
+// row narrows — Leaderboards below 440px (on a phone it's in the title bar's
+// Menu and on the Legends page's Endless card), GitHub below 360px — so
+// Credits · Privacy and the forms still fit one row at 320px; with them the
+// row wraps and the game's Start button goes under the footer.
 import { GITHUB_URL } from "../config";
 import { t } from "../i18n";
-import { CREDITS_PATH, FRIENDLY_PATH, PRIVACY_PATH } from "../lib/paths";
+import { currentPage } from "../lib/nav";
+import {
+  CREDITS_PATH,
+  FRIENDLY_PATH,
+  LEADERBOARD_PATH,
+  PRIVACY_PATH,
+  servedPath,
+} from "../lib/paths";
 
-// `rel` only where the link leaves the site. `roomy`: only from 360px wide.
+const path = servedPath(Astro.url.pathname);
+
+// `rel` only where the link leaves the site. `roomy`: only from 360px wide;
+// `wider`: only from 440px.
 const links = [
+  { href: LEADERBOARD_PATH, label: t("footer.leaderboards"), wider: true },
   { href: CREDITS_PATH, label: t("footer.credits") },
   { href: PRIVACY_PATH, label: t("footer.privacy") },
   { href: GITHUB_URL, label: t("footer.github"), rel: "noopener", roomy: true },
@@ -28,9 +41,14 @@ const feedback = [
 <footer class="foot">
   <nav aria-label={t("footer.nav")}>
     {links.map((link, i) => (
-      <span class:list={{ roomy: link.roomy }}>
-        {i > 0 && <span aria-hidden="true"> · </span>}
-        <a href={link.href} rel={link.rel}>
+      <span class:list={{ roomy: link.roomy, wider: link.wider }}>
+        {i > 0 && (
+          <span class="sep" aria-hidden="true">
+            {" "}
+            ·{" "}
+          </span>
+        )}
+        <a href={link.href} rel={link.rel} aria-current={currentPage(link.href, path)}>
           {link.label}
         </a>
       </span>
@@ -80,6 +98,13 @@ const feedback = [
   /* Too narrow for every link on one row: the least needed one steps out. */
   @media (max-width: 359px) {
     .roomy {
+      display: none;
+    }
+  }
+  /* The first link out: the next one loses its separator with it. */
+  @media (max-width: 439px) {
+    .wider,
+    .wider + span > .sep {
       display: none;
     }
   }

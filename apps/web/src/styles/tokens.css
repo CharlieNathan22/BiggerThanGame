@@ -624,6 +624,8 @@
   --card-chevron: 10px;
   --card-chevron-stroke: 2px;
   --card-chevron-inset: 24px;
+  /* A card with a second link (Endless's leaderboards): text and button apart. */
+  --card-split-gap: 24px;
   --cards-top: 28px;
   --card-gap: 12px;
   /* The homepage's games: more room above and between them. */
