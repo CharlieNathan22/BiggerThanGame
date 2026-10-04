@@ -567,11 +567,17 @@ trying to design it away. Daily Ranked mitigates it socially: everyone hits the 
 - **10 seconds per question**, starting after the wheel lands so the animation doesn't eat
   thinking time (`QUESTION_LIMITS` in `@bt/core`).
 - **15 seconds for question one**, while the player works out what they're looking at.
-- **The countdown sits on the plaque**: a thin bar along its bottom edge, subtle until the last
-  three seconds, then red, thicker, with a stopwatch tag and the seconds left under the plaque, so
-  colour never carries it alone. Reduced motion gets a bar that steps down a second at a time.
-  Screen readers hear "5 seconds left" once, never a count every second. It stops the moment the
-  player answers: it never runs while the answer is in flight.
+- **A big clock at the top of the pitch** counts the whole seconds down (15, then 10), centred
+  where Friendly has its progress track (on a landscape phone, at the top left beside the plaque).
+  Calm above five seconds; from five, orange with a soft glow; from three, urgent: the pill turns
+  red, grows a little and gives one short shake as each of the last seconds ticks (3, 2, 1). It
+  reaches 0 exactly as time runs out. A thin line along the plaque's bottom edge drains with it,
+  in the same colours. When the player answers, the clock freezes on that second, dimmed, through
+  the reveal, and starts again only when the next question can be answered; it steps aside while
+  the score badge takes its spot after a right answer. Reduced motion: no growing or shaking (the
+  urgent state is also marked by a heavier figure and an outline), and the line steps down a
+  second at a time. Screen readers hear "5 seconds left" and "3 seconds left" once each, never a
+  count. It never runs while the answer is in flight.
 - **When it runs out**, the client sends a `timeout` so the player still sees the reveal; the run
   ends as `timeout`.
 - **Start button before question one**, so the first timer doesn't run while the player is still

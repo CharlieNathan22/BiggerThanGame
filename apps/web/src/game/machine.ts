@@ -156,6 +156,15 @@ export interface QuestionClock {
   readonly limitMs: number;
 }
 
+/**
+ * The clock as it stood when the question was answered: what was left, frozen,
+ * from the tap (or 0 on a timeout) until the next question's clock starts.
+ */
+export interface StoppedClock {
+  readonly remainingMs: number;
+  readonly limitMs: number;
+}
+
 /** When the guess went, and when the answer came back. `performance.now()` ms. */
 export interface CountClock {
   readonly tappedAt: number;
@@ -178,6 +187,12 @@ export interface GameState {
   readonly guess: TimedGuess | null;
   /** The question's clock, while it runs. */
   readonly clock: QuestionClock | null;
+  /**
+   * The last question's clock, stopped at the answer: the clock at the top
+   * shows it, dimmed, through the reveal and the deal until the next question
+   * can be answered. Null before a run's first answer, and in Friendly.
+   */
+  readonly stopped: StoppedClock | null;
   readonly count: CountClock | null;
   /** The challenger's figure, once the server has judged the guess. */
   readonly reveal: Reveal | null;
@@ -260,6 +275,7 @@ export function initialState(
     plaque: null,
     guess: null,
     clock: null,
+    stopped: null,
     count: null,
     reveal: null,
     next: null,
@@ -347,7 +363,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       if (state.phase !== "dealing" || state.round === null) return state;
       return shouldSpin(state.round)
         ? { ...state, phase: "spinning" }
-        : { ...state, phase: "awaiting", clock: clockFor(state, event.at) };
+        : { ...state, phase: "awaiting", clock: clockFor(state, event.at), stopped: null };
 
     case "spun":
       if (state.phase !== "spinning" || state.round === null) return state;
@@ -356,6 +372,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         phase: "awaiting",
         plaque: state.round.stat,
         clock: clockFor(state, event.at),
+        stopped: null,
       };
 
     case "guess":
@@ -367,6 +384,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         phase: "revealing",
         guess: event.type === "timeout" ? "timeout" : event.guess,
         clock: null,
+        stopped: stopClock(state.clock, event),
         count: { tappedAt: event.at, arrivedAt: null },
       };
 
@@ -466,6 +484,17 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       if (state.phase === "sliding") return state;
       return { ...state, phase: "over", end: state.end ?? "deck-exhausted" };
   }
+}
+
+/** The clock frozen at an answer: what was left at the tap, or nothing at a timeout. */
+function stopClock(
+  clock: QuestionClock | null,
+  event: { readonly type: "guess" | "timeout"; readonly at: number },
+): StoppedClock | null {
+  if (clock === null) return null;
+  const remainingMs =
+    event.type === "timeout" ? 0 : Math.max(0, clock.limitMs - (event.at - clock.startedAt));
+  return { remainingMs, limitMs: clock.limitMs };
 }
 
 /** The clock for the round on screen, in a timed mode; null in Friendly. */

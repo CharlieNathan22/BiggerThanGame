@@ -3,7 +3,7 @@
  * and the edge cases are under test rather than buried in markup.
  */
 
-import { STREAK_TITLES, WIN_ROUNDS, isFinalRound, streakTitle } from "@bt/core";
+import { STREAK_TITLES, WIN_ROUNDS, isFinalRound, questionLimit, streakTitle } from "@bt/core";
 import type { Mode, PlayerCard, StatKey, Tier } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
 import type { GameState, Hitch, QuestionClock, RoundRecord } from "./machine";
@@ -428,45 +428,103 @@ export function bankedText(state: Pick<GameState, "end" | "streak">, mode: Mode)
 
 // ------------------------------------------------------------------ clock
 
-/** The last seconds of a question, shown urgently: colour, a bolder bar and the count. */
-export const URGENT_MS = 3000;
-
-/** When screen readers hear how long is left: once, at this many seconds. */
+/** From five seconds out the clock warns: orange, with a soft glow. */
 export const WARN_MS = 5000;
 
-/** The countdown as the plaque draws it. */
-export interface ClockView {
+/** From three seconds out it is urgent: red, a little larger, a shake on each second. */
+export const URGENT_MS = 3000;
+
+/** How pressing the time left is: calm, warning (5 s and below), urgent (3 s and below). */
+export type ClockLevel = "calm" | "warning" | "urgent";
+
+export interface ClockState {
+  /** Whole seconds left, rounded up: "3" until the last instant of the third, 0 at the end. */
+  readonly seconds: number;
+  readonly level: ClockLevel;
+}
+
+/** The clock's number and level for what's left, in ms. */
+export function clockState(remainingMs: number): ClockState {
+  const left = Math.max(0, remainingMs);
+  return {
+    seconds: Math.ceil(left / 1000),
+    level: left <= URGENT_MS ? "urgent" : left <= WARN_MS ? "warning" : "calm",
+  };
+}
+
+/** The countdown as the plaque's line draws it. */
+export interface ClockView extends ClockState {
   /** What's left, ms, never below zero. */
   readonly remainingMs: number;
-  /** Whole seconds left, rounded up: "3" until the last instant of the third. */
-  readonly seconds: number;
   /**
-   * How full the bar is, 0 to 1. With reduced motion it shrinks in whole-second
+   * How full the line is, 0 to 1. With reduced motion it shrinks in whole-second
    * steps rather than smoothly.
    */
   readonly fraction: number;
-  readonly urgent: boolean;
+}
+
+/**
+ * What's left of a running clock at `now` (`performance.now()`): never below
+ * zero, and never above the limit (a frame drawn with a `now` from before the
+ * clock started reads as the full limit).
+ */
+export function remainingMs(clock: QuestionClock, now: number): number {
+  return Math.min(clock.limitMs, Math.max(0, clock.limitMs - (now - clock.startedAt)));
 }
 
 /** The clock at `now` (`performance.now()`). */
 export function clockView(clock: QuestionClock, now: number, reducedMotion = false): ClockView {
-  const remainingMs = Math.max(0, clock.limitMs - (now - clock.startedAt));
-  const seconds = Math.ceil(remainingMs / 1000);
-  const smooth = remainingMs / clock.limitMs;
-  const stepped = Math.min(1, (seconds * 1000) / clock.limitMs);
-  return {
-    remainingMs,
-    seconds,
-    fraction: reducedMotion ? stepped : smooth,
-    urgent: remainingMs <= URGENT_MS,
-  };
+  const left = remainingMs(clock, now);
+  const state = clockState(left);
+  const smooth = left / clock.limitMs;
+  const stepped = Math.min(1, (state.seconds * 1000) / clock.limitMs);
+  return { ...state, remainingMs: left, fraction: reducedMotion ? stepped : smooth };
 }
 
-/** What the clock's live region says: "5 seconds left" from five seconds out, else nothing. */
-export function clockWarning(view: ClockView | null): string {
-  return view !== null && view.remainingMs <= WARN_MS && view.remainingMs > 0
-    ? t("clock.warning", { seconds: WARN_MS / 1000 })
-    : "";
+/** The big clock at the top of the pitch (Endless). */
+export interface TopClock extends ClockState {
+  /** Counting down now. */
+  readonly running: boolean;
+  /** Stopped at the player's answer (or at 0 on a timeout), dimmed, until the next question. */
+  readonly frozen: boolean;
+}
+
+/**
+ * The big clock for the game as it stands at `now`. Running while a question
+ * can be answered; frozen on the second the player answered at, through the
+ * reveal and the next deal, until the next question becomes answerable; at
+ * the full limit, waiting, while round one is dealt. Null in a mode without a
+ * clock, and before the cards are in or once the run is over.
+ */
+export function topClock(state: GameState, now: number): TopClock | null {
+  const { phase, round } = state;
+  if (round === null || questionLimit(state.mode, round.index) === null) return null;
+  if (phase === "idle" || phase === "starting" || phase === "title" || phase === "holding") {
+    return null;
+  }
+  if (phase === "over") return null;
+  if (state.clock !== null) {
+    return { ...clockState(remainingMs(state.clock, now)), running: true, frozen: false };
+  }
+  if (state.stopped !== null) {
+    return { ...clockState(state.stopped.remainingMs), running: false, frozen: true };
+  }
+  const limit = questionLimit(state.mode, round.index) ?? 0;
+  return { ...clockState(limit), running: false, frozen: false };
+}
+
+/**
+ * What the clock's live region says: "5 seconds left" from five seconds out,
+ * "3 seconds left" from three, nothing otherwise. The words change only twice
+ * a question, so screen readers hear two announcements, never a count.
+ */
+export function clockAnnouncement(
+  clock: Pick<TopClock, "level" | "running" | "seconds"> | null,
+): string {
+  if (clock === null || !clock.running || clock.seconds === 0) return "";
+  if (clock.level === "urgent") return t("clock.warning", { seconds: URGENT_MS / 1000 });
+  if (clock.level === "warning") return t("clock.warning", { seconds: WARN_MS / 1000 });
+  return "";
 }
 
 /** "in a row", "correct, then out" for a streak of one, or "a perfect run" for a win. */

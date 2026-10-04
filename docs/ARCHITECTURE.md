@@ -1269,11 +1269,23 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   - **The clock**: the machine sets `clock` (`{ startedAt, limitMs }`) as a question becomes
     answerable — the `dealt` or `spun` event carries the time — and clears it at the guess; the
     controller's one timer in `awaiting` fires `timeout`, which goes to the server as a guess.
-    `Plaque.svelte` draws it (`clockView` in `game/view.ts`): a bar along its bottom edge
-    (`--clock-*`), urgent from `URGENT_MS` (3 s) with a stopwatch tag under the plaque; stepped a
-    second at a time with reduced motion; a polite live region says "5 seconds left" once.
-  - **No track**: the streak title so far sits in a chip at the top of the pitch (`titleChip`,
-    `--chip-*`), giving way to the score badge, which shows "n" and each new title.
+    At the answer the machine keeps what was left (`stopped`; 0 at a timeout) until the next
+    question's clock starts. `Game.svelte` runs one `requestAnimationFrame` loop while a clock
+    runs and hands the same `now` to both drawings, so they can't disagree with each other or the
+    timeout. **The big clock** (`Clock.svelte`, from `topClock` and `clockState` in
+    `game/view.ts`, `--game-clock-*`): whole seconds, rounded up, in a pill at the top of the
+    pitch — centred, or at the top left beside the plaque on a landscape phone — calm, then
+    `warning` from `WARN_MS` (5 s, orange, glow), then `urgent` from `URGENT_MS` (3 s: a red
+    pill, scaled 1.15, one shake per second tick); frozen and dimmed from the answer; stepping
+    aside (opacity and transform) while the score badge holds its spot, which `Game.svelte` tracks
+    from the badge's own animation. Only transform and opacity animate. `role="timer"`, not a live
+    region; a polite region beside it says "5 seconds left" and "3 seconds left" once each
+    (`clockAnnouncement`). Reduced motion: no scale or shake; urgent also gets a heavier figure
+    and an outline. **The plaque's line** (`clockView`): a bar along its bottom edge
+    (`--clock-*`), orange from 5 s, red from 3 s, stepped a second at a time with reduced motion.
+  - **No track**: the streak title so far sits in a chip under the clock (`titleChip`,
+    `--chip-*`; at the top right on a landscape phone), and the score badge, which shows "n" and
+    each new title, takes the clock's spot for its two seconds.
   - **Start panel**: subtitle "ENDLESS", the clock, a link to Friendly and one to the
     leaderboard.
   - **Game-over panel**: the score, the title, the stat and the two players that ended the run

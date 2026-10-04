@@ -107,10 +107,12 @@
     scoreFigure,
     titleCard,
     titleChip,
+    topClock,
     trackSteps,
     verdictLabel,
   } from "../../game/view";
   import TitleBar from "../TitleBar.svelte";
+  import Clock from "./Clock.svelte";
   import Counter from "./Counter.svelte";
   import FeedbackModal from "./FeedbackModal.svelte";
   import Figure from "./Figure.svelte";
@@ -378,6 +380,42 @@
   const report = $derived(reportedRound(game));
   /** Endless: the streak title the run holds so far, at the top of the pitch. */
   const chip = $derived(titleChip(game, mode));
+
+  /**
+   * `performance.now()`, every frame while a question's clock runs: the one
+   * time the big clock and the plaque's line both draw from, so they can't
+   * disagree with each other or with the controller's timeout.
+   */
+  let now = $state(0);
+  $effect(() => {
+    if (game.clock === null) return;
+    now = performance.now();
+    let raf = 0;
+    const frame = () => {
+      now = performance.now();
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  });
+  /** Endless: the big clock at the top of the pitch. */
+  const clockTop = $derived(topClock(game, now));
+
+  /**
+   * The score badge is on screen, in the clock's spot: from the moment it is
+   * put in until its own animation has played out (it stays in the page,
+   * invisible, after that).
+   */
+  let badgeShowing = $state(false);
+  const badgeIn = () => {
+    badgeShowing = true;
+    return () => (badgeShowing = false);
+  };
+  /** The badge's entrance-and-exit animation (not its glow or sheen) has ended. */
+  function onBadgeEnd(event: AnimationEvent): void {
+    if (event.target !== event.currentTarget) return;
+    if (/(^|-)badge(-fade)?$/.test(event.animationName)) badgeShowing = false;
+  }
   /** A run banked after the connection dropped: "your streak of n is saved". */
   const banked = $derived(bankedText(game, mode));
   /** A signed challenge to share, in a mode with them, once the run is over. */
@@ -718,10 +756,16 @@
         {lead}
         stage={plaqueStage(game)}
         clock={game.clock}
+        {now}
       />
     {/if}
 
-    {#if chip !== "" && badge === null && phase !== "idle" && phase !== "starting" && phase !== "over"}
+    {#if mode === "endless"}
+      <!-- The question's clock, big, at the top; it steps aside for the score badge. -->
+      <Clock clock={clockTop} {reducedMotion} aside={badgeShowing} />
+    {/if}
+
+    {#if chip !== "" && phase !== "idle" && phase !== "starting" && phase !== "over"}
       <!-- Endless: the title the streak has earned so far. -->
       <p class="chip"><span class="sr">{t("chip.label")}: </span>{chip}</p>
     {/if}
@@ -745,7 +789,13 @@
       <!-- The new score, at the top of the pitch. The live region already
            says it, so screen readers skip this. Replays for each answer. -->
       {#key badge.key}
-        <p class="badge" class:milestone={badge.milestone} aria-hidden="true">
+        <p
+          class="badge"
+          class:milestone={badge.milestone}
+          aria-hidden="true"
+          {@attach badgeIn}
+          onanimationend={onBadgeEnd}
+        >
           <span class="badgetext">{badge.text}</span>
         </p>
       {/key}
@@ -753,6 +803,7 @@
 
     <p
       class="notice"
+      class:underclock={mode === "endless"}
       role="status"
       class:empty={notice === "" || phase === "idle" || badge !== null}
     >
@@ -1194,6 +1245,17 @@
   .notice.empty {
     display: none;
   }
+  /* Endless: the clock has the top; a challenge notice (round one only) goes
+     under it, in the chip's place (the chip comes later in a run). */
+  .notice.underclock {
+    top: var(--game-clock-under);
+  }
+  /* Landscape phones: under the plaque, where the score badge goes. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .notice.underclock {
+      top: calc(var(--plaque-top-gap) + var(--plaque-h) + var(--score-badge-below-plaque));
+    }
+  }
   /* The score badge. Over the divide at the top on a desktop, under the
      plaque on a landscape phone (where the plaque is at the top), and at the
      top of the top half on a portrait phone, close to the track and above
@@ -1559,6 +1621,16 @@
     text-transform: uppercase;
     white-space: nowrap;
     pointer-events: none;
+  }
+  /* Landscape phones: the plaque holds the top centre and the clock the top
+     left, so the chip sits at the top right, level with the plaque. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .chip {
+      top: calc(var(--plaque-top-gap) + var(--plaque-h) / 2);
+      left: auto;
+      right: 12px;
+      transform: translateY(-50%);
+    }
   }
   .ghost {
     margin-top: 12px;

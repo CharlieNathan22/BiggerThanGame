@@ -22,10 +22,13 @@ import { HUMAN_CHECK_TIMEOUT_MS, createHumanCheck, loadWhenIdle } from "../turns
 import type { Turnstile, TurnstileOptions } from "../turnstile";
 import {
   URGENT_MS,
+  WARN_MS,
   bankedText,
   challengeNotice,
+  clockAnnouncement,
+  clockState,
   clockView,
-  clockWarning,
+  topClock,
   titleChip,
   verdictLabel,
 } from "../view";
@@ -440,20 +443,44 @@ describe("Turnstile on the Endless page", () => {
 
 // --------------------------------------------------------------------- view
 
-describe("the countdown's view", () => {
+describe("the clock's state", () => {
+  it("is calm above five seconds, warning from five, urgent from three", () => {
+    expect(clockState(5001)).toEqual({ seconds: 6, level: "calm" });
+    expect(clockState(WARN_MS)).toEqual({ seconds: 5, level: "warning" });
+    expect(clockState(3001)).toEqual({ seconds: 4, level: "warning" });
+    expect(clockState(URGENT_MS)).toEqual({ seconds: 3, level: "urgent" });
+    expect(clockState(1)).toEqual({ seconds: 1, level: "urgent" });
+    expect(clockState(0)).toEqual({ seconds: 0, level: "urgent" });
+  });
+
+  it("shows whole seconds rounded up, reaching 0 exactly as time runs out", () => {
+    expect(clockState(10_000).seconds).toBe(10);
+    expect(clockState(9_999).seconds).toBe(10);
+    expect(clockState(9_000).seconds).toBe(9);
+    expect(clockState(8_999).seconds).toBe(9);
+    expect(clockState(0.5).seconds).toBe(1);
+    expect(clockState(-40).seconds).toBe(0);
+  });
+});
+
+describe("the plaque's line", () => {
   const clock = { startedAt: 1000, limitMs: 10_000 };
 
-  it("drains smoothly, and urgently for the last three seconds", () => {
+  it("drains smoothly, in the clock's colours", () => {
     expect(clockView(clock, 1000)).toEqual({
       remainingMs: 10_000,
       seconds: 10,
       fraction: 1,
-      urgent: false,
+      level: "calm",
     });
-    const late = clockView(clock, 1000 + 10_000 - URGENT_MS);
-    expect(late).toMatchObject({ seconds: 3, urgent: true });
+    expect(clockView(clock, 1000 + 5_000)).toMatchObject({ seconds: 5, level: "warning" });
+    expect(clockView(clock, 1000 + 7_000)).toMatchObject({ seconds: 3, level: "urgent" });
     expect(clockView(clock, 1000 + 7_500)).toMatchObject({ fraction: 0.25, seconds: 3 });
     expect(clockView(clock, 99_999)).toMatchObject({ remainingMs: 0, seconds: 0, fraction: 0 });
+  });
+
+  it("never reads more than the limit, even for a frame drawn before it started", () => {
+    expect(clockView(clock, 0)).toMatchObject({ remainingMs: 10_000, seconds: 10, fraction: 1 });
   });
 
   it("steps down a whole second at a time with reduced motion", () => {
@@ -462,15 +489,114 @@ describe("the countdown's view", () => {
     expect(clockView(clock, 1000 + 7_000, true).fraction).toBe(0.3);
     expect(clockView(clock, 1000 + 8_000, true).fraction).toBe(0.2);
   });
+});
 
-  it("tells screen readers once, at five seconds, never a count every second", () => {
-    const says = (at: number) => clockWarning(clockView(clock, at));
-    expect(says(1000 + 4_999)).toBe("");
-    expect(says(1000 + 5_000)).toBe("5 seconds left");
-    // The same words from then on, so the live region speaks once.
-    expect(says(1000 + 7_000)).toBe("5 seconds left");
-    expect(says(1000 + 9_999)).toBe("5 seconds left");
-    expect(clockWarning(null)).toBe("");
+describe("the big clock at the top", () => {
+  /** Endless to round one's question, its clock started at 1000. */
+  const toQuestion = (): GameState =>
+    [
+      { type: "start" },
+      { type: "started", runId: "r", round: round(1) },
+      { type: "titled" },
+      { type: "held" },
+      { type: "introDone" },
+      { type: "dealt", at: 900 },
+      { type: "spun", at: 1000 },
+    ].reduce<GameState>((s, e) => reduce(s, e as GameEvent), initialState(0, null, "endless"));
+
+  it("waits at 15 while round one is dealt, then counts down from 15", () => {
+    let s = initialState(0, null, "endless");
+    s = reduce(s, { type: "start" });
+    expect(topClock(s, 0)).toBeNull();
+    s = reduce(s, { type: "started", runId: "r", round: round(1) });
+    expect(topClock(s, 0)).toBeNull(); // the title card
+    s = reduce(reduce(reduce(s, { type: "titled" }), { type: "held" }), { type: "introDone" });
+    expect(topClock(s, 0)).toEqual({ seconds: 15, level: "calm", running: false, frozen: false });
+
+    const q = toQuestion();
+    expect(topClock(q, 1000)).toEqual({ seconds: 15, level: "calm", running: true, frozen: false });
+    expect(topClock(q, 1000 + 10_000)).toMatchObject({ seconds: 5, level: "warning" });
+    expect(topClock(q, 1000 + 12_000)).toMatchObject({ seconds: 3, level: "urgent" });
+    expect(topClock(q, 1000 + 15_000)).toMatchObject({
+      seconds: 0,
+      level: "urgent",
+      running: true,
+    });
+  });
+
+  it("freezes on the second the player answered at, through the reveal and the deal", () => {
+    let s = reduce(toQuestion(), { type: "guess", guess: "higher", at: 1000 + 11_200 });
+    const frozen = { seconds: 4, level: "warning", running: false, frozen: true };
+    expect(topClock(s, 1000 + 11_200)).toEqual(frozen);
+    // Time passing changes nothing.
+    expect(topClock(s, 1000 + 60_000)).toEqual(frozen);
+    s = reduce(s, { type: "answered", response: cont(1, round(2)), at: 13_000 });
+    s = reduce(s, { type: "settled" });
+    expect(topClock(s, 99_000)).toEqual(frozen);
+    s = reduce(s, { type: "advance" });
+    expect(s.phase).toBe("dealing");
+    expect(topClock(s, 99_000)).toEqual(frozen);
+    // The next question can be answered: it starts again from its limit.
+    s = reduce(s, { type: "dealt", at: 20_000 });
+    expect(topClock(s, 20_000)).toEqual({
+      seconds: 10,
+      level: "calm",
+      running: true,
+      frozen: false,
+    });
+  });
+
+  it("freezes on 0, urgent, at a timeout", () => {
+    const s = reduce(toQuestion(), { type: "timeout", at: 1000 + 15_000 });
+    expect(s.stopped).toEqual({ remainingMs: 0, limitMs: 15_000 });
+    expect(topClock(s, 50_000)).toEqual({
+      seconds: 0,
+      level: "urgent",
+      running: false,
+      frozen: true,
+    });
+  });
+
+  it("is gone once the run is over, and in Friendly", () => {
+    const over = reduce(
+      reduce(reduce(toQuestion(), { type: "guess", guess: "lower", at: 2000 }), {
+        type: "answered",
+        response: wrong(1),
+        at: 2100,
+      }),
+      { type: "settled" },
+    );
+    expect(topClock(reduce(over, { type: "advance" }), 3000)).toBeNull();
+    const friendly = [
+      { type: "start" },
+      { type: "started", runId: "r", round: round(1) },
+      { type: "titled" },
+      { type: "held" },
+      { type: "introDone" },
+      { type: "dealt", at: 900 },
+      { type: "spun", at: 1000 },
+    ].reduce<GameState>((s, e) => reduce(s, e as GameEvent), initialState(0, null, "friendly"));
+    expect(topClock(friendly, 1000)).toBeNull();
+  });
+
+  it("starts a new run clean, with nothing frozen from the last", () => {
+    const s = reduce(toQuestion(), { type: "timeout", at: 16_000 });
+    expect(reduce({ ...s, phase: "over" }, { type: "start" }).stopped).toBeNull();
+  });
+
+  it("tells screen readers twice — five seconds, then three — never a count", () => {
+    const q = toQuestion();
+    const says = (at: number) => clockAnnouncement(topClock(q, at));
+    expect(says(1000 + 9_999)).toBe("");
+    expect(says(1000 + 10_000)).toBe("5 seconds left");
+    expect(says(1000 + 11_999)).toBe("5 seconds left");
+    expect(says(1000 + 12_000)).toBe("3 seconds left");
+    expect(says(1000 + 14_999)).toBe("3 seconds left");
+    expect(says(1000 + 15_000)).toBe("");
+    // Frozen or waiting: nothing to say.
+    const answered = reduce(q, { type: "guess", guess: "higher", at: 1000 + 13_000 });
+    expect(clockAnnouncement(topClock(answered, 1000 + 13_000))).toBe("");
+    expect(clockAnnouncement(null)).toBe("");
   });
 });
 

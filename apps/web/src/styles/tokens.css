@@ -349,24 +349,48 @@
     0 0 0 2px var(--gold), 0 0 0 5px rgba(var(--glow-rgb), 0.28), 0 4px 14px rgba(0, 0, 0, 0.45),
     var(--glow-hover);
 
-  /* A timed mode's clock (Endless): a thin bar along the plaque's bottom edge,
-     draining as the seconds go, faint until the last three. Then the bar turns
-     red and thickens, and a tag under the plaque shows a stopwatch and the
-     seconds left, so colour never carries it alone. With reduced motion the
-     bar steps down a second at a time and the tag doesn't pulse. */
+  /* A timed mode's clock (Endless). A thin line along the plaque's bottom
+     edge drains as the seconds go: faint, orange from five seconds out, red
+     from three. With reduced motion it steps down a second at a time. */
   --clock-bar-h: 3px;
-  --clock-bar-h-urgent: 5px;
   --clock-bar: rgba(6, 18, 26, 0.34);
+  --clock-bar-warn: var(--game-clock-warn);
   --clock-bar-urgent: var(--miss);
   --clock-track: rgba(6, 18, 26, 0.1);
-  --clock-tag-bg: var(--miss);
-  --clock-tag-text: var(--chalk);
-  --fs-clock-tag: 12px;
-  --clock-tag-pad: 2px 9px 2px 7px;
-  --clock-tag-gap: 4px;
-  --clock-tag-icon: 12px;
-  --clock-tag-halo: 3px;
-  --dur-clock-pulse: 1000ms;
+
+  /* And the big clock at the top of the pitch (Clock.svelte): the whole
+     seconds left in a dark pill, centred where Friendly has its track.
+     Orange with a glow from five seconds out; from three the pill turns red,
+     grows by --game-clock-urgent-scale and shakes once a second. Dimmed once
+     answered. On a landscape phone it sits at the top left, beside the plaque. */
+  --fs-game-clock: clamp(2.5rem, 2rem + 1.5vw, 3rem);
+  --game-clock-h: calc(var(--fs-game-clock) + 10px);
+  --game-clock-pad: 0 14px;
+  --game-clock-top: 8px;
+  --game-clock-left: 50%;
+  --game-clock-shift: -50%;
+  /* What sits under the clock (the title chip, a challenge notice) starts here. */
+  --game-clock-under: calc(var(--game-clock-top) + var(--game-clock-h) + 8px);
+  --game-clock-bg: rgba(6, 18, 26, 0.74);
+  --game-clock-edge: rgba(238, 243, 241, 0.16);
+  --game-clock-text: var(--chalk);
+  --game-clock-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --game-clock-warn: #ff9f43;
+  --game-clock-warn-glow: 0 0 12px rgba(255, 159, 67, 0.7);
+  --game-clock-warn-halo: 0 0 14px rgba(255, 159, 67, 0.35);
+  --game-clock-urgent-bg: var(--miss);
+  --game-clock-urgent-edge: var(--flare);
+  --game-clock-urgent-text: var(--chalk);
+  --game-clock-urgent-halo: 0 0 18px rgba(226, 69, 60, 0.6);
+  --game-clock-urgent-scale: 1.15;
+  --game-clock-still-outline: 2px;
+  --game-clock-frozen-opacity: 0.6;
+  --game-clock-shake: 4px;
+  --game-clock-aside-y: -8px;
+  --game-clock-aside-scale: 0.85;
+  --dur-game-clock-shake: 360ms;
+  --dur-game-clock-grow: 180ms;
+  --dur-game-clock-aside: 220ms;
 
   /* Endless's title chip at the top of the pitch: the streak title the run
      holds so far, where Friendly has its progress track. */
@@ -375,7 +399,8 @@
   --chip-text: var(--gold);
   --fs-chip: 11px;
   --chip-pad: 3px 10px;
-  --chip-top: 8px;
+  /* Under the clock; on a landscape phone, at the top right beside the plaque. */
+  --chip-top: var(--game-clock-under);
   --chip-tracking: 0.1em;
 
   /* The win on the game-over panel: a trophy, "You won" in gold leaf, the
@@ -872,6 +897,7 @@
 @media (min-width: 780px) {
   :root {
     --score-badge-top: 16px;
+    --game-clock-top: 14px;
     --score-badge-pad: 9px 20px;
     --fs-score-badge: 17px;
     --title-grow: 2.6;
@@ -929,6 +955,13 @@ body:not(.game) {
     --grid-cell: 11px;
     --grid-gap: 3px;
     --track-h: 4px;
+    /* The plaque holds the top centre: the clock sits at the top left beside
+       it, as tall as the plaque, and the title chip at the top right. */
+    --fs-game-clock: 2.5rem;
+    --game-clock-h: var(--plaque-h);
+    --game-clock-top: var(--plaque-top-gap);
+    --game-clock-left: 12px;
+    --game-clock-shift: 0px;
     --fs-won: 28px;
     /* The start panel's two columns: the names small enough to leave the
        text its room, and a Start that fits the short screen. */

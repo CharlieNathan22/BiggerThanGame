@@ -210,7 +210,6 @@ export const en = {
 
   // The countdown on the plaque, in a timed mode
   "clock.label": "Time left",
-  "clock.seconds": "{seconds}",
   // Said once per question by screen readers, never a count every second
   "clock.warning": "{seconds} seconds left",
 
