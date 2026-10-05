@@ -64,7 +64,7 @@ describe("seedSql", () => {
 
   it("replaces an earlier seed and only seed rows", () => {
     expect(sql.startsWith("DELETE FROM scores WHERE run_id LIKE 'seed-%';")).toBe(true);
-    expect(rows).toHaveLength(320);
+    expect(rows).toHaveLength(320 + 60);
     expect(seedSql(today)).toBe(sql);
   });
 
@@ -73,6 +73,27 @@ describe("seedSql", () => {
     for (const day of [20260930, 20260929, 20260928, 20260915]) expect(days).toContain(day);
     expect([...days].some((d) => d < 20260901)).toBe(true);
     expect([...days].every((d) => d <= 20260930)).toBe(true);
+  });
+
+  it("gives each a thinking time and mostly a country, some none", () => {
+    const countries = rows.map((r) => /, (\d+), ('[A-Z]{2}'|NULL), 'seed-/.exec(r)?.[2]);
+    expect(countries.every((c) => c !== undefined)).toBe(true);
+    expect(countries.filter((c) => c === "NULL").length).toBeGreaterThan(10);
+    expect(new Set(countries.filter((c) => c !== "NULL")).size).toBeGreaterThan(10);
+  });
+
+  it("puts sixty devices on top today, tied at ranks 10–11 and 50–51", () => {
+    const top = rows
+      .filter((r) => r.includes("-top-"))
+      .map((r) => Number(/'endless', 20260930, '[^']*', '[^']*', (\d+),/.exec(r)?.[1]));
+    expect(top).toHaveLength(60);
+    expect(top[9]).toBe(top[10]);
+    expect(top[49]).toBe(top[50]);
+    expect(new Set(top).size).toBe(58);
+    const others = rows
+      .filter((r) => !r.includes("-top-"))
+      .map((r) => Number(/'endless', \d{8}, '[^']*', '[^']*', (\d+),/.exec(r)?.[1]));
+    expect(Math.max(...others)).toBeLessThan(Math.min(...top));
   });
 
   it("includes shadowed scores and retired names", () => {

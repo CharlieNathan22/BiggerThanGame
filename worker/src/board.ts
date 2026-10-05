@@ -16,7 +16,9 @@
  * retired since the snapshot shows as retired.
  *
  * Nothing on the board is hidden or personal: rank, nickname (null once
- * retired), streak and an entry id. No time, no device hash, no shadow flag.
+ * retired), streak, an entry id, whether its streak is tied and, only then,
+ * its thinking time, and a flag's country code (never anything finer). No
+ * device hash, no shadow flag.
  */
 
 import { periodOf, previousPeriod } from "@bt/core";
@@ -53,7 +55,12 @@ export async function boardData(
   let winner: BoardResponse["previous"]["winner"] = null;
   if (top !== undefined) {
     const retired = top.nickname === null || (await isNameFlagged(db, top.id));
-    winner = { nickname: retired ? null : top.nickname, streak: top.streak };
+    // A retired name keeps its flag. A snapshot from before flags has none.
+    winner = {
+      nickname: retired ? null : top.nickname,
+      streak: top.streak,
+      country: top.country ?? null,
+    };
   }
   return {
     mode: "endless",

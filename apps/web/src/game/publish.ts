@@ -25,7 +25,7 @@ import { LOCALE, t } from "../i18n";
 import type { MessageKey } from "../i18n";
 import type { Fetch } from "./api";
 import type { StorageAccess } from "./best";
-import { saveNickname } from "./device";
+import { saveNickname, saveShowCountry } from "./device";
 import type { Standing } from "./device";
 
 export const SUBMIT_ENDPOINT = "/api/run/submit";
@@ -48,10 +48,17 @@ export function startingNickname(
 
 /**
  * After a publish attempt: remembers the name only if the run was published,
- * as the server stored it. A refused name is never remembered.
+ * as the server stored it, and the "Show my country flag" choice it went with.
+ * A refused name is never remembered.
  */
-export function rememberPublished(storage: StorageAccess, outcome: PublishOutcome): void {
-  if (outcome.kind === "published") saveNickname(storage, outcome.response.nickname);
+export function rememberPublished(
+  storage: StorageAccess,
+  outcome: PublishOutcome,
+  showCountry?: boolean,
+): void {
+  if (outcome.kind !== "published") return;
+  saveNickname(storage, outcome.response.nickname);
+  if (showCountry !== undefined) saveShowCountry(storage, showCountry);
 }
 
 /**

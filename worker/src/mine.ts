@@ -8,7 +8,9 @@
  * published to a current period. Each answer is the owner's view
  * (scores.ts `ownStanding`): the device's best entry, shadowed runs included,
  * ranked among everyone else's public bests — a shadowed player sees an
- * ordinary rank. Per player, so never cached.
+ * ordinary rank. Like a board entry, it says whether its streak is tied and,
+ * only then, its thinking time, and carries its flag's country code. Per
+ * player, so never cached.
  *
  * **Privacy.** The device id is hashed exactly as at submit (submit.ts
  * `hashDevice`) and used for the one query; it is never stored or logged.
@@ -77,6 +79,9 @@ export async function handleMine(body: unknown, ctx: MineContext): Promise<MineR
             total: standing.total,
             streak: standing.streak,
             nickname: standing.nickname,
+            tied: standing.tied,
+            thinkMs: standing.thinkMs,
+            country: standing.country,
           };
     }),
   );

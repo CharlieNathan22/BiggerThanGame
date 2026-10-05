@@ -288,7 +288,7 @@ describe("the checks themselves", () => {
 
 // ---------------------------------------------------------------- Endless
 
-const ENDLESS_START_KEYS = ["challenge", "round", "runId", "token"];
+const ENDLESS_START_KEYS = ["challenge", "country", "round", "runId", "token"];
 const ENDLESS_CONTINUE_KEYS = ["next", "reveal", "token"];
 const ENDLESS_END_KEYS = ["challenge", "end", "result", "reveal"];
 const TOKEN_KEYS = [

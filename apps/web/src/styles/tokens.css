@@ -648,6 +648,16 @@
   --board-head-h: 34px;
   --board-row-h: 42px;
   --board-pin-h: 56px;
+  /* A country's round flag before a name (Flag.svelte), sized to the text. */
+  --flag-size: 1.1em;
+  /* Every flag glows gold, always: a fine gold ring and a soft halo. */
+  --flag-glow: 0 0 0 1px rgba(var(--glow-rgb), 0.55), 0 0 7px rgba(var(--glow-rgb), 0.75);
+  --flag-align: -0.18em;
+  --flag-gap: 6px;
+  /* The publish dialog's "Show my country flag" box. */
+  --check-size: 20px;
+  /* A tied streak's thinking time beside it ("18 · 1:42.3"); under it on a phone. */
+  --board-streak-w-wide: 7.6em;
   /* The pinned row stands apart from the table under it. */
   --board-pin-gap: 10px;
   /* Room for the rules between the rows, which add a pixel or so to a table. */
@@ -914,6 +924,7 @@
   :root {
     --board-pad: 22px;
     --board-cell-pad: 0 10px;
+    --board-streak-w: var(--board-streak-w-wide);
     --board-page-gap: 8px;
     --title-grow: 2.1;
     --fs-brand: 16px;

@@ -224,6 +224,12 @@ export interface RunStartRequest {
  */
 export interface RunStartResponse extends StartResponse {
   readonly token: string;
+  /**
+   * The flag's country code for this connection (Cloudflare's), or null: what
+   * the publish dialog shows will appear if the player keeps "Show my country
+   * flag" ticked. Only the code, never anything finer.
+   */
+  readonly country: string | null;
 }
 
 /**
@@ -274,6 +280,12 @@ export interface SubmitRequest {
    */
   readonly deviceId: string;
   readonly turnstileToken: string;
+  /**
+   * "Show my country flag": when true, the server keeps the flag's country
+   * code for its connection (Cloudflare's `request.cf.country`, if there is a
+   * flag for it); when false, none.
+   */
+  readonly showCountry: boolean;
 }
 
 /** Where a published run stands in one of its periods, as its owner sees it. */
@@ -334,6 +346,12 @@ export interface MineEntry {
   readonly streak: number;
   /** Null for a name that has been retired. */
   readonly nickname: string | null;
+  /** As on the board: another public best in the period has the same streak. */
+  readonly tied: boolean;
+  /** Thinking time, ms; null unless `tied`. */
+  readonly thinkMs: number | null;
+  /** The flag's country code, or null. */
+  readonly country: string | null;
 }
 
 export interface MineResponse {
@@ -351,6 +369,15 @@ export interface BoardEntry {
   /** Null for a name that has been retired: shown as "Retired name", the score kept. */
   readonly nickname: string | null;
   readonly streak: number;
+  /**
+   * Another entry on the period's public board, anywhere in it, has the same
+   * streak: the page shows the thinking time that orders them.
+   */
+  readonly tied: boolean;
+  /** Thinking time, ms, the tiebreak on equal streaks; null unless `tied`. */
+  readonly thinkMs: number | null;
+  /** The flag's ISO 3166-1 alpha-2 code, or null: no flag. Nothing finer, ever. */
+  readonly country: string | null;
 }
 
 /** `GET /api/board/endless/:period` — the current period's top `BOARD_SIZE` (50). */
@@ -365,7 +392,12 @@ export interface BoardResponse {
   /** The period before: yesterday, last week, last month. */
   readonly previous: {
     readonly key: string;
-    readonly winner: { readonly nickname: string | null; readonly streak: number } | null;
+    readonly winner: {
+      readonly nickname: string | null;
+      readonly streak: number;
+      /** The winner's flag's country code, or null. */
+      readonly country: string | null;
+    } | null;
   };
 }
 

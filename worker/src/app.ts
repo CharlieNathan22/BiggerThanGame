@@ -574,6 +574,7 @@ export function createApp(deps: AppDeps): {
         secret,
         clock,
         uuid,
+        country: countryOf(request),
         verifyTurnstile: (token) => verifyTurnstile(token, turnstileSecret, fetchFn),
         runs: (key) => runStub(runs, key),
         db,

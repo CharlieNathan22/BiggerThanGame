@@ -3,6 +3,11 @@ import Page from "../layouts/Page.astro";
 import { loadCredits } from "../lib/credits";
 
 const credits = loadCredits();
+
+// The vendored flags (apps/web/public/flags): where they came from, at which commit.
+const FLAGS_REPO = "https://github.com/HatScripts/circle-flags";
+const FLAGS_COMMIT = `${FLAGS_REPO}/tree/379588b5da95482d6bbf10bd45644a35b0609ea6`;
+const FLAGS_COMMIT_SHORT = "379588b5";
 ---
 
 <Page
@@ -51,6 +56,18 @@ const credits = loadCredits();
       ))}
     </ul>
   )}
+
+  <h2>Flags</h2>
+  <!-- The leak scan skips attribution: a commit id is full of digits. -->
+  <p data-scan="attribution">
+    The country flags on the leaderboards are <a href={FLAGS_REPO}>circle-flags</a> by HatScripts,
+    under the{" "}
+    <a href="/flags/LICENSE.md" rel="license">
+      MIT licence
+    </a>
+    , copied from commit <a href={FLAGS_COMMIT}>{FLAGS_COMMIT_SHORT}</a>. They're served from this
+    site.
+  </p>
 </Page>
 
 <style>

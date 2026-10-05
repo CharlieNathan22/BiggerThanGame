@@ -55,6 +55,12 @@ export interface BoardRow {
   /** Null when the name has been retired. */
   readonly nickname: string | null;
   readonly streak: number;
+  /** Another entry in the period has the same streak: show the time that orders them. */
+  readonly tied: boolean;
+  /** Thinking time, ms; null unless tied. */
+  readonly thinkMs: number | null;
+  /** The flag's country code, or null for no flag. */
+  readonly country: string | null;
   /** The player's own entry. */
   readonly mine: boolean;
   /** A stable key for the list. */
@@ -70,6 +76,10 @@ export interface OwnPosition {
   readonly streak: number;
   /** Null when the name has been retired. */
   readonly nickname: string | null;
+  /** As on a row; the stored publish (`live` false) knows neither, so shows neither. */
+  readonly tied: boolean;
+  readonly thinkMs: number | null;
+  readonly country: string | null;
   /** Live from the server, or the rank the player's own publish came back with. */
   readonly live: boolean;
 }
@@ -89,6 +99,9 @@ export function boardView(board: BoardResponse, own: OwnPosition | null): BoardV
     rank: e.rank,
     nickname: e.nickname,
     streak: e.streak,
+    tied: e.tied === true,
+    thinkMs: e.tied === true && typeof e.thinkMs === "number" ? e.thinkMs : null,
+    country: typeof e.country === "string" ? e.country : null,
     mine: own !== null && e.id === own.entryId,
     key: e.id,
   }));
@@ -118,7 +131,10 @@ function isMineEntry(value: unknown): value is MineEntry {
     typeof e.rank === "number" &&
     typeof e.total === "number" &&
     typeof e.streak === "number" &&
-    (typeof e.nickname === "string" || e.nickname === null)
+    (typeof e.nickname === "string" || e.nickname === null) &&
+    typeof e.tied === "boolean" &&
+    (typeof e.thinkMs === "number" || e.thinkMs === null) &&
+    (typeof e.country === "string" || e.country === null)
   );
 }
 
@@ -189,6 +205,9 @@ export function ownPosition(
           total: e.total,
           streak: e.streak,
           nickname: e.nickname,
+          tied: e.tied,
+          thinkMs: e.tied ? e.thinkMs : null,
+          country: e.country,
           live: true,
         };
   }
@@ -202,6 +221,9 @@ export function ownPosition(
         total: s.total,
         streak: s.streak,
         nickname: s.nickname,
+        tied: false,
+        thinkMs: null,
+        country: null,
         live: false,
       };
 }
@@ -268,6 +290,9 @@ export function pinnedRow(view: BoardView, page: number): Pinned | null {
     total: own.total,
     streak: own.streak,
     nickname: own.nickname,
+    tied: own.tied,
+    thinkMs: own.thinkMs,
+    country: own.country,
     live: own.live,
     page: onPage,
   };
@@ -327,6 +352,14 @@ export function countdownText(resetsAt: number, now: number): string {
 export interface Segment {
   readonly text: string;
   readonly gold: boolean;
+  /** The winner's name, which their flag goes before. */
+  readonly name?: true;
+}
+
+/** The winner line: its parts, and the winner's flag's country code. */
+export interface WinnerLine {
+  readonly parts: readonly Segment[];
+  readonly country: string | null;
 }
 
 /**
@@ -338,11 +371,11 @@ export interface Segment {
 export function winnerLine(
   previous: BoardResponse["previous"],
   period: BoardPeriod,
-): Segment[] | null {
+): WinnerLine | null {
   const { winner } = previous;
   if (winner === null) return null;
   const values: Record<string, Segment> = {
-    name: { text: winner.nickname ?? t("leaderboard.retired"), gold: true },
+    name: { text: winner.nickname ?? t("leaderboard.retired"), gold: true, name: true },
     streak: { text: count(winner.streak), gold: true },
     when: { text: t(`period.${period}.previous`), gold: false },
   };
@@ -360,7 +393,7 @@ export function winnerLine(
     const value = name === undefined ? undefined : values[name];
     push(value ?? { text: piece, gold: false });
   }
-  return parts;
+  return { parts, country: typeof winner.country === "string" ? winner.country : null };
 }
 
 /** "1 player", "3,208 players". */

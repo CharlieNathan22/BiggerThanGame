@@ -95,6 +95,7 @@ export {
 export type { QuestionLimit } from "./clock.js";
 
 export { CHALLENGES } from "./modes.js";
+export { FLAG_COUNTRIES, flagCountry } from "./countries.js";
 
 export {
   BOARD_PERIODS,

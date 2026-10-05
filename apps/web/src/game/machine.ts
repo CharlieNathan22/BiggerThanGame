@@ -565,9 +565,15 @@ export function dealDelay(round: RoundPayload, timings: Timings): number {
   return shouldSpin(round) ? timings.beat : timings.hold;
 }
 
-/** How long the wheel runs. With reduced motion it lands at once. */
-export function spinDelay(timings: Timings, reducedMotion: boolean): number {
-  return reducedMotion ? 0 : timings.spin + timings.land;
+/**
+ * How long the wheel runs. The same with reduced motion: the plaque shows the
+ * new stat at once and holds still for the spin's time, so a question becomes
+ * answerable at the same moment for everyone — the moment the server's clock
+ * and the thinking-time tiebreak assume (core `answerAllowance`). Only the
+ * motion changes, never the timing.
+ */
+export function spinDelay(timings: Timings): number {
+  return timings.spin + timings.land;
 }
 
 /**
@@ -592,13 +598,14 @@ export function settleWindow(
 
 /**
  * When the verdict colour shows: the same distance after the count settles as
- * the nominal timings put it (`verdict - count`). With reduced motion there's
- * no count, so it's the nominal time after the tap, or the arrival if later.
+ * the nominal timings put it (`verdict - count`). The same with reduced
+ * motion, where the value shows on arrival instead of counting up: the
+ * verdict still waits for when the count would have settled, so the next
+ * question comes at the same moment for everyone.
  */
-export function verdictAt(count: CountClock, timings: Timings, reducedMotion: boolean): number {
-  const window = settleWindow(count, timings, reducedMotion);
+export function verdictAt(count: CountClock, timings: Timings): number {
+  const window = settleWindow(count, timings, false);
   if (window === null) throw new Error("verdictAt: the answer hasn't arrived");
-  if (reducedMotion) return Math.max(count.tappedAt + timings.verdict, window.end);
   return window.end + Math.max(0, timings.verdict - timings.count);
 }
 

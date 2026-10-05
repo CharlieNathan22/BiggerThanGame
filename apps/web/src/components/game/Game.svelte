@@ -24,6 +24,7 @@
     deviceId,
     publishedKey,
     readNickname,
+    readShowCountry,
     readStandings,
     recordRun,
     runsKey,
@@ -166,6 +167,8 @@
   let endlessApi: EndlessApi | null = null;
   /** The token that publishes the run just ended; null when there's nothing to publish. */
   let publishable = $state<string | null>(null);
+  /** The flag the publish dialog offers: the code the server saw at the run's start. */
+  let publishCountry = $state<string | null>(null);
   let publishOpen = $state(false);
   /**
    * In Publish's place: after publishing, "412th of 3,208 today"; for a run
@@ -328,6 +331,7 @@
               )
             : null;
         publishable = offer?.kind === "publish" ? endlessApi.publishToken() : null;
+        publishCountry = endlessApi.country();
         boardLine = offer?.kind === "beat" ? { text: beatText(offer.best), beat: true } : null;
       },
     });
@@ -462,15 +466,20 @@
   }
 
   /** Publishes the run; a name it went through under is the next dialog's starting name. */
-  async function publish(nickname: string, turnstileToken: string): Promise<PublishOutcome> {
+  async function publish(
+    nickname: string,
+    turnstileToken: string,
+    showCountry: boolean,
+  ): Promise<PublishOutcome> {
     if (publishable === null) return { kind: "unpublishable" };
     const outcome = await publishRun((input, init) => fetch(input, init), {
       token: publishable,
       nickname,
       deviceId: deviceId(browserStorage, () => crypto.randomUUID()),
       turnstileToken,
+      showCountry,
     });
-    rememberPublished(browserStorage, outcome);
+    rememberPublished(browserStorage, outcome, showCountry);
     return outcome;
   }
 
@@ -1047,6 +1056,8 @@
     )}
     siteKey={TURNSTILE_SITE_KEY}
     {loadTurnstile}
+    country={publishCountry}
+    showCountry={readShowCountry(browserStorage)}
     {publish}
     boardHref={LEADERBOARD_PATH}
     onpublished={(response) => {

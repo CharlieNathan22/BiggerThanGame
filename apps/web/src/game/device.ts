@@ -17,6 +17,9 @@
  * - `bt:nickname` — the name last published from this device, which the
  *   publish dialog starts with next time. Saved only once a publish has gone
  *   through, so a refused or abandoned name is never kept.
+ * - `bt:showCountry` — whether the player last published with "Show my
+ *   country flag" ticked (`1`) or not (`0`); ticked when there's nothing kept.
+ *   Saved, like the nickname, once a publish has gone through.
  *
  * Storage can be missing, blocked, full or throw (best.ts has the list), so
  * every read and write is wrapped; without it the game carries on and these
@@ -30,6 +33,8 @@ import type { BestDeck, StorageAccess } from "./best";
 export const DEVICE_KEY = "bt:device";
 
 export const NICKNAME_KEY = "bt:nickname";
+
+export const SHOW_COUNTRY_KEY = "bt:showCountry";
 
 /** How many runs the local board keeps. */
 export const LOCAL_RUNS = 10;
@@ -244,5 +249,23 @@ export function saveNickname(storage: StorageAccess, nickname: string): boolean 
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Whether to show the country flag when publishing: the last choice, ticked by default. */
+export function readShowCountry(storage: StorageAccess): boolean {
+  try {
+    return storage()?.getItem(SHOW_COUNTRY_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+/** Keeps the flag choice a run was just published with. */
+export function saveShowCountry(storage: StorageAccess, show: boolean): void {
+  try {
+    storage()?.setItem(SHOW_COUNTRY_KEY, show ? "1" : "0");
+  } catch {
+    // Ticked again next time.
   }
 }

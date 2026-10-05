@@ -695,7 +695,7 @@ goes. The client counts down only from when the question is answerable and sends
 zero, so an honest player never meets the server's deadline except on a connection slower than the
 grace. Skipping the title card gains a player nothing: their own clock still runs out first.
 
-**`POST /api/run/submit`** (Endless) → `{ token, nickname, deviceId, turnstileToken }`
+**`POST /api/run/submit`** (Endless) → `{ token, nickname, deviceId, turnstileToken, showCountry }`
 (`worker/src/submit.ts`). Publishing is **opt-in**: the page sends nothing here unless the player
 presses Publish.
 
@@ -816,13 +816,19 @@ through the Cache API (§11), a minute stale at most.
 ```jsonc
 ← { "mode": "endless", "period": "day", "key": "2026-09-29", "resetsAt": 1790726400000,
     "total": 3208,
-    "entries": [ { "id": "<uuid>", "rank": 1, "nickname": "SwiftVolley42", "streak": 41 },
-                 { "id": "<uuid>", "rank": 2, "nickname": null, "streak": 39 }, … ],   // top 50
-    "previous": { "key": "2026-09-28", "winner": { "nickname": "…", "streak": 44 } | null } }
+    "entries": [ { "id": "<uuid>", "rank": 1, "nickname": "SwiftVolley42", "streak": 41,
+                   "tied": false, "thinkMs": null, "country": "GB" },
+                 { "id": "<uuid>", "rank": 2, "nickname": null, "streak": 39,
+                   "tied": true, "thinkMs": 102345, "country": null }, … ],   // top 50
+    "previous": { "key": "2026-09-28",
+                  "winner": { "nickname": "…", "streak": 44, "country": "BR" } | null } }
 ```
 
-A retired name is `null` ("Retired name" on the page): the name never leaves the database. No
-answer time, device hash or shadow flag is in it. `previous` is the period before's winner, from
+A retired name is `null` ("Retired name" on the page): the name never leaves the database; it
+keeps its flag. `tied` is true when another device's public best in the period — anywhere in it,
+not just the 50 returned — has the same streak; only then is `thinkMs`, the tiebreak, given.
+`country` is a flag's two-letter code or `null`, never anything finer. No device hash or shadow
+flag is in it. `previous` is the period before's winner, from
 its midnight snapshot (§13), or from the scores until the snapshot exists; a name retired since the
 snapshot shows as retired. `cache-control: public, max-age=60`.
 
@@ -834,7 +840,8 @@ then `BOARD_LOOKUPS` per IP.
 
 ```jsonc
 ← { "periods": { "day":   { "key": "2026-10-05", "entryId": "<uuid>", "rank": 151, "total": 193,
-                            "streak": 4, "nickname": "LowScore" },
+                            "streak": 4, "nickname": "LowScore", "tied": true,
+                            "thinkMs": 61234, "country": "GB" },
                  "week":  { … } | null, "month": { … } | null } }
 ← 400 { "error": "bad_request" }   // anything but { deviceId: <v4 uuid> }
 ← 429 { "error": "rate_limited" }  // with retry-after
@@ -843,8 +850,9 @@ then `BOARD_LOOKUPS` per IP.
 
 Each entry is the owner's view (`ownStanding`, §10), as at submit: the device's best in the period,
 shadowed runs included, ranked among everyone else's public bests, so a shadowed player sees an
-ordinary rank. `null` for a period the device has nothing in; a retired name is `null`. The device
-id is hashed exactly as at submit, used for the query and never stored or logged.
+ordinary rank. `null` for a period the device has nothing in; a retired name is `null`. `tied`,
+`thinkMs` and `country` follow the board's rules. The device id is hashed exactly as at submit,
+used for the query and never stored or logged.
 
 ### Disconnection
 
@@ -1030,7 +1038,8 @@ CREATE TABLE scores (
   nickname            TEXT NOT NULL,
   nickname_normalised TEXT NOT NULL,                  -- the moderation skeleton
   streak              INTEGER NOT NULL CHECK (streak > 0),
-  elapsed_ms          INTEGER NOT NULL,               -- server-measured; tiebreaker only
+  think_ms            INTEGER NOT NULL,               -- thinking time; the tiebreak
+  country             TEXT,                           -- a flag's 2-letter code, or NULL
   device_hash         TEXT NOT NULL,
   run_id              TEXT NOT NULL UNIQUE,           -- the run key: a run publishes once
   created_at          INTEGER NOT NULL,
@@ -1038,7 +1047,7 @@ CREATE TABLE scores (
   shadow              INTEGER NOT NULL DEFAULT 0,     -- hidden from all but its owner
   shadow_reason       TEXT                            -- the heuristics that fired
 );
-CREATE INDEX idx_scores_board  ON scores (mode, day_key, streak DESC, elapsed_ms, created_at);
+CREATE INDEX idx_scores_board  ON scores (mode, day_key, streak DESC, think_ms, created_at);
 CREATE INDEX idx_scores_device ON scores (mode, device_hash, day_key);
 CREATE INDEX idx_scores_day    ON scores (day_key);
 CREATE UNIQUE INDEX idx_ranked_name ON scores (game_no, nickname_normalised) WHERE mode = 'ranked';
@@ -1060,9 +1069,25 @@ comes. `error_reports` is gone: `/api/feedback` (§8) emails reports and stores 
   range, `from` to `to` inclusive (`periods.ts` in @bt/core), since day keys sort as dates do
   across month and year ends. Nothing is stored per week or month.
 - **One entry per device per period.** A board is each device's single best run in the range —
-  highest `streak`, then lower `elapsed_ms`, then earlier `created_at` (then the id) — picked with
+  highest `streak`, then lower `think_ms`, then earlier `created_at` (then the id) — picked with
   `ROW_NUMBER() OVER (PARTITION BY device_hash …)` over the unshadowed rows, and ranked in the same
   order. The total is the number of distinct devices. All of it is `worker/src/scores.ts`.
+- **Thinking time** (`think_ms`, `thinkMs` in `shadow.ts`, computed at submit): for each answer
+  from round 2, the server-measured time less `answerAllowance(round, statChanged)` from @bt/core
+  — the verdict, the gap to the next deal, then the beat and spin on a stat change or the short
+  hold — with `statChanged` from the run's own sequence (a pure function of its seed). Round 1 is
+  left out (its title card can be skipped, its photos load in their own time); a timeout's time
+  counts. A reduced-motion client waits exactly the same (it holds still for the spin's time and
+  the verdict keeps its moment; a controller test holds the wait to `answerAllowance`), so the
+  clock and the tiebreak are the same for everyone. The shadow heuristics keep their own fixed
+  floor, which errs long on purpose.
+- **Ties.** An entry is `tied` when another device's public best in the range has the same streak,
+  counted with `COUNT(*) OVER (PARTITION BY streak)` over all the bests before the limit, so a tie
+  with the 51st counts. The owner's view counts other devices' public bests the same way.
+- **Country.** At submit, Cloudflare's `request.cf.country`, kept only if `showCountry` is true and
+  @bt/core `flagCountry` has a flag for it (`XX` unknown and `T1` Tor never). Nothing finer about
+  location is read, kept or logged. The run start response hands the same code to the page, so
+  the publish dialog can show the flag before the player chooses.
 - **A player's own standing** (in the submit response) counts their own rows even if shadowed:
   their best in the range, ranked among every _other_ device's public best, out of those plus
   themselves. So a shadowed player sees an ordinary rank, and nobody else sees them.
@@ -1344,8 +1369,7 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   board query and the snapshots share) in an accessible table (caption, `th scope`), "Retired
   name" for a retired one, the player's own row highlighted and marked "You", the total, "Resets in
   5 hours 12 minutes" and the previous period's winner in one line ("HardyOffside889 got a 23
-  streak yesterday", "last week", "last month"; nothing when there was none); the framing line "Personal bests — everyone
-  gets a different run, so luck plays a part"; links to play; and "On this device", the 10 best
+  streak yesterday", "last week", "last month"; nothing when there was none); the framing line "Every run is different. Longest streak wins."; links to play; and "On this device", the 10 best
   runs. The 50 are shown **ten to a page**, client-side, with no further requests: Previous, the
   page numbers and Next under the table (secondary buttons, disabled at the ends), "1–10 of 50",
   and "Page 2 of 5" said politely as the page changes; focus stays on the control pressed. A new
@@ -1544,7 +1568,9 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   `color-mix` isn't supported). A sheen (`--plaque-sheen`, `--dur-sheen`) sweeps across when the
   wheel lands and as the title card hands over "Question 1 of 20". The final question adds a gold
   ring outside the rim (`--shadow-plaque-final`). With reduced motion the label just changes: no drum and no sheen; the gloss, rim and
-  glow stay.
+  glow stay. The timing doesn't change: the plaque holds still for the spin's time, and the
+  verdict comes when the count-up would have settled, so a question becomes answerable at the
+  same moment with or without motion (`spinDelay`, `verdictAt` in `game/machine.ts`).
 - **Photos** are a background layer in each half (`Photo.svelte`): `object-fit: cover`, positioned
   by the payload's `focus` through `--focus`, else `--photo-focus` (`50% 25%`); lightly muted and
   dimmed, drawn at partial opacity over the half's colour, which tints it teal at rest and green or

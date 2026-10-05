@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ANSWER_TIMINGS } from "@bt/core";
+import { ANSWER_TIMINGS, answerAllowance } from "@bt/core";
 import type { AnswerRecord } from "../run-ledger.js";
 import {
   FAST_COUNT,
@@ -8,6 +8,7 @@ import {
   KNIFE_MIN_ROUNDS,
   THINK_FLOOR_MS,
   shadowReasons,
+  thinkMs,
 } from "../shadow.js";
 import { createRng } from "@bt/core";
 
@@ -35,6 +36,48 @@ describe("the think-time floor", () => {
   it("is the verdict, the gap to the next pair and the short hold", () => {
     expect(THINK_FLOOR_MS).toBe(ANSWER_TIMINGS.verdict + ANSWER_TIMINGS.next + ANSWER_TIMINGS.hold);
     expect(THINK_FLOOR_MS).toBe(4280);
+  });
+});
+
+describe("thinking time, the boards' tiebreak", () => {
+  const t = ANSWER_TIMINGS;
+  const held = t.verdict + t.next + t.hold;
+  const spun = t.verdict + t.next + t.beat + t.spin + t.land;
+  /** Answers with these measured times, round 1 first. */
+  const answers = (ms: readonly number[], over: Partial<AnswerRecord> = {}): AnswerRecord[] =>
+    ms.map((m, i) => ({
+      round: i + 1,
+      nonce: `n${i + 1}`,
+      guess: "higher",
+      issuedAt: 0,
+      receivedAt: m,
+      ms: m,
+      correct: true,
+      ...over,
+    }));
+
+  it("takes each round's own animation off its answer, from round two", () => {
+    expect(answerAllowance(2, false)).toBe(held);
+    expect(answerAllowance(2, true)).toBe(spun);
+    // Round 1 (left out), then a held stat (+1.2 s), a change (+0.8 s), a held one (+2 s).
+    const ms = [14_000, held + 1200, spun + 800, held + 2000];
+    expect(thinkMs(answers(ms), (round) => round === 3)).toBe(1200 + 800 + 2000);
+  });
+
+  it("doesn't count a stat change's spin against the player", () => {
+    // Two players thinking 1.5 s a question: one run's stat changed every round, the other's never.
+    const changing = answers([9000, spun + 1500, spun + 1500, spun + 1500]);
+    const holding = answers([9000, held + 1500, held + 1500, held + 1500]);
+    expect(thinkMs(changing, () => true)).toBe(4500);
+    expect(thinkMs(holding, () => false)).toBe(4500);
+    // The fixed floor the heuristics use would have put the changing run 5.4 s behind.
+    expect(thinkMs(changing, () => false) - thinkMs(holding, () => false)).toBe(3 * (spun - held));
+  });
+
+  it("counts a timeout's time, and never an answer below zero", () => {
+    expect(thinkMs(answers([9000, held + 10_000], { guess: "timeout" }), () => false)).toBe(10_000);
+    expect(thinkMs(answers([9000, held - 500, held + 300]), () => false)).toBe(300);
+    expect(thinkMs(answers([9000]), () => false)).toBe(0);
   });
 });
 

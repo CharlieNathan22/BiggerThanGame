@@ -3,7 +3,7 @@
 // month's personal bests, and this device's own best runs. A static page; the
 // island fetches the boards (GET /api/board/endless/:period), which are
 // served from a cache up to a minute old. Framed plainly as personal bests:
-// every run is different, so luck plays a part. No player's figure anywhere.
+// every run is different, and the longest streak wins. No player's figure anywhere.
 import Page from "../../../../layouts/Page.astro";
 import Breadcrumb from "../../../../components/Breadcrumb.astro";
 import Leaderboard from "../../../../components/Leaderboard.svelte";

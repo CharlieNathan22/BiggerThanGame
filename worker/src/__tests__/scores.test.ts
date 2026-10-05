@@ -27,7 +27,8 @@ function score(over: Partial<ScoreRow> & { device: string }): ScoreRow {
     nickname: `Player${n}`,
     nicknameNormalised: `player`,
     streak: 10,
-    elapsedMs: 60_000,
+    thinkMs: 60_000,
+    country: null,
     deviceHash: device,
     runKey: `20260929-run-${n}`,
     createdAt: 1_000_000 + n,
@@ -62,13 +63,13 @@ describe("the public board", () => {
     ]);
   });
 
-  it("breaks ties on the lower time, then the earlier publish", async () => {
+  it("breaks ties on the lower thinking time, then the earlier publish", async () => {
     const db = sqliteD1();
     await seed(db, [
-      score({ device: "slow", streak: 15, elapsedMs: 90_000, createdAt: 1 }),
-      score({ device: "late", streak: 15, elapsedMs: 50_000, createdAt: 3 }),
-      score({ device: "early", streak: 15, elapsedMs: 50_000, createdAt: 2 }),
-      score({ device: "more", streak: 16, elapsedMs: 999_000, createdAt: 9 }),
+      score({ device: "slow", streak: 15, thinkMs: 90_000, createdAt: 1 }),
+      score({ device: "late", streak: 15, thinkMs: 50_000, createdAt: 3 }),
+      score({ device: "early", streak: 15, thinkMs: 50_000, createdAt: 2 }),
+      score({ device: "more", streak: 16, thinkMs: 999_000, createdAt: 9 }),
     ]);
     const board = await publicBoard(db, "endless", DAY);
     const byId = await db.rows<{ id: string; device_hash: string }>(
@@ -81,8 +82,8 @@ describe("the public board", () => {
   it("takes a device's best by the same order when its streaks tie", async () => {
     const db = sqliteD1();
     await seed(db, [
-      score({ device: "a", streak: 9, elapsedMs: 80_000, nickname: "Slower" }),
-      score({ device: "a", streak: 9, elapsedMs: 40_000, nickname: "Faster" }),
+      score({ device: "a", streak: 9, thinkMs: 80_000, nickname: "Slower" }),
+      score({ device: "a", streak: 9, thinkMs: 40_000, nickname: "Faster" }),
     ]);
     const board = await publicBoard(db, "endless", DAY);
     expect(board.entries.map((e) => e.nickname)).toEqual(["Faster"]);
@@ -116,7 +117,15 @@ describe("the public board", () => {
     db.exec("UPDATE scores SET name_flagged = 1");
     const board = await publicBoard(db, "endless", DAY);
     expect(board.entries).toEqual([
-      { id: expect.any(String), rank: 1, nickname: null, streak: 11 },
+      {
+        id: expect.any(String),
+        rank: 1,
+        nickname: null,
+        streak: 11,
+        tied: false,
+        thinkMs: null,
+        country: null,
+      },
     ]);
     expect(JSON.stringify(board)).not.toContain("Rude");
   });
@@ -140,10 +149,122 @@ describe("the public board", () => {
     await seed(db, [score({ device: "a" })]);
     db.exec(
       "INSERT INTO scores (id, mode, day_key, game_no, nickname, nickname_normalised, streak, " +
-        "elapsed_ms, device_hash, run_id, created_at) VALUES " +
+        "think_ms, device_hash, run_id, created_at) VALUES " +
         "('r', 'ranked', 20260929, 1, 'R', 'r', 50, 1, 'b', 'ranked-run', 1)",
     );
     expect((await publicBoard(db, "endless", DAY)).total).toBe(1);
+  });
+});
+
+describe("tied streaks", () => {
+  /** 60 devices: streaks from 70 down, with ties at ranks 10–11 (a page boundary) and 50–51. */
+  async function board60(db: TestD1): Promise<void> {
+    const streaks = Array.from({ length: 60 }, (_, i) => 70 - i);
+    streaks[10] = streaks[9]!; // ranks 10 and 11: split across pages 1 and 2
+    streaks[50] = streaks[49]!; // ranks 50 and 51: one in the top 50, one just outside
+    await seed(
+      db,
+      streaks.map((streak, i) => score({ device: `d${i}`, streak, thinkMs: 10_000 + i * 100 })),
+    );
+  }
+
+  it("marks a tie across the whole period, across a page and past the top 50", async () => {
+    const db = sqliteD1();
+    await board60(db);
+    const { entries } = await publicBoard(db, "endless", DAY);
+    expect(entries).toHaveLength(50);
+    const tied = entries.filter((e) => e.tied).map((e) => e.rank);
+    expect(tied).toEqual([10, 11, 50]);
+    // Rank 50's partner is 51st, never returned: still a tie.
+    expect(entries[49]).toMatchObject({ rank: 50, tied: true, thinkMs: 14_900 });
+  });
+
+  it("gives the thinking time only on tied entries, and orders them by it", async () => {
+    const db = sqliteD1();
+    await board60(db);
+    const { entries } = await publicBoard(db, "endless", DAY);
+    expect(entries[9]).toMatchObject({ rank: 10, tied: true, thinkMs: 10_900 });
+    expect(entries[10]).toMatchObject({ rank: 11, tied: true, thinkMs: 11_000 });
+    for (const e of entries.filter((x) => !x.tied)) expect(e.thinkMs).toBeNull();
+  });
+
+  it("is a tie of bests: another device's lower run with the same streak isn't one", async () => {
+    const db = sqliteD1();
+    await seed(db, [
+      score({ device: "a", streak: 12 }),
+      score({ device: "b", streak: 20 }),
+      score({ device: "b", streak: 12 }), // b's best is 20
+    ]);
+    const { entries } = await publicBoard(db, "endless", DAY);
+    expect(entries.map((e) => [e.streak, e.tied])).toEqual([
+      [20, false],
+      [12, false],
+    ]);
+  });
+
+  it("leaves a shadowed run out of the ties others see", async () => {
+    const db = sqliteD1();
+    await seed(db, [
+      score({ device: "a", streak: 12 }),
+      score({ device: "s", streak: 12, shadow: true, shadowReason: "fast" }),
+    ]);
+    expect((await publicBoard(db, "endless", DAY)).entries[0]).toMatchObject({ tied: false });
+  });
+
+  it("is the same in a device's own standing, which carries its time only when tied", async () => {
+    const db = sqliteD1();
+    await board60(db);
+    expect(await ownStanding(db, "endless", "d10", DAY)).toMatchObject({
+      rank: 11,
+      tied: true,
+      thinkMs: 11_000,
+    });
+    expect(await ownStanding(db, "endless", "d50", DAY)).toMatchObject({
+      rank: 51,
+      tied: true,
+      thinkMs: 15_000,
+    });
+    expect(await ownStanding(db, "endless", "d3", DAY)).toMatchObject({
+      tied: false,
+      thinkMs: null,
+    });
+  });
+
+  it("ranks a device's own best by thinking time against an equal streak", async () => {
+    const db = sqliteD1();
+    await seed(db, [
+      score({ device: "rival", streak: 10, thinkMs: 30_000, createdAt: 1 }),
+      score({ device: "me", streak: 10, thinkMs: 20_000, createdAt: 9 }),
+    ]);
+    expect(await ownStanding(db, "endless", "me", DAY)).toMatchObject({ rank: 1, tied: true });
+    expect(await ownStanding(db, "endless", "rival", DAY)).toMatchObject({ rank: 2, tied: true });
+  });
+});
+
+describe("flags", () => {
+  it("carry the country code only, a retired name's included", async () => {
+    const db = sqliteD1();
+    await seed(db, [
+      score({ device: "a", streak: 20, country: "BR", nickname: "Rude" }),
+      score({ device: "b", streak: 10, country: null }),
+    ]);
+    db.exec("UPDATE scores SET name_flagged = 1 WHERE device_hash = 'a'");
+    const { entries } = await publicBoard(db, "endless", DAY);
+    expect(entries.map((e) => [e.nickname, e.country])).toEqual([
+      [null, "BR"],
+      ["Player" + String(n), null],
+    ]);
+    for (const e of entries) {
+      expect(Object.keys(e).sort()).toEqual(
+        ["country", "id", "nickname", "rank", "streak", "thinkMs", "tied"].sort(),
+      );
+    }
+    expect(await ownStanding(db, "endless", "a", DAY)).toMatchObject({ country: "BR" });
+  });
+
+  it("refuses anything but a two-letter code in the table", async () => {
+    const db = sqliteD1();
+    await expect(seed(db, [score({ device: "a", country: "GBR" })])).rejects.toThrow();
   });
 });
 
@@ -208,8 +329,8 @@ describe("a device's own standing", () => {
   it("uses the full tiebreak against others", async () => {
     const db = sqliteD1();
     await seed(db, [
-      score({ device: "rival", streak: 10, elapsedMs: 50_000, createdAt: 5 }),
-      score({ device: "me", streak: 10, elapsedMs: 50_000, createdAt: 6 }),
+      score({ device: "rival", streak: 10, thinkMs: 50_000, createdAt: 5 }),
+      score({ device: "me", streak: 10, thinkMs: 50_000, createdAt: 6 }),
     ]);
     expect(await ownStanding(db, "endless", "me", DAY)).toMatchObject({ rank: 2, total: 2 });
     expect(await ownStanding(db, "endless", "rival", DAY)).toMatchObject({ rank: 1, total: 2 });
@@ -253,7 +374,9 @@ describe("writes", () => {
   it("keep one snapshot per period, the latest", async () => {
     const db = sqliteD1();
     await saveSnapshot(db, "endless", "day", "2026-09-29", { takenAt: 1, total: 1, entries: [] });
-    const entries = [{ id: "x", rank: 1, nickname: "Late", streak: 12 }];
+    const entries = [
+      { id: "x", rank: 1, nickname: "Late", streak: 12, tied: false, thinkMs: null, country: "AR" },
+    ];
     await saveSnapshot(db, "endless", "day", "2026-09-29", { takenAt: 2, total: 5, entries });
     expect(await readSnapshot(db, "endless", "day", "2026-09-29")).toEqual({
       takenAt: 2,

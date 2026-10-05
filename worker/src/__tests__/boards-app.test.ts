@@ -110,6 +110,7 @@ const submitBody = (token: string, nickname = "SwiftVolley42") => ({
   nickname,
   deviceId: DEVICE,
   turnstileToken: "t",
+  showCountry: true,
 });
 
 describe("POST /api/run/submit", () => {
@@ -123,7 +124,17 @@ describe("POST /api/run/submit", () => {
     expect(body.periods.day).toMatchObject({ rank: 1, total: 1, best: 6, improved: true });
 
     const board = (await (await s.call(`${BOARD_PATH}/day`)).json()) as BoardResponse;
-    expect(board.entries).toEqual([{ id: body.id, rank: 1, nickname: "SwiftVolley42", streak: 6 }]);
+    expect(board.entries).toEqual([
+      {
+        id: body.id,
+        rank: 1,
+        nickname: "SwiftVolley42",
+        streak: 6,
+        tied: false,
+        thinkMs: null,
+        country: null,
+      },
+    ]);
     // One info line for the publish, with no nickname in it.
     const line = s.lines.find((l) => l.event === "run_submit");
     expect(line).toMatchObject({ level: "info", message: "run_submit", score: 6, shadowed: "no" });

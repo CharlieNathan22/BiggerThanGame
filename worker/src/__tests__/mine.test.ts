@@ -28,7 +28,8 @@ async function add(db: TestD1, over: Partial<ScoreRow> & { device: string }): Pr
     nickname: `Player${n}`,
     nicknameNormalised: "player",
     streak: 10,
-    elapsedMs: 60_000,
+    thinkMs: 60_000,
+    country: null,
     deviceHash: device,
     runKey: `run-${n}`,
     createdAt: n,
@@ -65,6 +66,9 @@ describe("a device's live standing", () => {
       total: 193,
       streak: 4,
       nickname: "LowScore",
+      tied: false,
+      thinkMs: null,
+      country: null,
     });
   });
 
@@ -101,6 +105,22 @@ describe("a device's live standing", () => {
     expect((await ok(db)).month).not.toBeNull();
     const stranger = "0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d";
     expect(await ok(db, stranger)).toEqual({ day: null, week: null, month: null });
+  });
+
+  it("says whether its streak is tied, with its time only then, and its flag", async () => {
+    const db = sqliteD1();
+    const me = await hashDevice(SECRET, DEVICE);
+    await add(db, { device: me, streak: 8, thinkMs: 61_234, country: "GB" });
+    await add(db, { device: "x", streak: 9 });
+    expect((await ok(db)).day).toMatchObject({ tied: false, thinkMs: null, country: "GB" });
+    await add(db, { device: "y", streak: 8, thinkMs: 70_000 });
+    expect((await ok(db)).day).toMatchObject({
+      rank: 2,
+      total: 3,
+      tied: true,
+      thinkMs: 61_234,
+      country: "GB",
+    });
   });
 
   it("never gives out a retired name", async () => {

@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { answerAllowance } from "@bt/core";
 import type {
   ChallengeLink,
   GuessEndResponse,
@@ -78,7 +79,13 @@ function world(over: Partial<SubmitContext> = {}): World {
     lines,
     submit: (body) =>
       handleSubmit(
-        { nickname: "SwiftVolley42", deviceId: DEVICE, turnstileToken: "ts", ...body },
+        {
+          nickname: "SwiftVolley42",
+          deviceId: DEVICE,
+          turnstileToken: "ts",
+          showCountry: true,
+          ...body,
+        },
         ctx,
       ),
   };
@@ -215,6 +222,103 @@ describe("publishing a run", () => {
     const third = await play(w, 4);
     const other = ok(await w.submit({ token: third.end?.result, deviceId: OTHER_DEVICE }));
     expect(other.periods.day).toMatchObject({ best: 4, improved: true, rank: 2, total: 2 });
+  });
+});
+
+describe("thinking time and the flag", () => {
+  /** A run of `right` right answers at `pace`, then a wrong one; what the player saw of each round. */
+  async function playSeen(w: World, right: number, pace: (round: number) => number) {
+    const { h } = w;
+    const started = await begin(h);
+    let round = started.round;
+    let token = started.token;
+    const seen: { index: number; statChanged: boolean; ms: number }[] = [];
+    for (let i = 1; ; i += 1) {
+      h.wait(pace(i));
+      seen.push({ index: round.index, statChanged: round.stat.statChanged, ms: pace(i) });
+      const good = correctGuess(SAMPLE_DECK, started.runId, round);
+      const res = await guessOk(h, token, i > right ? wrongGuess(good) : good);
+      if (!("next" in res)) return { end: res, seen };
+      round = res.next;
+      token = res.token;
+    }
+  }
+  const row = (w: World) =>
+    w.db
+      .rows<{ think_ms: number; country: string | null }>("SELECT think_ms, country FROM scores")
+      .at(-1);
+
+  it("stores the run's thinking time: each answer less its own round's animation", async () => {
+    const w = world();
+    const { end, seen } = await playSeen(w, 9, (i) => THINK_FLOOR_MS + 2500 + ((i * 977) % 3000));
+    ok(await w.submit({ token: end.result }));
+    const expected = seen
+      .filter((r) => r.index >= 2)
+      .reduce((t, r) => t + Math.max(0, r.ms - answerAllowance(r.index, r.statChanged)), 0);
+    expect(seen.some((r) => r.index >= 2 && r.statChanged)).toBe(true);
+    expect(row(w)?.think_ms).toBe(expected);
+  });
+
+  it("ranks equal streaks by thinking time, on the board and in the submit's rank", async () => {
+    const w = world();
+    const first = await playSeen(w, 5, () => THINK_FLOOR_MS + 4000);
+    ok(await w.submit({ token: first.end.result }));
+    const quicker = await playSeen(w, 5, () => THINK_FLOOR_MS + 3000);
+    const body = ok(await w.submit({ token: quicker.end.result, deviceId: OTHER_DEVICE }));
+    expect(body.periods.day).toMatchObject({ rank: 1, total: 2, improved: true });
+    const board = await publicBoard(w.db, "endless", { from: 20260919, to: 20260919 });
+    expect(board.entries.map((e) => [e.streak, e.tied])).toEqual([
+      [5, true],
+      [5, true],
+    ]);
+    expect(board.entries[0]?.id).toBe(body.id);
+    expect(board.entries[0]!.thinkMs!).toBeLessThan(board.entries[1]!.thinkMs!);
+  });
+
+  it("keeps the flag's code from cf.country when asked, and nothing when not", async () => {
+    const w = world({ country: "BR" });
+    ok(await w.submit({ token: (await play(w, 3)).end?.result }));
+    expect(row(w)?.country).toBe("BR");
+    ok(await w.submit({ token: (await play(w, 4)).end?.result, showCountry: false }));
+    expect(row(w)?.country).toBeNull();
+  });
+
+  it("keeps no flag for an unknown, Tor or flagless code", async () => {
+    for (const country of ["XX", "T1", "ZZ", "GBR", "", undefined]) {
+      const w = world(country === undefined ? {} : { country });
+      ok(await w.submit({ token: (await play(w, 2)).end?.result }));
+      expect(row(w)?.country, String(country)).toBeNull();
+    }
+  });
+
+  it("refuses a body without the flag choice", async () => {
+    const w = world();
+    const { end } = await play(w, 2);
+    const res = await handleSubmit(
+      { token: end?.result, nickname: "SwiftVolley42", deviceId: DEVICE, turnstileToken: "ts" },
+      w.ctx,
+    );
+    expect(res).toMatchObject({ status: 400 });
+    expect(
+      await handleSubmit(
+        {
+          ...{
+            token: end?.result,
+            nickname: "SwiftVolley42",
+            deviceId: DEVICE,
+            turnstileToken: "ts",
+          },
+          showCountry: "yes",
+        },
+        w.ctx,
+      ),
+    ).toMatchObject({ status: 400 });
+  });
+
+  it("never logs the country", async () => {
+    const w = world({ country: "BR" });
+    ok(await w.submit({ token: (await play(w, 3)).end?.result }));
+    expect(JSON.stringify(w.lines)).not.toContain('"BR"');
   });
 });
 
@@ -571,7 +675,12 @@ describe("failures", () => {
       }),
     };
     const { end } = await play(w, 3);
-    const body = { nickname: "SwiftVolley42", deviceId: DEVICE, turnstileToken: "ts" };
+    const body = {
+      nickname: "SwiftVolley42",
+      deviceId: DEVICE,
+      turnstileToken: "ts",
+      showCountry: true,
+    };
     expect((await handleSubmit({ ...body, token: end?.result }, failingMark)).status).toBe(200);
     expect(w.lines).toContainEqual(
       expect.objectContaining({ level: "error", reason: "run_store" }),

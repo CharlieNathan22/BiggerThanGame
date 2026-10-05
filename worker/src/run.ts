@@ -24,7 +24,7 @@
  * Object and `record` are all injected, so tests drive this in Node.
  */
 
-import { buildRun, deadlineFor, roundCap, valueOf } from "@bt/core";
+import { buildRun, deadlineFor, flagCountry, roundCap, valueOf } from "@bt/core";
 import type {
   ApiError,
   ChallengeLink,
@@ -165,6 +165,8 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
     runId,
     round: toRoundPayload(first, run.date, ctx.images, rounds[1]),
     token,
+    // What the publish dialog will show as the flag; the code only.
+    country: flagCountry(ctx.country),
     ...(challenge !== undefined ? { challenge } : {}),
   };
   ctx.record?.({ type: "start", mode: "endless", run: run.body, runKind });

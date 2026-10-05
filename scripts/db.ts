@@ -77,11 +77,59 @@ export function ownerSql(action: OwnerAction, arg: string): string {
   return `UPDATE scores SET ${set} WHERE id = ${sqlString(arg)}`;
 }
 
+/** Where seeded players publish from, roughly as a football crowd would; null: no flag. */
+const SEED_COUNTRIES: readonly (string | null)[] = [
+  "GB",
+  "GB",
+  "GB",
+  "US",
+  "BR",
+  "BR",
+  "AR",
+  "ES",
+  "ES",
+  "DE",
+  "FR",
+  "IT",
+  "IT",
+  "NL",
+  "PT",
+  "IE",
+  "NG",
+  "GH",
+  "EG",
+  "ZA",
+  "IN",
+  "JP",
+  "KR",
+  "AU",
+  "CA",
+  "MX",
+  "SE",
+  "NO",
+  "PL",
+  "TR",
+  null,
+  null,
+  null,
+  null,
+  null,
+];
+
+/** Seeded runs' streaks stay at or under this, so the crafted top 60 always outranks them. */
+const SEED_STREAK_CAP = 60;
+
 /**
  * Fake scores around `today`: today, yesterday, earlier this week, earlier
  * this month and last month, some devices publishing several runs, a few
- * shadowed and a few names retired. Deterministic for a date. Replaces an
- * earlier seed (its run ids start `seed-`).
+ * shadowed and a few names retired, each with a thinking time and, mostly, a
+ * country (about one in seven without: not shown). On top of those, sixty
+ * devices publish today with streaks from 120 down, so they are the top 60 of
+ * today's, this week's and this month's boards, with ties placed where the
+ * page has to cope: ranks 10 and 11 share a streak (either side of the first
+ * page break) and so do 50 and 51 (one in the top 50, one just outside it).
+ * Deterministic for a date. Replaces an earlier seed (its run ids start
+ * `seed-`).
  */
 export function seedSql(today: Date, count = 320): string {
   const rng = createRng(`seed:${dayKey(today)}`);
@@ -101,42 +149,90 @@ export function seedSql(today: Date, count = 320): string {
     if (r < 0.92) return within(month.startsAt, midnight);
     return within(midnight - 45 * DAY_MS, month.startsAt - DAY_MS);
   };
+  const country = (): string => {
+    const c = SEED_COUNTRIES[rng.int(SEED_COUNTRIES.length)] ?? null;
+    return c === null ? "NULL" : sqlString(c);
+  };
+  /** About 1.5–6 s of thinking a question. */
+  const thinking = (streak: number) => streak * (1500 + rng.int(4500)) + rng.int(3000);
   const rows: string[] = [];
-  const devices = Math.round(count * 0.7);
-  for (let i = 0; i < count; i += 1) {
-    const day = pickDay();
-    const nickname = generateNickname(() => rng.next());
-    // Most runs short, a few long: roughly the Endless spread.
-    const streak = 1 + Math.floor(-Math.log(1 - rng.next() * 0.999) * 9);
-    const elapsed = streak * (5000 + rng.int(6000)) + rng.int(4000);
-    const shadow = rng.next() < 0.05;
-    const flagged = rng.next() < 0.03;
-    const id = `5eed0000-0000-4000-8000-${String(i).padStart(12, "0")}`;
-    const created = day.getTime() + rng.int(DAY_MS - 60_000);
+  const row = (values: {
+    id: string;
+    day: Date;
+    nickname: string;
+    streak: number;
+    think: number;
+    device: string;
+    run: string;
+    created: number;
+    flagged: boolean;
+    shadow: boolean;
+  }): void => {
     rows.push(
       "(" +
         [
-          sqlString(id),
+          sqlString(values.id),
           "'endless'",
-          dayKey(day),
-          sqlString(nickname),
-          sqlString(normaliseNickname(nickname)),
-          streak,
-          elapsed,
-          sqlString(`seed-device-${rng.int(devices)}`),
-          sqlString(`seed-${dayKey(day)}-${i}`),
-          created,
-          flagged ? 1 : 0,
-          shadow ? 1 : 0,
-          shadow ? "'seed'" : "NULL",
+          dayKey(values.day),
+          sqlString(values.nickname),
+          sqlString(normaliseNickname(values.nickname)),
+          values.streak,
+          values.think,
+          country(),
+          sqlString(values.device),
+          sqlString(values.run),
+          values.created,
+          values.flagged ? 1 : 0,
+          values.shadow ? 1 : 0,
+          values.shadow ? "'seed'" : "NULL",
         ].join(", ") +
         ")",
     );
+  };
+
+  const devices = Math.round(count * 0.7);
+  for (let i = 0; i < count; i += 1) {
+    const day = pickDay();
+    // Most runs short, a few long: roughly the Endless spread.
+    const streak = Math.min(SEED_STREAK_CAP, 1 + Math.floor(-Math.log(1 - rng.next() * 0.999) * 9));
+    row({
+      id: `5eed0000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+      day,
+      nickname: generateNickname(() => rng.next()),
+      streak,
+      think: thinking(streak),
+      device: `seed-device-${rng.int(devices)}`,
+      run: `seed-${dayKey(day)}-${i}`,
+      created: day.getTime() + rng.int(DAY_MS - 60_000),
+      flagged: rng.next() < 0.03,
+      shadow: rng.next() < 0.05,
+    });
   }
+
+  // Today's top 60, with ties at ranks 10–11 and 50–51.
+  const top = Array.from({ length: 60 }, (_, i) => 120 - i);
+  top[10] = top[9] ?? 0;
+  top[50] = top[49] ?? 0;
+  top.forEach((streak, i) => {
+    row({
+      id: `5eed0000-0000-4000-9000-${String(i).padStart(12, "0")}`,
+      day: today,
+      nickname: generateNickname(() => rng.next()),
+      streak,
+      // Within a tie, the one ranked first thought for less.
+      think: 90_000 + i * 1_234,
+      device: `seed-top-${i}`,
+      run: `seed-${dayKey(today)}-top-${i}`,
+      created: midnight + 60_000 + i * 1000,
+      flagged: false,
+      shadow: false,
+    });
+  });
+
   return [
     "DELETE FROM scores WHERE run_id LIKE 'seed-%';",
-    "INSERT INTO scores (id, mode, day_key, nickname, nickname_normalised, streak, elapsed_ms, " +
-      "device_hash, run_id, created_at, name_flagged, shadow, shadow_reason) VALUES",
+    "INSERT INTO scores (id, mode, day_key, nickname, nickname_normalised, streak, think_ms, " +
+      "country, device_hash, run_id, created_at, name_flagged, shadow, shadow_reason) VALUES",
     rows.join(",\n") + ";",
     "",
   ].join("\n");

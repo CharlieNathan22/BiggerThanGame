@@ -23,7 +23,8 @@ async function add(db: TestD1, over: Partial<ScoreRow> & { device: string }): Pr
     nickname: `Player${n}`,
     nicknameNormalised: "player",
     streak: 10,
-    elapsedMs: 60_000,
+    thinkMs: 60_000,
+    country: null,
     deviceHash: device,
     runKey: `run-${n}`,
     createdAt: n,
@@ -82,39 +83,54 @@ describe("boardData", () => {
 
   it("names the previous period's winner, from the scores before a snapshot exists", async () => {
     const db = sqliteD1();
-    await add(db, { device: "a", streak: 31, dayKey: 20260928, nickname: "Yesterday" });
+    await add(db, {
+      device: "a",
+      streak: 31,
+      dayKey: 20260928,
+      nickname: "Yesterday",
+      country: "BR",
+    });
     const day = await boardData(db, NOW, "day");
     expect(day.previous).toEqual({
       key: "2026-09-28",
-      winner: { nickname: "Yesterday", streak: 31 },
+      winner: { nickname: "Yesterday", streak: 31, country: "BR" },
     });
     expect((await boardData(db, NOW, "week")).previous).toEqual({ key: "2026-W39", winner: null });
   });
 
   it("prefers the snapshot, and retires a name flagged since it was taken", async () => {
     const db = sqliteD1();
-    const id = await add(db, { device: "a", streak: 31, dayKey: 20260928, nickname: "Snapped" });
+    const id = await add(db, {
+      device: "a",
+      streak: 31,
+      dayKey: 20260928,
+      nickname: "Snapped",
+      country: "IE",
+    });
     await runNightly(db, new Date("2026-09-29T00:00:00Z"));
     // A late publish after the 01:30 snapshot would not change the winner shown.
     await add(db, { device: "b", streak: 99, dayKey: 20260928, nickname: "TooLate" });
     expect((await boardData(db, NOW, "day")).previous.winner).toEqual({
       nickname: "Snapped",
       streak: 31,
+      country: "IE",
     });
     db.exec(`UPDATE scores SET name_flagged = 1 WHERE id = '${id}'`);
+    // A retired name keeps its flag.
     expect((await boardData(db, NOW, "day")).previous.winner).toEqual({
       nickname: null,
       streak: 31,
+      country: "IE",
     });
   });
 
-  it("carries no time, device or shadow flag, and no retired name", async () => {
+  it("carries no untied time, device or shadow flag, and no retired name", async () => {
     const db = sqliteD1();
     await add(db, {
       device: "secret-device-hash",
       streak: 5,
       nickname: "Rude",
-      elapsedMs: 123_457,
+      thinkMs: 123_457,
     });
     db.exec("UPDATE scores SET name_flagged = 1");
     const text = JSON.stringify(await boardData(db, NOW, "day"));

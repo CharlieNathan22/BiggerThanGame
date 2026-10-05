@@ -30,6 +30,7 @@
   } from "../../game/publish";
   import type { PublishOutcome } from "../../game/publish";
   import type { Turnstile } from "../../game/turnstile";
+  import Flag from "../Flag.svelte";
 
   interface Props {
     streak: number;
@@ -37,8 +38,19 @@
     nickname?: string | undefined;
     siteKey: string;
     loadTurnstile: () => Promise<Turnstile>;
-    /** Sends the run with this name and a fresh Turnstile token. */
-    publish: (nickname: string, turnstileToken: string) => Promise<PublishOutcome>;
+    /**
+     * The flag's country code the server sees for this connection, or null:
+     * then there's no flag to show, and no choice to offer.
+     */
+    country: string | null;
+    /** "Show my country flag" to start with: the last choice, ticked by default. */
+    showCountry: boolean;
+    /** Sends the run with this name, a fresh Turnstile token and the flag choice. */
+    publish: (
+      nickname: string,
+      turnstileToken: string,
+      showCountry: boolean,
+    ) => Promise<PublishOutcome>;
     /** The board page. */
     boardHref: string;
     /** Told once it's published, with the ranks. */
@@ -53,6 +65,8 @@
     nickname: initial,
     siteKey,
     loadTurnstile,
+    country,
+    showCountry: initialShow,
     publish,
     boardHref,
     onpublished,
@@ -68,6 +82,7 @@
 
   // The name to start from, once: after that the field is the player's.
   let nickname = $state(untrack(() => initial) ?? generateNickname(cryptoRandom));
+  let showCountry = $state(untrack(() => initialShow));
   let token = $state<string | null>(null);
   let sending = $state(false);
   let tried = $state(false);
@@ -160,7 +175,7 @@
     if (token === null) return;
     sending = true;
     outcome = null;
-    const result = await publish(nickname, token);
+    const result = await publish(nickname, token, showCountry);
     sending = false;
     outcome = result;
     if (result.kind === "published") {
@@ -260,6 +275,14 @@
           </button>
         </div>
         <p class="stored" id="{uid}-stored">{t("publish.stored")}</p>
+        {#if country !== null}
+          <!-- The flag the board will show, which the player can leave off. -->
+          <label class="flagopt">
+            <input type="checkbox" bind:checked={showCountry} />
+            <Flag {country} />
+            <span>{t("publish.showCountry")}</span>
+          </label>
+        {/if}
 
         <div class="check" bind:this={check}></div>
         {#if token === null && !checkFailed}
@@ -391,6 +414,36 @@
     font-size: var(--fs-lab);
     color: var(--dim);
     font-variation-settings: var(--fv-meta);
+  }
+  /* "Show my country flag", with the flag itself: a 44px target, the box in gold. */
+  .flagopt {
+    display: flex;
+    align-items: center;
+    gap: var(--flag-gap);
+    min-height: var(--target-min);
+    margin: 4px 0 0;
+    font-size: var(--fs-caption);
+    color: var(--chalk);
+    font-variation-settings: var(--fv-caption);
+    text-transform: none;
+    cursor: pointer;
+  }
+  /* Not the name field's look: a plain box. */
+  .flagopt input {
+    flex: none;
+    width: var(--check-size);
+    height: var(--check-size);
+    min-height: 0;
+    margin: 0 4px 0 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+  .flagopt input:focus-visible {
+    outline: var(--focus-ring-thin) solid var(--gold);
+    outline-offset: var(--focus-offset);
   }
   .check {
     margin-top: 14px;

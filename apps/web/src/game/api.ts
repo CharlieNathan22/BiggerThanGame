@@ -57,6 +57,11 @@ export interface EndlessApi extends GameApi {
    * before any run.
    */
   publishToken(): string | null;
+  /**
+   * The flag's country code the server sees for this connection, from the
+   * run's start, or null: what "Show my country flag" will show.
+   */
+  country(): string | null;
 }
 
 /** A request that failed: no connection, or a non-2xx answer. */
@@ -143,6 +148,7 @@ export function createEndlessApi(
   const post = poster(fetchFn, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
   let token: string | null = null;
   let result: string | null = null;
+  let country: string | null = null;
 
   return {
     async start(challenge) {
@@ -160,6 +166,7 @@ export function createEndlessApi(
       const res = await post<RunStartResponse>(RUN_START_ENDPOINT, body);
       token = res.token;
       result = null;
+      country = typeof res.country === "string" ? res.country : null;
       return {
         runId: res.runId,
         round: res.round,
@@ -182,6 +189,7 @@ export function createEndlessApi(
     latestToken: () => token,
     resultToken: () => result,
     publishToken: () => result ?? token,
+    country: () => country,
   };
 }
 

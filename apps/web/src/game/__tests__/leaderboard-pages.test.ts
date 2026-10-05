@@ -29,6 +29,7 @@ import {
   winnerLine,
 } from "../leaderboard";
 import type { MineState, OwnPosition } from "../leaderboard";
+import { formatThink } from "../flags";
 
 const KEY = "2026-10-05";
 
@@ -45,6 +46,9 @@ function board(n: number, total = n): BoardResponse {
       rank: i + 1,
       nickname: `Player${i + 1}`,
       streak: 100 - i,
+      tied: false,
+      thinkMs: null,
+      country: null,
     })),
     previous: { key: "2026-10-04", winner: null },
   };
@@ -58,6 +62,9 @@ function live(rank: number, over: Partial<OwnPosition> = {}): OwnPosition {
     total: 3208,
     streak: 100 - rank + 1,
     nickname: `Player${rank}`,
+    tied: false,
+    thinkMs: null,
+    country: null,
     live: true,
     ...over,
   };
@@ -86,6 +93,9 @@ function entry(over: Partial<MineEntry> = {}): MineEntry {
     total: 193,
     streak: 4,
     nickname: "LowScore",
+    tied: false,
+    thinkMs: null,
+    country: null,
     ...over,
   };
 }
@@ -103,9 +113,9 @@ describe("the server's rows", () => {
     const tied: BoardResponse = {
       ...board(0),
       entries: [
-        { id: "a", rank: 1, nickname: "A", streak: 9 },
-        { id: "b", rank: 1, nickname: "B", streak: 9 },
-        { id: "c", rank: 3, nickname: "C", streak: 7 },
+        { id: "a", rank: 1, nickname: "A", streak: 9, tied: true, thinkMs: 1, country: null },
+        { id: "b", rank: 1, nickname: "B", streak: 9, tied: true, thinkMs: 1, country: null },
+        { id: "c", rank: 3, nickname: "C", streak: 7, tied: false, thinkMs: null, country: null },
       ],
       total: 3,
     };
@@ -225,6 +235,9 @@ describe("the player's live position", () => {
       total: 193,
       streak: 4,
       nickname: "LowScore",
+      tied: false,
+      thinkMs: null,
+      country: null,
       live: true,
     });
   });
@@ -293,24 +306,99 @@ describe("asking for the live position", () => {
 
 describe("the previous winner", () => {
   const prev = (winner: BoardResponse["previous"]["winner"]) => ({ key: "x", winner });
-  const text = (parts: ReturnType<typeof winnerLine>) => parts?.map((p) => p.text).join("");
+  const text = (line: ReturnType<typeof winnerLine>) => line?.parts.map((p) => p.text).join("");
 
-  it("is one line per tab, the name and the number in gold", () => {
-    const won = prev({ nickname: "HardyOffside889", streak: 23 });
-    expect(winnerLine(won, "day")).toEqual([
-      { text: "HardyOffside889", gold: true },
-      { text: " got a ", gold: false },
-      { text: "23", gold: true },
-      { text: " streak yesterday", gold: false },
-    ]);
+  it("is one line per tab, the name and the number in gold, the flag before the name", () => {
+    const won = prev({ nickname: "HardyOffside889", streak: 23, country: "NL" });
+    expect(winnerLine(won, "day")).toEqual({
+      parts: [
+        { text: "HardyOffside889", gold: true, name: true },
+        { text: " got a ", gold: false },
+        { text: "23", gold: true },
+        { text: " streak yesterday", gold: false },
+      ],
+      country: "NL",
+    });
     expect(text(winnerLine(won, "week"))).toBe("HardyOffside889 got a 23 streak last week");
     expect(text(winnerLine(won, "month"))).toBe("HardyOffside889 got a 23 streak last month");
   });
 
   it("says Retired name for a retired one, and nothing when there was no winner", () => {
-    expect(text(winnerLine(prev({ nickname: null, streak: 31 }), "day"))).toBe(
-      "Retired name got a 31 streak yesterday",
+    const retired = winnerLine(prev({ nickname: null, streak: 31, country: "IE" }), "day");
+    expect(text(retired)).toBe("Retired name got a 31 streak yesterday");
+    // A retired name keeps its flag; no country, no flag.
+    expect(retired?.country).toBe("IE");
+    expect(winnerLine(prev({ nickname: "A", streak: 2, country: null }), "day")?.country).toBe(
+      null,
     );
     expect(winnerLine(prev(null), "day")).toBeNull();
+  });
+});
+
+describe("tied streaks and their time", () => {
+  /** A board where ranks 10 and 11 share a streak (split across pages 1 and 2) and so does 50. */
+  function tiedBoard(): BoardResponse {
+    const b = board(50, 60);
+    const tied = new Set([10, 11, 50]);
+    return {
+      ...b,
+      entries: b.entries.map((e) =>
+        tied.has(e.rank) ? { ...e, tied: true, thinkMs: 60_000 + e.rank * 1000 } : e,
+      ),
+    };
+  }
+
+  it("shows the time on tied rows only, as the server marked them", () => {
+    const view = boardView(tiedBoard(), null);
+    const shown = view.rows.filter((r) => r.thinkMs !== null).map((r) => r.rank);
+    expect(shown).toEqual([10, 11, 50]);
+    expect(pageRows(view.rows, 0).at(-1)).toMatchObject({ rank: 10, tied: true, thinkMs: 70_000 });
+    expect(pageRows(view.rows, 1)[0]).toMatchObject({ rank: 11, tied: true, thinkMs: 71_000 });
+    // Rank 50's partner is 51st, off the board: the server still marked it.
+    expect(view.rows[49]).toMatchObject({ tied: true, thinkMs: 110_000 });
+  });
+
+  it("never shows a time the server didn't mark as tied", () => {
+    const b = board(3);
+    const odd = { ...b, entries: b.entries.map((e) => ({ ...e, thinkMs: 5000 })) };
+    expect(boardView(odd, null).rows.every((r) => r.thinkMs === null)).toBe(true);
+  });
+
+  it("follows the same rule on the pinned row", () => {
+    const tied = ownPosition("day", KEY, answered(entry({ tied: true, thinkMs: 102_345 })), []);
+    expect(tied).toMatchObject({ tied: true, thinkMs: 102_345 });
+    const alone = ownPosition("day", KEY, answered(entry({ tied: false, thinkMs: null })), []);
+    expect(alone).toMatchObject({ tied: false, thinkMs: null });
+    const pinned = pinnedRow(boardView(board(50, 193), tied), 0);
+    expect(pinned).toMatchObject({ tied: true, thinkMs: 102_345 });
+    // The stored publish knows no tie, so shows no time.
+    expect(ownPosition("day", KEY, { status: "failed" }, [stored()])).toMatchObject({
+      tied: false,
+      thinkMs: null,
+    });
+  });
+
+  it("reads m:ss.s, never rounding up", () => {
+    expect(formatThink(102_345)).toBe("1:42.3");
+    expect(formatThink(102_399)).toBe("1:42.3");
+    expect(formatThink(9_870)).toBe("0:09.8");
+    expect(formatThink(59_999)).toBe("0:59.9");
+    expect(formatThink(60_000)).toBe("1:00.0");
+    expect(formatThink(0)).toBe("0:00.0");
+  });
+});
+
+describe("flags", () => {
+  it("come with each row, the pinned row and the winner, as a code only", () => {
+    const b = board(2);
+    const flagged = {
+      ...b,
+      entries: [{ ...b.entries[0]!, country: "BR" }, b.entries[1]!],
+      previous: { key: "x", winner: { nickname: "W", streak: 9, country: "JP" } },
+    };
+    const view = boardView(flagged, live(1, { country: "BR" }));
+    expect(view.rows.map((r) => r.country)).toEqual(["BR", null]);
+    expect(ownPosition("day", KEY, answered(entry({ country: "GB" })), [])?.country).toBe("GB");
+    expect(winnerLine(flagged.previous, "day")?.country).toBe("JP");
   });
 });

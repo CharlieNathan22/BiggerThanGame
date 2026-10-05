@@ -210,7 +210,7 @@ export class GameController {
         return;
 
       case "spinning":
-        this.#after(spinDelay(timings, reducedMotion()), () => ({
+        this.#after(spinDelay(timings), () => ({
           type: "spun",
           at: this.#deps.now(),
         }));
@@ -241,7 +241,7 @@ export class GameController {
           return;
         }
         if (event.type === "answered" && after.count !== null) {
-          const at = verdictAt(after.count, timings, reducedMotion());
+          const at = verdictAt(after.count, timings);
           this.#after(Math.max(0, at - this.#deps.now()), { type: "settled" });
         }
         return;

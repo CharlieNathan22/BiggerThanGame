@@ -47,7 +47,10 @@ export interface ScoreRow {
   readonly nickname: string;
   readonly nicknameNormalised: string;
   readonly streak: number;
-  readonly elapsedMs: number;
+  /** Server-measured thinking time (shadow.ts `thinkMs`): the tiebreak on equal streaks. */
+  readonly thinkMs: number;
+  /** The flag's country code (@bt/core `flagCountry`), or null: unknown, or not shown. */
+  readonly country: string | null;
   readonly deviceHash: string;
   /** The run key (`YYYYMMDD-<uuid>`), never the signed run id. */
   readonly runKey: string;
@@ -76,8 +79,8 @@ export async function insertScore(db: D1Like, row: ScoreRow): Promise<void> {
     await db
       .prepare(
         "INSERT INTO scores (id, mode, day_key, nickname, nickname_normalised, streak, " +
-          "elapsed_ms, device_hash, run_id, created_at, shadow, shadow_reason) " +
-          "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+          "think_ms, country, device_hash, run_id, created_at, shadow, shadow_reason) " +
+          "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
       )
       .bind(
         row.id,
@@ -86,7 +89,8 @@ export async function insertScore(db: D1Like, row: ScoreRow): Promise<void> {
         row.nickname,
         row.nicknameNormalised,
         row.streak,
-        row.elapsedMs,
+        row.thinkMs,
+        row.country,
         row.deviceHash,
         row.runKey,
         row.createdAt,
@@ -102,10 +106,24 @@ export async function insertScore(db: D1Like, row: ScoreRow): Promise<void> {
   }
 }
 
-/** The public order: streak, then time, then who published first; the id settles the rest. */
-const ORDER = "streak DESC, elapsed_ms ASC, created_at ASC, id ASC";
+/**
+ * The public order: streak, then the lower thinking time, then who published
+ * first; the id settles the rest.
+ */
+const ORDER = "streak DESC, think_ms ASC, created_at ASC, id ASC";
 
-/** A range's public board, best first, and how many devices are on it. */
+/** Each device's best row in a range, public rows only: `n = 1` is the best. */
+const BESTS =
+  "SELECT id, nickname, name_flagged, streak, think_ms, created_at, country, device_hash, " +
+  `ROW_NUMBER() OVER (PARTITION BY device_hash ORDER BY ${ORDER}) AS n ` +
+  "FROM scores WHERE mode = ?1 AND day_key BETWEEN ?2 AND ?3 AND shadow = 0";
+
+/**
+ * A range's public board, best first, and how many devices are on it. An
+ * entry is `tied` when another device's public best in the range has the same
+ * streak — judged across the whole range, not just the entries returned — and
+ * only a tied entry carries its thinking time, the one thing that orders it.
+ */
 export async function publicBoard(
   db: D1Like,
   mode: BoardMode,
@@ -115,14 +133,22 @@ export async function publicBoard(
   const [top, count] = await Promise.all([
     db
       .prepare(
-        "SELECT id, nickname, name_flagged, streak FROM (" +
-          "SELECT id, nickname, name_flagged, streak, elapsed_ms, created_at, " +
-          `ROW_NUMBER() OVER (PARTITION BY device_hash ORDER BY ${ORDER}) AS n ` +
-          "FROM scores WHERE mode = ?1 AND day_key BETWEEN ?2 AND ?3 AND shadow = 0" +
-          `) WHERE n = 1 ORDER BY ${ORDER} LIMIT ?4`,
+        `WITH bests AS (${BESTS}), ` +
+          "ranked AS (SELECT *, COUNT(*) OVER (PARTITION BY streak) AS same " +
+          "FROM bests WHERE n = 1) " +
+          "SELECT id, nickname, name_flagged, streak, think_ms, country, same FROM ranked " +
+          `ORDER BY ${ORDER} LIMIT ?4`,
       )
       .bind(mode, range.from, range.to, limit)
-      .all<{ id: string; nickname: string; name_flagged: number; streak: number }>(),
+      .all<{
+        id: string;
+        nickname: string;
+        name_flagged: number;
+        streak: number;
+        think_ms: number;
+        country: string | null;
+        same: number;
+      }>(),
     db
       .prepare(
         "SELECT COUNT(DISTINCT device_hash) AS total FROM scores " +
@@ -137,6 +163,9 @@ export async function publicBoard(
       rank: i + 1,
       nickname: r.name_flagged === 1 ? null : r.nickname,
       streak: r.streak,
+      tied: r.same > 1,
+      thinkMs: r.same > 1 ? r.think_ms : null,
+      country: r.country,
     })),
     total: count?.total ?? 0,
   };
@@ -149,10 +178,16 @@ export interface Standing {
   readonly streak: number;
   /** That entry's name; null once retired, so a retired name never leaves the database. */
   readonly nickname: string | null;
+  /** That entry's flag's country code, or null. A retired name keeps its flag. */
+  readonly country: string | null;
   /** 1 + the devices whose public best beats it. */
   readonly rank: number;
   /** The other devices on the public board, plus this one. */
   readonly total: number;
+  /** Another device's public best in the range has the same streak. */
+  readonly tied: boolean;
+  /** Its thinking time, the tiebreak; given only when tied, as on the board. */
+  readonly thinkMs: number | null;
 }
 
 /**
@@ -168,46 +203,61 @@ export async function ownStanding(
 ): Promise<Standing | undefined> {
   const best = await db
     .prepare(
-      "SELECT id, streak, elapsed_ms, created_at, nickname, name_flagged FROM scores " +
+      "SELECT id, streak, think_ms, created_at, nickname, name_flagged, country FROM scores " +
         `WHERE mode = ?1 AND device_hash = ?2 AND day_key BETWEEN ?3 AND ?4 ORDER BY ${ORDER} LIMIT 1`,
     )
     .bind(mode, deviceHash, range.from, range.to)
     .first<{
       id: string;
       streak: number;
-      elapsed_ms: number;
+      think_ms: number;
       created_at: number;
       nickname: string;
       name_flagged: number;
+      country: string | null;
     }>();
   if (best === null) return undefined;
   const beats =
-    "streak > ?5 OR (streak = ?5 AND (elapsed_ms < ?6 OR (elapsed_ms = ?6 AND " +
+    "streak > ?5 OR (streak = ?5 AND (think_ms < ?6 OR (think_ms = ?6 AND " +
     "(created_at < ?7 OR (created_at = ?7 AND id < ?8)))))";
-  const counts = await db
-    .prepare(
-      "SELECT COUNT(DISTINCT device_hash) AS others, " +
-        `COUNT(DISTINCT CASE WHEN ${beats} THEN device_hash END) AS better ` +
-        "FROM scores WHERE mode = ?1 AND day_key BETWEEN ?2 AND ?3 AND shadow = 0 " +
-        "AND device_hash != ?4",
-    )
-    .bind(
-      mode,
-      range.from,
-      range.to,
-      deviceHash,
-      best.streak,
-      best.elapsed_ms,
-      best.created_at,
-      best.id,
-    )
-    .first<{ others: number; better: number }>();
+  const [counts, same] = await Promise.all([
+    db
+      .prepare(
+        "SELECT COUNT(DISTINCT device_hash) AS others, " +
+          `COUNT(DISTINCT CASE WHEN ${beats} THEN device_hash END) AS better ` +
+          "FROM scores WHERE mode = ?1 AND day_key BETWEEN ?2 AND ?3 AND shadow = 0 " +
+          "AND device_hash != ?4",
+      )
+      .bind(
+        mode,
+        range.from,
+        range.to,
+        deviceHash,
+        best.streak,
+        best.think_ms,
+        best.created_at,
+        best.id,
+      )
+      .first<{ others: number; better: number }>(),
+    // Others whose best, not just any run, has the same streak.
+    db
+      .prepare(
+        `WITH bests AS (${BESTS} AND device_hash != ?4) ` +
+          "SELECT COUNT(*) AS tied FROM bests WHERE n = 1 AND streak = ?5",
+      )
+      .bind(mode, range.from, range.to, deviceHash, best.streak)
+      .first<{ tied: number }>(),
+  ]);
+  const tied = (same?.tied ?? 0) > 0;
   return {
     entryId: best.id,
     streak: best.streak,
     nickname: best.name_flagged === 1 ? null : best.nickname,
+    country: best.country,
     rank: (counts?.better ?? 0) + 1,
     total: (counts?.others ?? 0) + 1,
+    tied,
+    thinkMs: tied ? best.think_ms : null,
   };
 }
 

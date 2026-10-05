@@ -11,7 +11,13 @@ import { sqliteD1 } from "./d1-sqlite.js";
 import type { TestD1 } from "./d1-sqlite.js";
 
 let n = 0;
-async function add(db: TestD1, dayKey: number, streak: number, device = `d${n}`): Promise<void> {
+async function add(
+  db: TestD1,
+  dayKey: number,
+  streak: number,
+  device = `d${n}`,
+  over: { thinkMs?: number; country?: string | null } = {},
+): Promise<void> {
   n += 1;
   await insertScore(db, {
     id: `id-${n}`,
@@ -20,7 +26,8 @@ async function add(db: TestD1, dayKey: number, streak: number, device = `d${n}`)
     nickname: `P${n}`,
     nicknameNormalised: "p",
     streak,
-    elapsedMs: 1000,
+    thinkMs: over.thinkMs ?? 1000,
+    country: over.country ?? null,
     deviceHash: device,
     runKey: `run-${n}`,
     createdAt: n,
@@ -111,6 +118,20 @@ describe("the nightly job", () => {
     expect(day?.entries[0]).toMatchObject({ rank: 1, streak: 64 });
     expect(day?.entries.at(-1)).toMatchObject({ rank: 50, streak: 15 });
     expect(day?.total).toBe(64);
+  });
+
+  it("keeps each entry's flag, tie and tiebreak in the snapshot, for the winner line", async () => {
+    const db = sqliteD1();
+    await add(db, 20260929, 20, "slow", { thinkMs: 9000, country: "BR" });
+    await add(db, 20260929, 20, "quick", { thinkMs: 5000, country: "JP" });
+    await add(db, 20260929, 7, "solo", { country: null });
+    await runNightly(db, new Date("2026-09-30T00:00:00Z"));
+    const day = await readSnapshot(db, "endless", "day", "2026-09-29");
+    expect(day?.entries.map((e) => [e.rank, e.streak, e.tied, e.thinkMs, e.country])).toEqual([
+      [1, 20, true, 5000, "JP"],
+      [2, 20, true, 9000, "BR"],
+      [3, 7, false, null, null],
+    ]);
   });
 
   it("leaves shadowed scores out of the snapshot", async () => {

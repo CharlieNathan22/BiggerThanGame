@@ -233,7 +233,12 @@ describe("the controller's clock, in Endless", () => {
 
 describe("the Endless API", () => {
   const RESULT = "result-token";
-  const startBody: RunStartResponse = { runId: "r", round: round(1), token: "t1" };
+  const startBody: RunStartResponse = {
+    runId: "r",
+    round: round(1),
+    token: "t1",
+    country: "GB",
+  };
   const next: GuessResponse = { ...cont(1, round(2)), token: "t2" };
   const end: GuessResponse = {
     reveal: { round: 2, value: 1, display: "1", correct: false },

@@ -237,6 +237,7 @@ describe("publishing under workerd", () => {
       nickname: "Workerd Winger",
       deviceId: "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
       turnstileToken: "test",
+      showCountry: true,
     };
     const published = await post<SubmitResponse>("/api/run/submit", body);
     expect(published.status).toBe(200);
@@ -255,6 +256,10 @@ describe("publishing under workerd", () => {
       rank: expect.any(Number),
       nickname: "Workerd Winger",
       streak: 3,
+      tied: false,
+      thinkMs: null,
+      // workerd's local request.cf has a country: stored as the flag's code.
+      country: expect.stringMatching(/^[A-Z]{2}$/),
     });
 
     // The run's day closes at the next midnight; the cron snapshots it.

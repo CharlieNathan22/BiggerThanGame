@@ -112,10 +112,10 @@ export const en = {
   // The Endless leaderboard page. Drafts.
   "leaderboard.title": "Endless Leaderboard: Football Legends | Bigger Than Game",
   "leaderboard.description":
-    "Today's, this week's and this month's best Endless streaks on Football Legends higher or lower. Personal bests: every run is different, so luck plays a part.",
+    "Today's, this week's and this month's best Endless streaks on Football Legends higher or lower. Every run is different, and the longest streak wins.",
   "leaderboard.headingMode": "Endless",
   "leaderboard.headingBoard": "Leaderboard",
-  "leaderboard.framing": "Personal bests — everyone gets a different run, so luck plays a part.",
+  "leaderboard.framing": "Every run is different. Longest streak wins.",
   "leaderboard.play": "Play Endless",
   "leaderboard.tabs": "Leaderboard period",
   "leaderboard.tab.day": "Today",
@@ -272,6 +272,7 @@ export const en = {
     "Put your streak of {streak} on the Endless leaderboards for today, this week and this month.",
   "publish.nickname": "Nickname",
   "publish.shuffle": "Another name",
+  "publish.showCountry": "Show my country flag",
   "publish.stored":
     "We store your nickname and your score, and nothing else about you. There's no account.",
   "publish.checking": "Checking you're a person…",

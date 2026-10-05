@@ -35,7 +35,14 @@
  * nickname never reaches a log line or a data point.
  */
 
-import { checkNickname, dayKey, normaliseNickname, periodsOf } from "@bt/core";
+import {
+  buildRun,
+  checkNickname,
+  dayKey,
+  flagCountry,
+  normaliseNickname,
+  periodsOf,
+} from "@bt/core";
 import type { ApiError, Player, PeriodRank, SubmitRequest, SubmitResponse } from "@bt/core";
 import type { GameEvent, RunKind } from "./analytics.js";
 import { hmacSha256, toBase64Url } from "./hmac.js";
@@ -47,7 +54,8 @@ import { verifyRunId } from "./run-id.js";
 import { disconnectedEnd } from "./run.js";
 import { DuplicateRunError, insertScore, ownStanding } from "./scores.js";
 import type { D1Like, DayRange } from "./scores.js";
-import { shadowReasons } from "./shadow.js";
+import { endlessSeed } from "./seed.js";
+import { shadowReasons, thinkMs } from "./shadow.js";
 import { MAX_TOKEN_CHARS, verifyResult, verifyToken } from "./token.js";
 import type { TurnstileOutcome } from "./turnstile.js";
 
@@ -74,6 +82,12 @@ export interface SubmitContext {
   readonly record?: (event: GameEvent) => void;
   /** For the shadow line and a failed mark. Must not throw. */
   readonly log?: Logger;
+  /**
+   * Cloudflare's `request.cf.country` for the publishing connection, kept as
+   * the flag's code only if the player asked for it and there is a flag for
+   * it. Nothing else about where they are is ever read.
+   */
+  readonly country?: string;
 }
 
 export type SubmitResult =
@@ -167,6 +181,17 @@ export async function handleSubmit(body: unknown, ctx: SubmitContext): Promise<S
 
   const reasons = shadowReasons(claimed.answers);
   const shadowed = reasons.length > 0;
+  // The tiebreak: each answer less its own round's animation, from the run's sequence.
+  const rounds = buildRun({
+    deck: ctx.deck,
+    seed: await endlessSeed(ctx.secret, run.origin),
+    mode: "endless",
+    now: run.date,
+    maxRounds: claimed.run.round,
+  });
+  const changed = new Set(rounds.filter((r) => r.statChanged).map((r) => r.index));
+  const think = thinkMs(claimed.answers, (round) => changed.has(round));
+  const country = req.showCountry ? flagCountry(ctx.country) : null;
   const deviceHash = await hashDevice(ctx.secret, req.deviceId);
   const id = ctx.uuid();
   const periods = periodsOf(run.date);
@@ -179,7 +204,8 @@ export async function handleSubmit(body: unknown, ctx: SubmitContext): Promise<S
       nickname: name.nickname,
       nicknameNormalised: normaliseNickname(name.nickname),
       streak: claimed.run.streak,
-      elapsedMs: claimed.run.elapsedMs,
+      thinkMs: think,
+      country,
       deviceHash,
       runKey: run.body,
       createdAt: now,
@@ -296,7 +322,7 @@ async function readToken(secret: string, token: string): Promise<Claimed | undef
 type Parsed<T> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly detail: string };
 
-const KEYS = ["deviceId", "nickname", "token", "turnstileToken"];
+const KEYS = ["deviceId", "nickname", "showCountry", "token", "turnstileToken"];
 
 export function parseSubmit(body: unknown): Parsed<SubmitRequest> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
@@ -305,9 +331,12 @@ export function parseSubmit(body: unknown): Parsed<SubmitRequest> {
   const record = body as Record<string, unknown>;
   const keys = Object.keys(record).sort();
   if (keys.length !== KEYS.length || keys.some((k, i) => k !== KEYS[i])) {
-    return { ok: false, detail: "expected { token, nickname, deviceId, turnstileToken }" };
+    return {
+      ok: false,
+      detail: "expected { token, nickname, deviceId, turnstileToken, showCountry }",
+    };
   }
-  const { token, nickname, deviceId, turnstileToken } = record;
+  const { token, nickname, deviceId, turnstileToken, showCountry } = record;
   if (typeof token !== "string" || token === "" || token.length > MAX_TOKEN_CHARS) {
     return { ok: false, detail: "token must be a result or progress token" };
   }
@@ -324,7 +353,10 @@ export function parseSubmit(body: unknown): Parsed<SubmitRequest> {
   ) {
     return { ok: false, detail: "turnstileToken must be a Turnstile token" };
   }
-  return { ok: true, value: { token, nickname, deviceId, turnstileToken } };
+  if (typeof showCountry !== "boolean") {
+    return { ok: false, detail: "showCountry must be true or false" };
+  }
+  return { ok: true, value: { token, nickname, deviceId, turnstileToken, showCountry } };
 }
 
 function badRequest(detail: string): SubmitResult {

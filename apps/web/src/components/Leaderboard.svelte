@@ -41,6 +41,8 @@
     winnerLine,
   } from "../game/leaderboard";
   import type { MineState, Paging } from "../game/leaderboard";
+  import { formatThink } from "../game/flags";
+  import Flag from "./Flag.svelte";
 
   const PERIODS: readonly BoardPeriod[] = ["day", "week", "month"];
   const uid = $props.id();
@@ -201,7 +203,10 @@
           {#if winner !== null}
             <!-- "HardyOffside889 got a 23 streak yesterday": the name and number in gold. -->
             <p class="winner">
-              {#each winner as part, i (i)}<span class:gold={part.gold}>{part.text}</span>{/each}
+              {#each winner.parts as part, i (i)}{#if part.name}<Flag
+                    country={winner.country}
+                  />{/if}<span class:gold={part.gold} class:name={part.name}>{part.text}</span
+                >{/each}
             </p>
           {/if}
           {#if rows.length === 0 && pinned === null}
@@ -224,24 +229,36 @@
                     <span class="rank num">{pinned.rank}</span>
                     <span class="who">
                       <span class="line">
+                        <Flag country={pinned.country} keep />
                         <span class="nick">{pinned.nickname ?? t("leaderboard.retired")}</span>
                         <span class="you">{t("leaderboard.you")}</span>
                       </span>
                       <span class="sub">{pinnedText(pinned)}</span>
                     </span>
-                    <span class="streak num">{pinned.streak}</span>
+                    <span class="streak num"
+                      >{pinned.streak}{#if pinned.tied && pinned.thinkMs !== null}<span class="time"
+                          ><span class="dot" aria-hidden="true">{t("over.separator")}</span
+                          >{formatThink(pinned.thinkMs)}</span
+                        >{/if}</span
+                    >
                   </button>
                 {:else}
                   <p class="pinned" class:retired={pinned.nickname === null}>
                     <span class="rank num">{pinned.rank}</span>
                     <span class="who">
                       <span class="line">
+                        <Flag country={pinned.country} keep />
                         <span class="nick">{pinned.nickname ?? t("leaderboard.retired")}</span>
                         <span class="you">{t("leaderboard.you")}</span>
                       </span>
                       <span class="sub">{pinnedText(pinned)}</span>
                     </span>
-                    <span class="streak num">{pinned.streak}</span>
+                    <span class="streak num"
+                      >{pinned.streak}{#if pinned.tied && pinned.thinkMs !== null}<span class="time"
+                          ><span class="dot" aria-hidden="true">{t("over.separator")}</span
+                          >{formatThink(pinned.thinkMs)}</span
+                        >{/if}</span
+                    >
                   </p>
                 {/if}
               {/if}
@@ -265,11 +282,17 @@
                         <td class="rank num">{row.rank}</td>
                         <td class="name" class:retired={row.nickname === null}>
                           <span class="line">
+                            <Flag country={row.country} lazy={page > 0} keep />
                             <span class="nick">{row.nickname ?? t("leaderboard.retired")}</span>
                             {#if row.mine}<span class="you">{t("leaderboard.you")}</span>{/if}
                           </span>
                         </td>
-                        <td class="streak num">{row.streak}</td>
+                        <td class="streak num"
+                          >{row.streak}{#if row.tied && row.thinkMs !== null}<span class="time"
+                              ><span class="dot" aria-hidden="true">{t("over.separator")}</span
+                              >{formatThink(row.thinkMs)}</span
+                            >{/if}</td
+                        >
                       </tr>
                     {/each}
                   </tbody>
@@ -480,6 +503,9 @@
     font-size: var(--fs-body);
     color: var(--dim);
   }
+  .winner :global(.flag) {
+    margin-right: var(--flag-gap);
+  }
   .winner .gold {
     color: var(--gold);
     text-shadow: var(--glow);
@@ -544,12 +570,37 @@
   td.streak {
     color: var(--gold);
   }
-  /* A name and, on the player's own row, the "You" pill, on one line. */
+  /* A flag, a name and, on the player's own row, the "You" pill, on one line. */
   .line {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--flag-gap);
     min-width: 0;
+  }
+  .line .you {
+    margin-left: 2px;
+  }
+  /* A tied streak's thinking time ("18 · 1:42.3"): beside it from 560px, and
+     under it, smaller, on a phone, so the name keeps its room. */
+  .time {
+    display: block;
+    font-size: var(--fs-lab);
+    color: var(--dim);
+    font-variation-settings: var(--fv-meta);
+    letter-spacing: 0;
+  }
+  .time .dot {
+    display: none;
+  }
+  @media (min-width: 560px) {
+    .time {
+      display: inline;
+      font-size: inherit;
+    }
+    .time .dot {
+      display: inline;
+      margin: 0 0.35em;
+    }
   }
   .nick {
     min-width: 0;

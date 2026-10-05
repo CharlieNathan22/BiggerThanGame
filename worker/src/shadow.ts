@@ -11,18 +11,18 @@
  * **Think time.** The server measures each answer from the moment it issued
  * the question's token to the guess arriving. Before a question can be
  * answered, every honest client plays the verdict, the gap to the next pair
- * and at least the short hold — `ANSWER_TIMINGS.verdict + next + hold`, even
- * with reduced motion, which drops only the wheel's spin. Anything under that
- * is time a person couldn't have had. Think time is the measured time less
- * that floor; a stat change adds the beat and (with motion) the spin on top, so
- * the estimate errs long, on the side of not flagging. Round one is left out:
+ * and at least the short hold — `ANSWER_TIMINGS.verdict + next + hold`, with
+ * reduced motion too, which keeps every pause and drops only the movement.
+ * Anything under that is time a person couldn't have had. Think time is the
+ * measured time less that floor; a stat change adds the beat and the spin on
+ * top, so the estimate errs long, on the side of not flagging. Round one is left out:
  * its title card can be skipped. Timeouts are left out too.
  *
  * The thresholds are deliberately not in the public docs; the handoff doc has
  * them with the rate-limit numbers.
  */
 
-import { ANSWER_TIMINGS, bandForRound } from "@bt/core";
+import { ANSWER_TIMINGS, answerAllowance, bandForRound } from "@bt/core";
 import type { AnswerRecord } from "./run-ledger.js";
 
 /** The animation every honest client plays before a question from round two on. */
@@ -69,6 +69,34 @@ function stdev(values: readonly number[]): number {
 function isKnifeEdge(round: number): boolean {
   const { ceiling } = bandForRound(round, "endless");
   return ceiling !== null && ceiling <= KNIFE_CEILING;
+}
+
+/**
+ * A run's thinking time, the boards' tiebreak on equal streaks: for each
+ * answer from round two on, the server-measured time less exactly the
+ * animation an honest client played before that question could be answered
+ * (core `answerAllowance`: the verdict and the gap to the next deal, then the
+ * beat and the wheel's spin when the stat changed, or the short hold when it
+ * didn't). Unlike the heuristics' fixed floor above, which errs long on
+ * purpose, this takes each round's own animation off, so a run whose stat
+ * changed more often doesn't lose a tie for its longer spins. A timed-out
+ * answer counts: the time was spent. Round one is left out, as above: its
+ * title card can be skipped and its photos take their own time to load. No
+ * answer counts below zero.
+ *
+ * `statChanged(round)` is whether the wheel changed stat for that round, from
+ * the run's own sequence (a pure function of its seed).
+ */
+export function thinkMs(
+  answers: readonly AnswerRecord[],
+  statChanged: (round: number) => boolean,
+): number {
+  return answers
+    .filter((a) => a.round >= 2)
+    .reduce(
+      (total, a) => total + Math.max(0, a.ms - answerAllowance(a.round, statChanged(a.round))),
+      0,
+    );
 }
 
 /** Which heuristics a run's answers trip; empty for a run that looks like a person. */

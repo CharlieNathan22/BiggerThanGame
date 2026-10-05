@@ -377,15 +377,14 @@ describe("timings", () => {
     expect(dealDelay(r2, TIMINGS)).toBe(TIMINGS.hold);
   });
 
-  it("lands the wheel at once with reduced motion", () => {
-    expect(spinDelay(TIMINGS, false)).toBe(TIMINGS.spin + TIMINGS.land);
-    expect(spinDelay(TIMINGS, true)).toBe(0);
+  it("takes the spin's time with or without motion: only the motion changes", () => {
+    expect(spinDelay(TIMINGS)).toBe(TIMINGS.spin + TIMINGS.land);
   });
 
   it("settles an on-time answer exactly when the plain count-up would", () => {
     const count = { tappedAt: 1000, arrivedAt: 1060 };
     expect(settleWindow(count, TIMINGS, false)).toEqual({ start: 1060, end: 1000 + TIMINGS.count });
-    expect(verdictAt(count, TIMINGS, false)).toBe(1000 + TIMINGS.verdict);
+    expect(verdictAt(count, TIMINGS)).toBe(1000 + TIMINGS.verdict);
   });
 
   it("still counts for the settle time when the answer is late — never a snap", () => {
@@ -393,24 +392,27 @@ describe("timings", () => {
     const count = { tappedAt: 1000, arrivedAt: late };
     const window = settleWindow(count, TIMINGS, false);
     expect(window).toEqual({ start: late, end: late + TIMINGS.settle });
-    expect(verdictAt(count, TIMINGS, false)).toBe(
+    expect(verdictAt(count, TIMINGS)).toBe(
       late + TIMINGS.settle + (TIMINGS.verdict - TIMINGS.count),
     );
   });
 
   it("has no window before the answer arrives", () => {
     expect(settleWindow({ tappedAt: 0, arrivedAt: null }, TIMINGS, false)).toBeNull();
-    expect(() => verdictAt({ tappedAt: 0, arrivedAt: null }, TIMINGS, false)).toThrow();
+    expect(() => verdictAt({ tappedAt: 0, arrivedAt: null }, TIMINGS)).toThrow();
   });
 
-  it("with reduced motion, shows the value on arrival and the verdict at the usual time", () => {
+  it("with reduced motion, shows the value on arrival; the verdict keeps its time", () => {
     expect(settleWindow({ tappedAt: 0, arrivedAt: 90 }, TIMINGS, true)).toEqual({
       start: 90,
       end: 90,
     });
-    expect(verdictAt({ tappedAt: 0, arrivedAt: 90 }, TIMINGS, true)).toBe(TIMINGS.verdict);
-    const late = TIMINGS.verdict + 1000;
-    expect(verdictAt({ tappedAt: 0, arrivedAt: late }, TIMINGS, true)).toBe(late);
+    // verdictAt takes no motion setting: on time or late, the verdict comes when it would anyway.
+    expect(verdictAt({ tappedAt: 0, arrivedAt: 90 }, TIMINGS)).toBe(TIMINGS.verdict);
+    const late = TIMINGS.count + 2000;
+    expect(verdictAt({ tappedAt: 0, arrivedAt: late }, TIMINGS)).toBe(
+      late + TIMINGS.settle + (TIMINGS.verdict - TIMINGS.count),
+    );
   });
 
   it("deals the next round sooner than it shows the game-over panel", () => {
@@ -490,7 +492,7 @@ describe("reduce — hitches", () => {
     const retried = reduce(limited, { type: "retry", at: 10_050 });
     expect(retried.count).toEqual({ tappedAt: 10_050, arrivedAt: null });
     const answered = reduce(retried, { type: "answered", response: cont(1, r2), at: 10_100 });
-    expect(verdictAt(answered.count!, TIMINGS, false)).toBe(10_050 + TIMINGS.verdict);
+    expect(verdictAt(answered.count!, TIMINGS)).toBe(10_050 + TIMINGS.verdict);
   });
 
   it("retries a dropped connection, counting the spell from its first failure", () => {

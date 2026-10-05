@@ -161,7 +161,13 @@ describe("standings kept from a publish", () => {
 });
 
 describe("publishRun", () => {
-  const body = { token: "t", nickname: "SwiftVolley42", deviceId: "d", turnstileToken: "ts" };
+  const body = {
+    token: "t",
+    nickname: "SwiftVolley42",
+    deviceId: "d",
+    turnstileToken: "ts",
+    showCountry: true,
+  };
   const answer = (status: number, json?: unknown) => async (url: string, init: RequestInit) => {
     expect(url).toBe(SUBMIT_ENDPOINT);
     expect(init.method).toBe("POST");

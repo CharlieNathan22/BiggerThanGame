@@ -729,7 +729,10 @@ current stat.
   page keeps the floodlights, still, showing through the halves at rest and on the start and
   game-over panels: nothing moves behind the players. Reduced motion stills everything.
 - **Quality floor:** responsive to mobile, visible keyboard focus, reduced motion respected,
-  colour never the sole carrier of meaning.
+  colour never the sole carrier of meaning. Reduced motion changes the motion, never the timing:
+  where the wheel would spin the plaque holds still for as long, so every question becomes
+  answerable at the same moment for everyone, and the Endless clock and the thinking-time
+  tiebreak are the same with or without it.
 
 The prototype's styling is plain CSS with custom properties and should be **ported as-is**, not
 rewritten into a utility framework. Converting it would cost days and guarantee visual drift.
@@ -790,10 +793,24 @@ This is the headline board.
 ### Endless boards
 
 Three boards: **Today**, **This week** and **This month**. Each is the top 50 of each device's
-**best single published run** in the period — the highest streak, then the lower total answer time
-the server measured, then who published first. Framed as personal-best boards, not a ranking —
-see section 3 — and the board page says so plainly: "Personal bests — everyone gets a different
-run, so luck plays a part." Nicknames are **not** required to be unique here.
+**best single published run** in the period — the highest streak, then the lower **thinking
+time**, then who published first. Thinking time is the server-measured time on each answer from
+question 2, less exactly the animation that question played first (the verdict, the gap, and the
+beat and wheel spin when the stat changed, or the short hold when it didn't), so a run whose stat
+changed more often doesn't lose a tie for its longer spins. The board page puts it plainly:
+"Every run is different. Longest streak wins." Nicknames are **not** required to be unique here.
+
+- **A time only where it decides something.** An entry is **tied** when another device's best in
+  the period, anywhere on the board and not just the page on show or the top 50, has the same
+  streak. A tied entry shows its thinking time beside the streak ("18 · 1:42.3", m:ss.s; under it
+  on a phone); an untied one shows the streak alone. The player's own pinned row follows the same
+  rule.
+- **Flags.** Each entry can show a small round country flag before its name: the country of the
+  connection it was published from (Cloudflare's), only the two-letter code, nothing finer. The
+  publish dialog shows the flag that will appear with a "Show my country flag" box, ticked by
+  default; unticked, no country is kept, and the choice is remembered on the device like the
+  nickname. An unknown country, Tor, or one with no flag shows none. A retired name keeps its
+  flag. The flags are circle-flags (MIT), served from this site.
 
 - **Periods are UTC.** The day resets at 00:00 UTC; the week is the ISO week, Monday 00:00 UTC to
   Monday 00:00 UTC (so the week of 28 December 2026 is 2026-W53, into January); the month is the

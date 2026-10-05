@@ -14,7 +14,8 @@ CREATE TABLE scores (
   nickname            TEXT NOT NULL,
   nickname_normalised TEXT NOT NULL,                  -- the moderation skeleton
   streak              INTEGER NOT NULL CHECK (streak > 0),
-  elapsed_ms          INTEGER NOT NULL,               -- server-measured; tiebreaker only
+  think_ms            INTEGER NOT NULL CHECK (think_ms >= 0), -- server-measured thinking time; the tiebreak
+  country             TEXT CHECK (country IS NULL OR length(country) = 2), -- a flag's code, if shown
   device_hash         TEXT NOT NULL,                  -- HMAC of a random first-party id
   run_id              TEXT NOT NULL UNIQUE,           -- the run key: a run publishes once
   created_at          INTEGER NOT NULL,               -- ms since the epoch
@@ -24,7 +25,7 @@ CREATE TABLE scores (
 );
 
 -- The board: a period's rows, best first.
-CREATE INDEX idx_scores_board ON scores (mode, day_key, streak DESC, elapsed_ms, created_at);
+CREATE INDEX idx_scores_board ON scores (mode, day_key, streak DESC, think_ms, created_at);
 -- A device's own rows, for its best and its rank.
 CREATE INDEX idx_scores_device ON scores (mode, device_hash, day_key);
 -- The nightly prune.
@@ -41,7 +42,7 @@ CREATE TABLE ranked_attempts (
   PRIMARY KEY (device_hash, game_no)
 );
 
--- A closed period's top 100, taken by the midnight cron: the "winner" lines.
+-- A closed period's top 50, taken by the midnight cron: the "winner" lines.
 CREATE TABLE board_snapshots (
   mode       TEXT NOT NULL,
   period     TEXT NOT NULL CHECK (period IN ('day', 'week', 'month')),

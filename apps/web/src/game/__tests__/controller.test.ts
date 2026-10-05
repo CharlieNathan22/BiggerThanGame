@@ -1,3 +1,4 @@
+import { answerAllowance } from "@bt/core";
 import type { AnswerResponse, CardImage, Guess, StartResponse } from "@bt/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiFailure } from "../api";
@@ -200,11 +201,13 @@ describe("GameController", () => {
     c.destroy();
   });
 
-  it("skips the spin with reduced motion", async () => {
+  it("holds still for the spin's time with reduced motion, then asks", async () => {
     reduced = true;
     await startRun();
     await vi.advanceTimersByTimeAsync(TIMINGS.beat);
-    // A zero-delay timer runs on the next tick, which fake timers count as 1ms.
+    expect(latest.phase).toBe("spinning");
+    await vi.advanceTimersByTimeAsync(TIMINGS.spin + TIMINGS.land - 1);
+    expect(latest.phase).toBe("spinning");
     await vi.advanceTimersByTimeAsync(1);
     expect(latest.phase).toBe("awaiting");
     expect(phases).toEqual([
@@ -418,6 +421,64 @@ describe("a 429", () => {
     api.starts[1]?.resolve({ runId: "20260926-a", round: round(1) });
     await flush();
     expect(latest.phase).toBe("title");
+  });
+});
+
+describe("the wait before a question, with and without motion", () => {
+  /**
+   * From the answer landing (the instant the guess goes, the server's worst
+   * case) to round two becoming answerable: what the client actually waits.
+   */
+  async function waitToRoundTwo(statChanged: boolean): Promise<number> {
+    await startRun();
+    await vi.advanceTimersByTimeAsync(TIMINGS.beat + TIMINGS.spin + TIMINGS.land);
+    expect(latest.phase).toBe("awaiting");
+    controller.guess("higher");
+    const landed = Date.now();
+    api.answers[0]?.reply.resolve(cont(1, round(2, { statChanged })));
+    await flush();
+    let waited = 0;
+    while (!(latest.phase === "awaiting" && latest.round?.index === 2)) {
+      await vi.advanceTimersByTimeAsync(1);
+      waited += 1;
+      if (waited > 20_000) throw new Error(`stuck in ${latest.phase}`);
+    }
+    return Date.now() - landed;
+  }
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    "reduced motion %s, stat changed %s: exactly the server's allowance",
+    async (motionReduced, statChanged) => {
+      reduced = motionReduced;
+      const waited = await waitToRoundTwo(statChanged);
+      expect(waited).toBe(answerAllowance(2, statChanged));
+    },
+  );
+
+  it("is the same wait for everyone, so the clock and the tiebreak are too", async () => {
+    reduced = false;
+    const moving = await waitToRoundTwo(true);
+    controller.destroy();
+    controller = new GameController({
+      api: (api = new FakeApi()),
+      timings: TIMINGS,
+      now: () => Date.now(),
+      schedule: (fn, ms) => {
+        const id = setTimeout(fn, ms);
+        return () => clearTimeout(id);
+      },
+      reducedMotion: () => true,
+      best: 3,
+      preload: () => {},
+    });
+    controller.subscribe((s) => (latest = s));
+    const still = await waitToRoundTwo(true);
+    expect(still).toBe(moving);
   });
 });
 
