@@ -116,7 +116,7 @@ new_sqlite_classes = ["RunDO"]
 [[d1_databases]]
 binding = "DB"
 database_name = "biggerthangame"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "c8cf6c44-95ed-4383-ab10-e3de7dbeae9f"
 migrations_dir = "migrations"
 
 # The nightly job (worker/src/cron.ts): snapshot the boards that closed at
