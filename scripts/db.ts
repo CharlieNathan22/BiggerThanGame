@@ -52,6 +52,33 @@ export function databaseConfig(toml: string): { name: string; id: string } | und
 /** The id wrangler.toml holds until the owner creates the real database. */
 export const PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000000";
 
+/**
+ * Just the `[[d1_databases]]` block of wrangler.toml, up to the next table
+ * header, or undefined when there's none.
+ */
+export function d1Block(toml: string): string | undefined {
+  const start = toml.indexOf("[[d1_databases]]");
+  if (start === -1) return undefined;
+  const rest = toml.slice(start + "[[d1_databases]]".length);
+  const next = rest.search(/^\s*\[/m);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+/** Whether a command's arguments ask wrangler for the real database. */
+export function asksRemote(args: readonly string[]): boolean {
+  return args.some((a) => a === "--remote" || a.startsWith("--remote=") || /^--x-remote/.test(a));
+}
+
+/**
+ * The wrangler arguments the local commands run: always `--local`. A seed
+ * runs `file`; a reset deletes the local state and then migrates.
+ */
+export function localArgs(command: "migrate" | "seed", file = ".wrangler/seed.sql"): string[] {
+  return command === "migrate"
+    ? ["d1", "migrations", "apply", BINDING, "--local"]
+    : ["d1", "execute", BINDING, "--local", `--file=${file}`];
+}
+
 /** A score's id, as the Worker makes them: a uuid. */
 const SCORE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -261,7 +288,7 @@ function wrangler(args: readonly string[]): number {
 
 /** Local commands never touch the real database, whatever they're given. */
 function refuseRemote(args: readonly string[]): void {
-  if (args.some((a) => a === "--remote" || a.startsWith("--remote="))) {
+  if (asksRemote(args)) {
     console.error("This command only works on the local database. It never takes --remote.");
     process.exit(1);
   }
@@ -277,7 +304,7 @@ async function confirm(question: string, expected: string): Promise<boolean> {
 }
 
 function migrateLocal(): number {
-  return wrangler(["d1", "migrations", "apply", BINDING, "--local"]);
+  return wrangler(localArgs("migrate"));
 }
 
 async function migrateRemote(): Promise<number> {
@@ -318,7 +345,7 @@ function seedLocal(args: readonly string[]): number {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, "seed.sql");
   writeFileSync(file, seedSql(date));
-  const code = wrangler(["d1", "execute", BINDING, "--local", `--file=${relative(root, file)}`]);
+  const code = wrangler(localArgs("seed", relative(root, file)));
   if (code === 0) {
     console.log(`\nSeeded the local database around ${date.toISOString().slice(0, 10)}.`);
   }

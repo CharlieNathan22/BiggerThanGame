@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { PLACEHOLDER_ID, databaseConfig, ownerSql, seedSql } from "../db.js";
+import {
+  PLACEHOLDER_ID,
+  asksRemote,
+  d1Block,
+  databaseConfig,
+  localArgs,
+  ownerSql,
+  seedSql,
+} from "../db.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const toml = readFileSync(resolve(root, "wrangler.toml"), "utf8");
@@ -11,18 +19,60 @@ const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
 };
 
 describe("local development never touches the real database", () => {
-  it("has no remote D1 setting in wrangler.toml", () => {
+  it("has no remote setting on the D1 binding in wrangler.toml", () => {
+    const block = d1Block(toml);
+    expect(block).toBeDefined();
+    expect(block).toContain('binding = "DB"');
+    // remote, experimental_remote, preview_remote…: any of them would send `wrangler dev`'s
+    // database calls to the real one.
+    expect(block).not.toMatch(/^\s*[a-z_]*remote[a-z_]*\s*=/m);
     expect(toml).not.toMatch(/remote\s*=\s*true/);
-    expect(databaseConfig(toml)).toEqual({ name: "biggerthangame", id: PLACEHOLDER_ID });
+  });
+
+  it("would catch a remote setting, and reads only the D1 block", () => {
+    const remoteKey = /^\s*[a-z_]*remote[a-z_]*\s*=/m;
+    for (const key of ["remote", "experimental_remote", "preview_remote"]) {
+      const sample = ["[[d1_databases]]", 'binding = "DB"', `${key} = true`, "", "[triggers]"];
+      expect(d1Block(sample.join("\n")), key).toMatch(remoteKey);
+    }
+    const later = ["[[d1_databases]]", 'binding = "DB"', "", "[[services]]", "remote = true"];
+    expect(d1Block(later.join("\n"))).not.toMatch(remoteKey);
+  });
+
+  it("names the real database with a valid id, the placeholder or the one created on deploy day", () => {
+    const config = databaseConfig(toml);
+    expect(config?.name).toBe("biggerthangame");
+    expect(config?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(PLACEHOLDER_ID).toMatch(/^0{8}-0{4}-0{4}-0{4}-0{12}$/);
   });
 
   it("passes --remote in no package script: only db.ts's migrate:remote and owner can, after asking", () => {
     for (const [name, script] of Object.entries(pkg.scripts)) {
-      expect(script, name).not.toContain("--remote");
+      expect(asksRemote(script.split(/\s+/)), name).toBe(false);
+    }
+    for (const name of ["dev", "dev:worker", "dev:web", "dev:api"]) {
+      expect(pkg.scripts[name], name).toBeDefined();
+      expect(pkg.scripts[name], name).not.toMatch(/--(x-)?remote/);
     }
     expect(pkg.scripts["db:migrate:local"]).toBe("tsx scripts/db.ts migrate:local");
     expect(pkg.scripts["db:seed:local"]).toBe("tsx scripts/db.ts seed:local");
     expect(pkg.scripts["db:reset:local"]).toBe("tsx scripts/db.ts reset:local");
+  });
+
+  it("runs the local commands with --local, never --remote", () => {
+    // reset:local deletes the local state, then runs the migrate.
+    for (const args of [localArgs("migrate"), localArgs("seed")]) {
+      expect(args).toContain("--local");
+      expect(asksRemote(args)).toBe(false);
+    }
+    expect(localArgs("seed", ".wrangler/seed.sql")).toContain("--file=.wrangler/seed.sql");
+  });
+
+  it("refuses --remote handed to a local command", () => {
+    for (const flag of ["--remote", "--remote=true", "--x-remote-bindings"]) {
+      expect(asksRemote(["--date", "2026-10-05", flag]), flag).toBe(true);
+    }
+    expect(asksRemote(["--date", "2026-10-05", "--local"])).toBe(false);
   });
 
   it("migrates the local database before pnpm dev starts", () => {
