@@ -98,6 +98,7 @@ export { CHALLENGES } from "./modes.js";
 
 export {
   BOARD_PERIODS,
+  BOARD_SIZE,
   DAY_MS,
   countdown,
   dayKey,
@@ -152,6 +153,9 @@ export type {
   LeavePhase,
   LeaveRequest,
   LeaveTrigger,
+  MineEntry,
+  MineRequest,
+  MineResponse,
   NextRoundRequest,
   PeriodRank,
   PlayerCard,

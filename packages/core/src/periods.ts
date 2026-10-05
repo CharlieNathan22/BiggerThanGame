@@ -38,6 +38,13 @@ export interface Period {
 
 export const DAY_MS = 86_400_000;
 
+/**
+ * How many entries a board holds: the page shows them ten at a time, and the
+ * nightly snapshot of a closed period keeps the same number. Totals and a
+ * player's own rank still count everyone.
+ */
+export const BOARD_SIZE = 50;
+
 const pad = (n: number, width = 2): string => String(n).padStart(width, "0");
 
 /** The UTC date as a day key: 2026-09-29 → `20260929`. */

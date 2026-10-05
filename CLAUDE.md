@@ -132,8 +132,9 @@ packages/core/    framework-free TypeScript. The game.
 packages/deck/    schema, validation, build pipeline. Data is a private submodule.
 apps/web/         Astro + Svelte
 worker/           fetch handler: /api/round/next (Friendly), /api/run/start and /api/round/guess
-                  (Endless: tokens, RunDO), /api/run/submit and GET /api/board/endless/:period
-                  (the boards: D1, Cache API), /api/feedback, /api/run/leave; scheduled (the
+                  (Endless: tokens, RunDO), /api/run/submit, GET /api/board/endless/:period
+                  and POST /api/board/endless/me (the boards: D1, Cache API; your live rank),
+                  /api/feedback, /api/run/leave; scheduled (the
                   nightly snapshot and prune)
 migrations/       D1 migrations
 scripts/          pnpm stats (Node, no dependencies)

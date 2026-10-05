@@ -1,6 +1,6 @@
 # Deck viability
 
-Generated 2026-10-04 from 131 players.
+Generated 2026-10-05 from 131 players.
 
 Counts are **unordered pairs that clear the band**, before the recently-seen
 queue takes its cut. Bands are in rank distance — how far apart two players sit

@@ -3,7 +3,7 @@
  * 01:30 UTC.
  *
  * Both snapshot the periods that closed at the most recent midnight — the day,
- * and on a Monday the ISO week, and on the 1st the month — as their top 100
+ * and on a Monday the ISO week, and on the 1st the month — as their top 50
  * and total, into `board_snapshots`: "Yesterday's winner", "Last week's
  * winner" and "Last month's winner". A snapshot replaces an earlier one of the
  * same period, so the 01:30 run just takes it again, now including runs

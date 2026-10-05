@@ -1,6 +1,6 @@
 /**
  * `GET /api/board/endless/:period` (ARCHITECTURE.md §11): the current day's,
- * week's or month's top 100, the total, when it resets and the period
+ * week's or month's top 50, the total, when it resets and the period
  * before's winner.
  *
  * **Served from the Workers Cache API**, about a minute stale at most. A

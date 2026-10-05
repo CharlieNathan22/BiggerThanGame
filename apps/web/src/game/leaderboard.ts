@@ -1,25 +1,31 @@
 /**
  * The Endless leaderboard page's view logic, pure so it runs under test: the
- * rows to show, with the player's own entry merged in; the countdown to the
- * reset; the previous period's winner. `Leaderboard.svelte` renders it.
+ * board's rows as the server ranked them, ten to a page; where the player
+ * stands; the countdown to the reset; the previous period's winner.
+ * `Leaderboard.svelte` renders it.
  *
- * **The player's own row comes from their device** (device.ts), kept from
- * their submit response. The board is served from a cache up to a minute old,
- * so a player who has just published may not be on it yet — and a shadowed
- * score is never on anyone else's. Either way, when the device has a standing
- * for the period on show and the board doesn't have that entry, it is put in
- * at its rank (if that's in the top 100) or shown under the table, so the
- * player always sees themselves.
+ * **Every rank is the server's.** A row shows the rank field it came with,
+ * never its place in the list, and nothing is ever inserted into the list.
+ *
+ * **The player's own position is live.** A publish's answer goes out of date
+ * as soon as anyone else publishes, so the page asks `POST
+ * /api/board/endless/me` once as it loads — only when this device has
+ * published to a current period (device.ts `bt:published`) — and pins that
+ * above the table whenever the player's own row isn't on the page on show:
+ * on another page of the top 50 (with a jump to it), or below it. If the
+ * lookup fails, the rank the publish came back with is shown instead, marked
+ * "when published", never as if it were current.
  */
 
 import { countdown } from "@bt/core";
-import type { BoardEntry, BoardPeriod, BoardResponse } from "@bt/core";
+import type { BoardEntry, BoardPeriod, BoardResponse, MineEntry, MineResponse } from "@bt/core";
 import { t } from "../i18n";
 import type { Fetch } from "./api";
 import type { Standing } from "./device";
 import { count, ordinal } from "./publish";
 
 export const BOARD_ENDPOINT = "/api/board/endless";
+export const MINE_ENDPOINT = "/api/board/endless/me";
 
 /** A board, or null when it couldn't be had: no connection, a timeout, a server problem. */
 export async function fetchBoard(
@@ -55,59 +61,250 @@ export interface BoardRow {
   readonly key: string;
 }
 
-export interface BoardView {
-  readonly rows: readonly BoardRow[];
-  /** Devices on the board, the player counted if they aren't in it yet. */
+/** Where the player's own best entry stands in the period on show. */
+export interface OwnPosition {
+  readonly entryId: string;
+  readonly rank: number;
+  /** Devices on the board, the player's counted. */
   readonly total: number;
-  /** "You: 412th of 3,208", when the player's entry is below the rows. Null otherwise. */
-  readonly ownLine: string | null;
+  readonly streak: number;
+  /** Null when the name has been retired. */
+  readonly nickname: string | null;
+  /** Live from the server, or the rank the player's own publish came back with. */
+  readonly live: boolean;
 }
 
-/** The board as the page shows it, with the player's own standing, if any, merged in. */
-export function boardView(board: BoardResponse, own: Standing | undefined): BoardView {
-  const plain = (e: BoardEntry): BoardRow => ({
+export interface BoardView {
+  /** The top `BOARD_SIZE`, exactly as the server ranked them. */
+  readonly rows: readonly BoardRow[];
+  /** Devices on the board. */
+  readonly total: number;
+  /** The player's own position, and its place in `rows` (null when it isn't in them). */
+  readonly own: (OwnPosition & { readonly index: number | null }) | null;
+}
+
+/** The board as the page shows it: the server's rows, the player's own marked. */
+export function boardView(board: BoardResponse, own: OwnPosition | null): BoardView {
+  const rows = board.entries.map((e: BoardEntry) => ({
     rank: e.rank,
     nickname: e.nickname,
     streak: e.streak,
-    mine: false,
+    mine: own !== null && e.id === own.entryId,
     key: e.id,
-  });
-  const mineHere = own !== undefined && own.period === board.period && own.key === board.key;
-  if (!mineHere) return { rows: board.entries.map(plain), total: board.total, ownLine: null };
-
-  const found = board.entries.some((e) => e.id === own.entryId);
-  if (found) {
-    return {
-      rows: board.entries.map((e) => ({ ...plain(e), mine: e.id === own.entryId })),
-      total: board.total,
-      ownLine: null,
-    };
-  }
-
-  const total = Math.max(board.total + 1, own.total);
-  const size = Math.max(board.entries.length, 1);
-  if (own.rank > size + 1 || own.rank > 100) {
-    return {
-      rows: board.entries.map(plain),
-      total,
-      ownLine: t("leaderboard.yourRank", { rank: ordinal(own.rank), total: count(total) }),
-    };
-  }
-  // In at its rank; everyone from there down moves one place, as the player sees it.
-  const rows: BoardRow[] = [];
-  const mine: BoardRow = {
-    rank: own.rank,
-    nickname: own.nickname,
-    streak: own.streak,
-    mine: true,
-    key: own.entryId,
+  }));
+  const at = own === null ? -1 : rows.findIndex((r) => r.mine);
+  return {
+    rows,
+    total: board.total,
+    own: own === null ? null : { ...own, index: at === -1 ? null : at },
   };
-  for (const e of board.entries) {
-    if (e.rank === own.rank) rows.push(mine);
-    rows.push(e.rank >= own.rank ? { ...plain(e), rank: e.rank + 1 } : plain(e));
+}
+
+// ------------------------------------------------------------ the player's own
+
+/** The live lookup: not needed (nothing published), on its way, answered, or failed. */
+export type MineState =
+  | { readonly status: "none" }
+  | { readonly status: "loading" }
+  | { readonly status: "ok"; readonly response: MineResponse }
+  | { readonly status: "failed" };
+
+function isMineEntry(value: unknown): value is MineEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const e = value as Record<string, unknown>;
+  return (
+    typeof e.key === "string" &&
+    typeof e.entryId === "string" &&
+    typeof e.rank === "number" &&
+    typeof e.total === "number" &&
+    typeof e.streak === "number" &&
+    (typeof e.nickname === "string" || e.nickname === null)
+  );
+}
+
+/** This device's live standing, or null when it couldn't be had. */
+export async function fetchMine(
+  fetchFn: Fetch,
+  deviceId: string,
+  timeoutMs = 10_000,
+): Promise<MineResponse | null> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
+  try {
+    const res = await fetchFn(MINE_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deviceId }),
+      signal: abort.signal,
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { periods?: unknown };
+    const periods = body.periods;
+    if (typeof periods !== "object" || periods === null) return null;
+    const each = periods as Record<string, unknown>;
+    const ok = (["day", "week", "month"] as const).every(
+      (p) => each[p] === null || isMineEntry(each[p]),
+    );
+    return ok ? (body as MineResponse) : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
-  if (!rows.includes(mine)) rows.push(mine);
-  return { rows: rows.slice(0, 100), total, ownLine: null };
+}
+
+/**
+ * Asks for the live standing once, and only when this device has published to
+ * a current period (`standings`, as device.ts reads them: the reset ones are
+ * gone). Otherwise there is nothing to ask about, and nothing is sent.
+ */
+export async function loadMine(
+  fetchFn: Fetch,
+  standings: readonly Standing[],
+  deviceId: () => string,
+): Promise<MineState> {
+  if (standings.length === 0) return { status: "none" };
+  const response = await fetchMine(fetchFn, deviceId());
+  return response === null ? { status: "failed" } : { status: "ok", response };
+}
+
+/**
+ * The player's position on the board on show (`period`, its key `key`): live
+ * when the lookup answered, the stored publish's when it failed, none when
+ * there's nothing to show or it's still on its way.
+ */
+export function ownPosition(
+  period: BoardPeriod,
+  key: string,
+  mine: MineState,
+  standings: readonly Standing[],
+): OwnPosition | null {
+  if (mine.status === "ok") {
+    const e = mine.response.periods[period];
+    return e === null || e.key !== key
+      ? null
+      : {
+          entryId: e.entryId,
+          rank: e.rank,
+          total: e.total,
+          streak: e.streak,
+          nickname: e.nickname,
+          live: true,
+        };
+  }
+  if (mine.status !== "failed") return null;
+  const s = standings.find((x) => x.period === period && x.key === key);
+  return s === undefined
+    ? null
+    : {
+        entryId: s.entryId,
+        rank: s.rank,
+        total: s.total,
+        streak: s.streak,
+        nickname: s.nickname,
+        live: false,
+      };
+}
+
+// ------------------------------------------------------------ pages
+
+/** Rows to a page: the top 50 is five pages. */
+export const PAGE_SIZE = 10;
+
+/** How many pages `rows` rows make: at least one, so an empty board still has a page. */
+export function pageCount(rows: number): number {
+  return Math.max(1, Math.ceil(rows / PAGE_SIZE));
+}
+
+/** A page index kept within the board's pages. */
+export function clampPage(page: number, rows: number): number {
+  return Math.min(Math.max(0, Math.floor(page)), pageCount(rows) - 1);
+}
+
+/** The rows on page `page` (from 0). */
+export function pageRows<T>(rows: readonly T[], page: number): T[] {
+  const p = clampPage(page, rows.length);
+  return rows.slice(p * PAGE_SIZE, (p + 1) * PAGE_SIZE);
+}
+
+/** The page a row at `index` is on. */
+export function pageOf(index: number): number {
+  return Math.floor(index / PAGE_SIZE);
+}
+
+/** Which board, and which page of it, is on show. A new tab starts on its first page. */
+export interface Paging {
+  readonly period: BoardPeriod;
+  readonly page: number;
+}
+
+export function selectPeriod(period: BoardPeriod): Paging {
+  return { period, page: 0 };
+}
+
+export function goToPage(paging: Paging, page: number, rows: number): Paging {
+  return { ...paging, page: clampPage(page, rows) };
+}
+
+/**
+ * The player's own row, pinned above rank 1, when it isn't on the page on
+ * show: on another page of the top 50 (then it jumps there: `page`), or below
+ * the top 50 (`page` null). Null when it's on this page, or when the player
+ * hasn't published to this period.
+ */
+export interface Pinned extends OwnPosition {
+  /** The page holding the player's row, or null when it isn't in the top 50 on show. */
+  readonly page: number | null;
+}
+
+export function pinnedRow(view: BoardView, page: number): Pinned | null {
+  const { own } = view;
+  if (own === null) return null;
+  const onPage = own.index === null ? null : pageOf(own.index);
+  if (onPage === clampPage(page, view.rows.length)) return null;
+  return {
+    entryId: own.entryId,
+    rank: own.rank,
+    total: own.total,
+    streak: own.streak,
+    nickname: own.nickname,
+    live: own.live,
+    page: onPage,
+  };
+}
+
+/** "1–10 of 50": the rows on show. Empty for an empty board. */
+export function rangeText(page: number, rows: number): string {
+  if (rows === 0) return "";
+  const p = clampPage(page, rows);
+  return t("leaderboard.range", {
+    from: count(p * PAGE_SIZE + 1),
+    to: count(Math.min((p + 1) * PAGE_SIZE, rows)),
+    total: count(rows),
+  });
+}
+
+/** "Page 2 of 5", for screen readers as the page changes. */
+export function pageText(page: number, rows: number): string {
+  return t("leaderboard.page", {
+    page: clampPage(page, rows) + 1,
+    pages: pageCount(rows),
+  });
+}
+
+/**
+ * Under the pinned row: "151st of 193", or, from the stored publish when the
+ * live lookup failed, "1st of 1 when published"; and where its page is, if
+ * it's in the top 50.
+ */
+export function pinnedText(pinned: Pinned): string {
+  const place = t(pinned.live ? "leaderboard.pinnedPlace" : "leaderboard.pinnedThen", {
+    rank: ordinal(pinned.rank),
+    total: count(pinned.total),
+  });
+  return pinned.page === null
+    ? place
+    : t("leaderboard.pinnedJump", { place, page: pinned.page + 1 });
 }
 
 /** "5 hours 12 minutes", "3 days 4 hours", "12 minutes": the two largest parts. */
@@ -126,14 +323,44 @@ export function countdownText(resetsAt: number, now: number): string {
     : (parts[0] ?? "");
 }
 
-/** "SwiftVolley42, 31", "Retired name, 31", or "no one yet". */
-export function winnerText(previous: BoardResponse["previous"]): string {
+/** A run of the winner line's text; the name and the streak are in gold. */
+export interface Segment {
+  readonly text: string;
+  readonly gold: boolean;
+}
+
+/**
+ * "HardyOffside889 got a 23 streak yesterday" ("last week", "last month"):
+ * the previous period's winner as one line, in parts so the name and the
+ * number can be gold. "Retired name" for a retired one; null when the period
+ * had no winner, and the page shows nothing.
+ */
+export function winnerLine(
+  previous: BoardResponse["previous"],
+  period: BoardPeriod,
+): Segment[] | null {
   const { winner } = previous;
-  if (winner === null) return t("leaderboard.noWinner");
-  return t("leaderboard.winnerLine", {
-    name: winner.nickname ?? t("leaderboard.retired"),
-    streak: winner.streak,
-  });
+  if (winner === null) return null;
+  const values: Record<string, Segment> = {
+    name: { text: winner.nickname ?? t("leaderboard.retired"), gold: true },
+    streak: { text: count(winner.streak), gold: true },
+    when: { text: t(`period.${period}.previous`), gold: false },
+  };
+  const parts: Segment[] = [];
+  const push = (part: Segment): void => {
+    if (part.text === "") return;
+    const last = parts.at(-1);
+    if (last !== undefined && !last.gold && !part.gold) {
+      parts[parts.length - 1] = { text: last.text + part.text, gold: false };
+    } else parts.push(part);
+  };
+  // The template's own words, its placeholders filled in their colours.
+  for (const piece of t("leaderboard.winnerLine").split(/(\{\w+\})/)) {
+    const name = /^\{(\w+)\}$/.exec(piece)?.[1];
+    const value = name === undefined ? undefined : values[name];
+    push(value ?? { text: piece, gold: false });
+  }
+  return parts;
 }
 
 /** "1 player", "3,208 players". */

@@ -1,22 +1,46 @@
 <!--
   The Endless leaderboard (client:load, on its own static page): tabs for
-  today, this week and this month, each the top 100 with the player's own row
-  highlighted, their rank out of the total, the countdown to the reset and the
-  previous period's winner; then this device's own 10 best runs, which need no
-  network. Renders the view from ../game/leaderboard.ts; no rules here. All
-  text comes from ../i18n.
+  today, this week and this month, each the top 50, ten rows to a page, with
+  the player's own row highlighted, the total, the countdown to the reset and
+  the previous period's winner; then this device's own 10 best runs, which
+  need no network. Renders the view from ../game/leaderboard.ts; no rules
+  here. All text comes from ../i18n.
 
   Tabs follow the ARIA tabs pattern: one tab stop, arrow keys, Home and End
-  move between them, and each panel is labelled by its tab.
+  move between them, and each panel is labelled by its tab. A new tab starts
+  on its first page. Every rank is the server's; nothing is put into the
+  list. When the player's own entry isn't on the page on show, their live
+  position (POST /api/board/endless/me, asked once, only on a device that has
+  published) is pinned above the table, apart from it; in the top 50 it is a
+  button to its page. The table keeps ten rows' height on every page, so the
+  page controls under it never move.
 -->
 <script lang="ts">
   import type { BoardPeriod, BoardResponse } from "@bt/core";
   import { onMount, tick } from "svelte";
   import { formatDate, t } from "../i18n";
   import { browserStorage } from "../game/best";
-  import { publishedKey, readRuns, readStandings, runsKey } from "../game/device";
+  import { deviceId, publishedKey, readRuns, readStandings, runsKey } from "../game/device";
   import type { LocalRun, Standing } from "../game/device";
-  import { boardView, countdownText, fetchBoard, totalText, winnerText } from "../game/leaderboard";
+  import {
+    boardView,
+    clampPage,
+    countdownText,
+    fetchBoard,
+    goToPage,
+    loadMine,
+    ownPosition,
+    pageCount,
+    pageRows,
+    pageText,
+    pinnedRow,
+    pinnedText,
+    rangeText,
+    selectPeriod,
+    totalText,
+    winnerLine,
+  } from "../game/leaderboard";
+  import type { MineState, Paging } from "../game/leaderboard";
 
   const PERIODS: readonly BoardPeriod[] = ["day", "week", "month"];
   const uid = $props.id();
@@ -26,20 +50,32 @@
     | { readonly status: "failed" }
     | { readonly status: "ok"; readonly board: BoardResponse };
 
-  let period = $state<BoardPeriod>("day");
+  let paging = $state<Paging>(selectPeriod("day"));
   let loads = $state<Partial<Record<BoardPeriod, Load>>>({});
   let now = $state(Date.now());
   let standings = $state<Standing[]>([]);
+  /** The live lookup of the player's own position; asked once, on load. */
+  let mine = $state<MineState>({ status: "none" });
   let runs = $state<LocalRun[]>([]);
   let ready = $state(false);
+  /** "Page 2 of 5", said once the page has changed; nothing on a new tab. */
+  let pageNote = $state("");
   let tabs: HTMLButtonElement[] = $state([]);
+  let numbers: HTMLButtonElement[] = $state([]);
+  let panel: HTMLDivElement | undefined = $state();
 
+  const period = $derived(paging.period);
   const load = $derived(loads[period]);
   const board = $derived(load?.status === "ok" ? load.board : null);
-  const own = $derived(
-    board === null ? undefined : standings.find((s) => s.period === period && s.key === board.key),
-  );
+  const own = $derived(board === null ? null : ownPosition(period, board.key, mine, standings));
   const view = $derived(board === null ? null : boardView(board, own));
+  const winner = $derived(board === null ? null : winnerLine(board.previous, period));
+  const rows = $derived(view?.rows ?? []);
+  const page = $derived(clampPage(paging.page, rows.length));
+  const pages = $derived(pageCount(rows.length));
+  const shown = $derived(pageRows(rows, page));
+  const pinned = $derived(view === null ? null : pinnedRow(view, page));
+  const pageList = $derived(Array.from({ length: pages }, (_, i) => i));
 
   async function open(p: BoardPeriod, force = false): Promise<void> {
     if (!force && loads[p]?.status === "ok") return;
@@ -56,6 +92,15 @@
     runs = readRuns(browserStorage, runsKey("legends", "endless"));
     ready = true;
     void open("day");
+    // Where this device stands now: only if it has published to a current period.
+    if (standings.length > 0) {
+      mine = { status: "loading" };
+      void loadMine(
+        (input, init) => fetch(input, init),
+        standings,
+        () => deviceId(browserStorage, () => crypto.randomUUID()),
+      ).then((state) => (mine = state));
+    }
     const timer = setInterval(() => {
       now = Date.now();
       // Past the reset, this period's board is a new one.
@@ -65,9 +110,28 @@
   });
 
   function select(p: BoardPeriod, focus = false): void {
-    period = p;
+    paging = selectPeriod(p);
+    pageNote = "";
     void open(p);
     if (focus) void tick().then(() => tabs[PERIODS.indexOf(p)]?.focus());
+  }
+
+  /**
+   * Shows page `to`. Focus stays on the control pressed; if that is now
+   * disabled (Previous on the first page, Next on the last), it moves to the
+   * page's own number.
+   */
+  async function go(to: number, from: HTMLButtonElement | null): Promise<void> {
+    paging = goToPage(paging, to, rows.length);
+    pageNote = pageText(paging.page, rows.length);
+    await tick();
+    if (from === null || from.disabled || !from.isConnected) numbers[page]?.focus();
+  }
+
+  /** From the pinned row to the page with the player's own row, and focus on that row. */
+  async function jump(to: number): Promise<void> {
+    await go(to, null);
+    panel?.querySelector<HTMLElement>("tr.mine")?.focus();
   }
 
   function onTabKey(event: KeyboardEvent, index: number): void {
@@ -119,6 +183,7 @@
     id="{uid}-panel"
     aria-labelledby="{uid}-tab-{period}"
     tabindex="0"
+    bind:this={panel}
   >
     <!-- Each board, and each state of it, fades in as the game's cards' text does. -->
     {#key `${period}:${load?.status ?? "loading"}`}
@@ -133,40 +198,131 @@
               })}</span
             >
           </p>
-          <p class="winner">
-            <span class="winnerlab">{t(`leaderboard.winner.${period}`)}</span>
-            <span class="winnername" class:none={board.previous.winner === null}
-              >{winnerText(board.previous)}</span
-            >
-          </p>
-          {#if view.rows.length === 0}
+          {#if winner !== null}
+            <!-- "HardyOffside889 got a 23 streak yesterday": the name and number in gold. -->
+            <p class="winner">
+              {#each winner as part, i (i)}<span class:gold={part.gold}>{part.text}</span>{/each}
+            </p>
+          {/if}
+          {#if rows.length === 0 && pinned === null}
             <p class="empty">{t("leaderboard.empty")}</p>
           {:else}
-            <table>
-              <caption class="sr">{t(`leaderboard.caption.${period}`)}</caption>
-              <thead>
-                <tr>
-                  <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
-                  <th scope="col">{t("leaderboard.col.name")}</th>
-                  <th scope="col" class="streak">{t("leaderboard.col.streak")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each view.rows as row (row.key)}
-                  <tr class:mine={row.mine} aria-current={row.mine ? "true" : undefined}>
-                    <td class="rank num">{row.rank}</td>
-                    <td class:retired={row.nickname === null}>
-                      {row.nickname ?? t("leaderboard.retired")}
-                      {#if row.mine}<span class="you">{t("leaderboard.you")}</span>{/if}
-                    </td>
-                    <td class="streak num">{row.streak}</td>
+            <!-- Ten rows' height on every page (and room for the pinned row
+                 when the player has one), so the controls under it stay put. -->
+            <div class="rows" class:pinnable={view.own !== null}>
+              {#if pinned !== null}
+                <!-- The player's own position, live, above the table and apart
+                     from it: never one of its rows, never counted in it. -->
+                {#if pinned.page !== null}
+                  {@const to = pinned.page}
+                  <button
+                    type="button"
+                    class="pinned jump"
+                    class:retired={pinned.nickname === null}
+                    onclick={() => jump(to)}
+                  >
+                    <span class="rank num">{pinned.rank}</span>
+                    <span class="who">
+                      <span class="line">
+                        <span class="nick">{pinned.nickname ?? t("leaderboard.retired")}</span>
+                        <span class="you">{t("leaderboard.you")}</span>
+                      </span>
+                      <span class="sub">{pinnedText(pinned)}</span>
+                    </span>
+                    <span class="streak num">{pinned.streak}</span>
+                  </button>
+                {:else}
+                  <p class="pinned" class:retired={pinned.nickname === null}>
+                    <span class="rank num">{pinned.rank}</span>
+                    <span class="who">
+                      <span class="line">
+                        <span class="nick">{pinned.nickname ?? t("leaderboard.retired")}</span>
+                        <span class="you">{t("leaderboard.you")}</span>
+                      </span>
+                      <span class="sub">{pinnedText(pinned)}</span>
+                    </span>
+                    <span class="streak num">{pinned.streak}</span>
+                  </p>
+                {/if}
+              {/if}
+              <table>
+                <caption class="sr">{t(`leaderboard.caption.${period}`)}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
+                    <th scope="col">{t("leaderboard.col.name")}</th>
+                    <th scope="col" class="streak">{t("leaderboard.col.streak")}</th>
                   </tr>
-                {/each}
-              </tbody>
-            </table>
-          {/if}
-          {#if view.ownLine !== null}
-            <p class="ownline">{view.ownLine}</p>
+                </thead>
+                {#key page}
+                  <tbody class="develop">
+                    {#each shown as row (row.key)}
+                      <tr
+                        class:mine={row.mine}
+                        aria-current={row.mine ? "true" : undefined}
+                        tabindex={row.mine ? -1 : undefined}
+                      >
+                        <td class="rank num">{row.rank}</td>
+                        <td class="name" class:retired={row.nickname === null}>
+                          <span class="line">
+                            <span class="nick">{row.nickname ?? t("leaderboard.retired")}</span>
+                            {#if row.mine}<span class="you">{t("leaderboard.you")}</span>{/if}
+                          </span>
+                        </td>
+                        <td class="streak num">{row.streak}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                {/key}
+              </table>
+            </div>
+            {#if pages > 1}
+              <nav class="pager" aria-label={t("leaderboard.pages")}>
+                <button
+                  type="button"
+                  class="secondary step prev"
+                  aria-label={t("leaderboard.previousPage")}
+                  disabled={page === 0}
+                  onclick={(e) => go(page - 1, e.currentTarget)}
+                >
+                  <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                    <path d="M10.5 6h-9M5.5 2l-4 4 4 4" />
+                  </svg>
+                  {t("leaderboard.previous")}
+                </button>
+                <ol class="numbers">
+                  {#each pageList as i (i)}
+                    <li>
+                      <button
+                        bind:this={numbers[i]}
+                        type="button"
+                        class="secondary pnum"
+                        aria-label={t("leaderboard.pageNumber", { page: i + 1 })}
+                        aria-current={i === page ? "page" : undefined}
+                        onclick={(e) => go(i, e.currentTarget)}
+                      >
+                        {i + 1}
+                      </button>
+                    </li>
+                  {/each}
+                </ol>
+                <button
+                  type="button"
+                  class="secondary step next"
+                  aria-label={t("leaderboard.nextPage")}
+                  disabled={page === pages - 1}
+                  onclick={(e) => go(page + 1, e.currentTarget)}
+                >
+                  {t("leaderboard.next")}
+                  <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                    <path d="M1.5 6h9M6.5 2l4 4-4 4" />
+                  </svg>
+                </button>
+              </nav>
+            {/if}
+            {#if rows.length > 0}
+              <p class="range">{rangeText(page, rows.length)}</p>
+            {/if}
           {/if}
         {:else if load?.status === "failed"}
           <p class="empty" role="alert">{t("leaderboard.failed")}</p>
@@ -180,6 +336,7 @@
         {/if}
       </div>
     {/key}
+    <p class="sr" aria-live="polite">{pageNote}</p>
   </div>
 </section>
 
@@ -315,46 +472,51 @@
     font-variation-settings: var(--fv-meta);
     text-align: center;
   }
-  /* The previous period's winner: the game-over panel's small label, then the
-     name in gold with its glow. */
+  /* The previous period's winner, one line: the name and the number in gold
+     with its glow. */
   .winner {
     margin-top: var(--board-inner-gap);
     text-align: center;
-  }
-  .winnerlab {
-    display: block;
-    font-size: var(--fs-lab);
-    color: var(--dim);
-    font-variation-settings: var(--fv-caps);
-  }
-  .winnername {
-    display: block;
-    margin-top: 2px;
     font-size: var(--fs-body);
+    color: var(--dim);
+  }
+  .winner .gold {
     color: var(--gold);
     text-shadow: var(--glow);
     font-variation-settings: var(--fv-strong);
   }
-  .winnername.none {
-    color: var(--dim);
-    text-shadow: none;
-    font-variation-settings: var(--fv-caption);
-  }
 
+  /* Ten rows' height whatever the page holds, plus the pinned row's when the
+     player has an entry, so the page controls never move. */
+  .rows {
+    margin-top: var(--board-inner-gap);
+    min-height: calc(
+      var(--board-head-h) + var(--board-row-h) * var(--board-page-rows) + var(--board-rules-h)
+    );
+  }
+  .rows.pinnable {
+    min-height: calc(
+      var(--board-head-h) + var(--board-pin-h) + var(--board-pin-gap) + var(--board-row-h) *
+        var(--board-page-rows) + var(--board-rules-h)
+    );
+  }
   table {
     width: 100%;
-    margin-top: var(--board-inner-gap);
     border-collapse: collapse;
-  }
-  .device table {
-    margin-top: 0;
+    /* Fixed columns, so a long name ends in an ellipsis and every row is one height. */
+    table-layout: fixed;
   }
   th,
   td {
     padding: var(--board-cell-pad);
     border-bottom: var(--border) solid var(--rule);
     text-align: left;
-    overflow-wrap: anywhere;
+  }
+  thead th {
+    height: var(--board-head-h);
+  }
+  tbody td {
+    height: var(--board-row-h);
   }
   tbody tr:last-child td {
     border-bottom: 0;
@@ -382,7 +544,20 @@
   td.streak {
     color: var(--gold);
   }
-  .retired {
+  /* A name and, on the player's own row, the "You" pill, on one line. */
+  .line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .nick {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .retired .nick {
     color: var(--dim);
     font-style: italic;
   }
@@ -394,15 +569,21 @@
   tr.mine td.num {
     font-variation-settings: var(--fv-num);
   }
+  tr.mine td.rank {
+    color: var(--gold);
+  }
   tr.mine td:first-child {
     border-radius: var(--field-radius) 0 0 var(--field-radius);
   }
   tr.mine td:last-child {
     border-radius: 0 var(--field-radius) var(--field-radius) 0;
   }
+  tr.mine:focus-visible {
+    outline: var(--focus-ring) solid var(--chalk);
+    outline-offset: calc(-1 * var(--focus-ring));
+  }
   .you {
-    display: inline-block;
-    margin-left: 8px;
+    flex: none;
     padding: var(--badge-pad);
     border: var(--border) solid var(--gold);
     border-radius: var(--radius-pill);
@@ -410,15 +591,143 @@
     line-height: var(--lh-body);
     color: var(--gold);
     font-variation-settings: var(--fv-caps);
-    vertical-align: middle;
   }
-  .ownline {
-    margin-top: var(--board-inner-gap);
-    text-align: center;
-    color: var(--gold);
-    text-shadow: var(--glow);
+
+  /* The player's own position, pinned above the table and apart from it: the
+     same columns as the table's rows, a line taller for where it stands, in
+     the "You" style, with a gap and a gold rule under it. In the top 50 it is
+     a button to its page. */
+  .pinned {
+    display: grid;
+    grid-template-columns: var(--board-rank-w) minmax(0, 1fr) var(--board-streak-w);
+    align-items: center;
+    width: 100%;
+    min-height: var(--board-pin-h);
+    margin: 0 0 var(--board-pin-gap);
+    border-bottom: var(--btn2-border) solid var(--gold-rule);
+    border-radius: var(--field-radius);
+    background: var(--board-mine-bg);
+    font-size: var(--fs-body);
+    color: var(--chalk);
     font-variation-settings: var(--fv-strong);
+    text-align: left;
   }
+  .pinned > span {
+    padding: var(--board-cell-pad);
+  }
+  .pinned .rank {
+    color: var(--gold);
+    font-variation-settings: var(--fv-num);
+  }
+  .pinned .streak {
+    color: var(--gold);
+    text-align: right;
+    font-variation-settings: var(--fv-num);
+  }
+  .who {
+    min-width: 0;
+  }
+  .sub {
+    display: block;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-lab);
+    color: var(--dim);
+    font-variation-settings: var(--fv-meta);
+  }
+  .jump {
+    cursor: pointer;
+    transition: background-color var(--dur-hover);
+  }
+  .jump:hover {
+    background: var(--btn2-bg-hover);
+  }
+  .jump .sub {
+    color: var(--gold);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .jump:focus-visible {
+    outline: var(--focus-ring) solid var(--chalk);
+    outline-offset: calc(-1 * var(--focus-ring));
+  }
+
+  /* Previous, the page numbers, Next: the site's secondary buttons. Two rows
+     on a phone (Previous and Next, the numbers under them), one from 560px. */
+  .pager {
+    margin-top: var(--board-inner-gap);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "prev next"
+      "numbers numbers";
+    gap: var(--board-page-gap);
+    align-items: center;
+  }
+  .prev {
+    grid-area: prev;
+    justify-self: start;
+  }
+  .next {
+    grid-area: next;
+    justify-self: end;
+  }
+  .numbers {
+    grid-area: numbers;
+    display: flex;
+    justify-content: center;
+    gap: var(--board-page-gap);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  /* Not the prose lists' spacing between items: the numbers sit in one line. */
+  .numbers li {
+    display: flex;
+    margin: 0;
+  }
+  .pager button {
+    min-height: var(--target-min);
+  }
+  .pager .step {
+    gap: 6px;
+    padding: 0 var(--board-step-pad-x);
+  }
+  .pager .pnum {
+    width: var(--target-min);
+    padding: 0;
+  }
+  .pager .pnum[aria-current="page"] {
+    background: var(--gold);
+    color: var(--ink);
+    text-shadow: none;
+  }
+  .arrow {
+    flex: none;
+    width: var(--btn2-icon);
+    height: var(--btn2-icon);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: var(--btn2-icon-stroke);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  @media (min-width: 560px) {
+    .pager {
+      grid-template-columns: 1fr auto 1fr;
+      grid-template-areas: "prev numbers next";
+    }
+  }
+  .range {
+    margin-top: var(--board-page-gap);
+    text-align: center;
+    font-size: var(--fs-lab);
+    color: var(--dim);
+    font-variation-settings: var(--fv-meta);
+  }
+
   .empty {
     margin-top: var(--board-inner-gap);
     text-align: center;

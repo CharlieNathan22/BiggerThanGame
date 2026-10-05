@@ -3,7 +3,7 @@ import type { BoardResponse } from "@bt/core";
 import { BOARD_TTL_S, boardData, parseBoardPeriod, serveBoard } from "../board.js";
 import type { BoardCache } from "../board.js";
 import { runNightly } from "../cron.js";
-import { insertScore } from "../scores.js";
+import { BOARD_SIZE, insertScore } from "../scores.js";
 import type { ScoreRow } from "../scores.js";
 import { sqliteD1 } from "./d1-sqlite.js";
 import type { TestD1 } from "./d1-sqlite.js";
@@ -121,6 +121,19 @@ describe("boardData", () => {
     for (const hidden of ["secret-device-hash", "123457", "Rude", "shadow", "elapsed"]) {
       expect(text).not.toContain(hidden);
     }
+  });
+});
+
+describe("the board's size", () => {
+  it("is the top 50, with everyone in the total", async () => {
+    const db = sqliteD1();
+    for (let i = 0; i < 60; i += 1) await add(db, { device: `d${i}`, streak: i + 1 });
+    const day = await boardData(db, NOW, "day");
+    expect(day.entries).toHaveLength(BOARD_SIZE);
+    expect(day.entries.map((e) => e.rank)).toEqual(Array.from({ length: 50 }, (_, i) => i + 1));
+    expect(day.entries[0]?.streak).toBe(60);
+    expect(day.entries.at(-1)?.streak).toBe(11);
+    expect(day.total).toBe(60);
   });
 });
 

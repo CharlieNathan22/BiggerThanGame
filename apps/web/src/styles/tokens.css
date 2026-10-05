@@ -641,7 +641,19 @@
   --board-tab-gap: 6px;
   --board-tab-pad: 0 12px;
   --board-tab-max-w: 160px;
-  --board-cell-pad: 10px 6px;
+  --board-cell-pad: 0 6px;
+  /* Pages of --board-page-rows rows of --board-row-h, under a --board-head-h
+     header; the pinned row is --board-pin-h, a line taller. */
+  --board-page-rows: 10;
+  --board-head-h: 34px;
+  --board-row-h: 42px;
+  --board-pin-h: 56px;
+  /* The pinned row stands apart from the table under it. */
+  --board-pin-gap: 10px;
+  /* Room for the rules between the rows, which add a pixel or so to a table. */
+  --board-rules-h: 2px;
+  --board-page-gap: 4px;
+  --board-step-pad-x: 14px;
   --board-rank-w: 3.2em;
   --board-streak-w: 4.2em;
   --board-mine-bg: rgba(var(--glow-rgb), 0.12);
@@ -901,7 +913,8 @@
 @media (min-width: 560px) {
   :root {
     --board-pad: 22px;
-    --board-cell-pad: 11px 10px;
+    --board-cell-pad: 0 10px;
+    --board-page-gap: 8px;
     --title-grow: 2.1;
     --fs-brand: 16px;
     --fs-sub: 14.5px;

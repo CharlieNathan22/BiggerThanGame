@@ -53,15 +53,15 @@ Worker only executes for `/api/*`. No Astro Cloudflare adapter is needed.
 
 **Bindings:** `ASSETS`, `DB` (D1), `RUNS` (Durable Object namespace), `RUN_SECRET` (secret),
 `TURNSTILE_SECRET` (secret), `FEEDBACK_TO` (secret), `FEEDBACK_EMAIL` (`send_email`, Email Routing),
-`GAME_EVENTS` (Analytics Engine), and `RUN_ANSWERS`, `RUN_STARTS`, `ROUND_FLOOD`, `FEEDBACK_SENDS`
-and `RUN_SUBMITS` (Workers Rate Limiting). Two **cron triggers**, 00:00 and 01:30 UTC (§13).
+`GAME_EVENTS` (Analytics Engine), and `RUN_ANSWERS`, `RUN_STARTS`, `ROUND_FLOOD`, `FEEDBACK_SENDS`,
+`RUN_SUBMITS` and `BOARD_LOOKUPS` (Workers Rate Limiting). Two **cron triggers**, 00:00 and 01:30 UTC (§13).
 
 Phase 3 (Friendly) uses `ASSETS`, `RUN_SECRET` and the round endpoint's three rate limiters, plus
 `TURNSTILE_SECRET`, `FEEDBACK_TO`, `FEEDBACK_EMAIL` and `FEEDBACK_SENDS` for the feedback forms
 (§8). Phase 5 (Endless, part 1) adds `RUNS`, the Durable Object namespace — class `RunDO`,
 SQLite-backed (`new_sqlite_classes` migration, so it runs on the free plan), exported from
 `worker/index.ts` — and reuses `TURNSTILE_SECRET` for run starts. Endless part 2 adds `DB`, the
-boards' D1 database (§10), `RUN_SUBMITS` and the crons; the boards are cached with the Workers
+boards' D1 database (§10), `RUN_SUBMITS`, `BOARD_LOOKUPS` and the crons; the boards are cached with the Workers
 Cache API (`caches.default`, §11), which needs no binding. There is no KV. Workers Logs is on
 (`[observability]` in `wrangler.toml`).
 
@@ -127,6 +127,7 @@ bucket — see section 9.
 │   │   ├── submit.ts      # /api/run/submit: publishing a run
 │   │   ├── scores.ts      # every D1 statement for the boards
 │   │   ├── board.ts       # /api/board/endless/:period, through the Cache API
+│   │   ├── mine.ts        # /api/board/endless/me: this device's live rank
 │   │   ├── cron.ts        # the nightly snapshot and prune
 │   │   ├── moderation.ts  # the nickname blocklist check; blocklist-data.ts holds hashes only
 │   │   └── shadow.ts      # the timing heuristics
@@ -816,7 +817,7 @@ through the Cache API (§11), a minute stale at most.
 ← { "mode": "endless", "period": "day", "key": "2026-09-29", "resetsAt": 1790726400000,
     "total": 3208,
     "entries": [ { "id": "<uuid>", "rank": 1, "nickname": "SwiftVolley42", "streak": 41 },
-                 { "id": "<uuid>", "rank": 2, "nickname": null, "streak": 39 }, … ],   // top 100
+                 { "id": "<uuid>", "rank": 2, "nickname": null, "streak": 39 }, … ],   // top 50
     "previous": { "key": "2026-09-28", "winner": { "nickname": "…", "streak": 44 } | null } }
 ```
 
@@ -824,6 +825,26 @@ A retired name is `null` ("Retired name" on the page): the name never leaves the
 answer time, device hash or shadow flag is in it. `previous` is the period before's winner, from
 its midnight snapshot (§13), or from the scores until the snapshot exists; a name retired since the
 snapshot shows as retired. `cache-control: public, max-age=60`.
+
+**`POST /api/board/endless/me`** → `{ deviceId }` (`worker/src/mine.ts`): where this device stands
+**now** in each current period. The rank a publish came back with goes out of date as soon as
+anyone else publishes, so the board page asks here once as it loads — only when the device has
+published to a current period. Never cached (it's per player: `no-store`). Behind the flood limit,
+then `BOARD_LOOKUPS` per IP.
+
+```jsonc
+← { "periods": { "day":   { "key": "2026-10-05", "entryId": "<uuid>", "rank": 151, "total": 193,
+                            "streak": 4, "nickname": "LowScore" },
+                 "week":  { … } | null, "month": { … } | null } }
+← 400 { "error": "bad_request" }   // anything but { deviceId: <v4 uuid> }
+← 429 { "error": "rate_limited" }  // with retry-after
+← 503 { "error": "unavailable", "detail": "scores" }
+```
+
+Each entry is the owner's view (`ownStanding`, §10), as at submit: the device's best in the period,
+shadowed runs included, ranked among everyone else's public bests, so a shadowed player sees an
+ordinary rank. `null` for a period the device has nothing in; a retired name is `null`. The device
+id is hashed exactly as at submit, used for the query and never stored or logged.
 
 ### Disconnection
 
@@ -1027,7 +1048,7 @@ CREATE TABLE ranked_attempts (device_hash TEXT NOT NULL, game_no INTEGER NOT NUL
 
 CREATE TABLE board_snapshots (
   mode TEXT NOT NULL, period TEXT NOT NULL, period_key TEXT NOT NULL,  -- day | week | month
-  taken_at INTEGER NOT NULL, total INTEGER NOT NULL, entries TEXT NOT NULL,  -- JSON top 100
+  taken_at INTEGER NOT NULL, total INTEGER NOT NULL, entries TEXT NOT NULL,  -- JSON top 50
   PRIMARY KEY (mode, period, period_key)
 );
 ```
@@ -1086,7 +1107,8 @@ cached board catches up. Ranked, later, can use the same cache with its game num
 - **Feedback** (`/api/feedback`, §8) is rate-limited, checked before any other work, as well as
   protected by Turnstile. Nothing it receives reaches a response.
 - **Rate limits** per IP: Endless run starts, submissions (`RUN_SUBMITS`, sized so a classroom
-  publishing together never meets it; the numbers are in `wrangler.toml`), feedback.
+  publishing together never meets it; the numbers are in `wrangler.toml`), live rank lookups
+  (`BOARD_LOOKUPS`, likewise), feedback.
 - **Friendly (`/api/round/next`)** is limited by three Workers Rate Limiting bindings. The tight
   limit is on the **run**, not the IP, because schools, offices, VPNs and mobile carriers put many
   players behind one address and Cloudflare advises against IP-only keys:
@@ -1187,8 +1209,8 @@ Two triggers in `wrangler.toml`, `0 0 * * *` and `30 1 * * *`, both running the 
 `scheduled` handler (`worker/src/cron.ts`, `runNightly`):
 
 - **Snapshot** the periods that closed at the most recent 00:00 UTC — the day, and on a Monday the
-  ISO week, and on the 1st the month — as their public top 100 and total, into `board_snapshots`.
-  That is where "Yesterday's winner", "Last week's winner" and "Last month's winner" come from. A
+  ISO week, and on the 1st the month — as their public top 50 and total, into `board_snapshots`.
+  That is where the winner line comes from ("HardyOffside889 got a 23 streak yesterday"). A
   snapshot replaces an earlier one of the same period, so the **01:30 run** takes it again,
   catching runs started before midnight and published after it (a run can last most of an hour,
   and publishing is open for 30 minutes after it ends).
@@ -1318,14 +1340,27 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
     they last the visit.
 - **The leaderboard page** (`/football-higher-or-lower/legends/endless/leaderboard`, a static page
   with the `Leaderboard.svelte` island): tabs for Today, This week and This month (the ARIA tabs
-  pattern: one tab stop, arrows, Home and End), each the top 100 in an accessible table (caption,
-  `th scope`), "Retired name" for a retired one, the player's own row highlighted and marked
-  "You", the total, "Resets in 5 hours 12 minutes" and the previous period's winner; the framing
-  line "Personal bests — everyone gets a different run, so luck plays a part"; links to play; and
-  "On this device", the 10 best runs. The player's own entry comes from their device: if the
-  cached board doesn't have it yet (or it's shadowed), it is put in at its rank, or shown as "You:
-  412th of 3,209" under the table (`boardView` in `game/leaderboard.ts`). Loading and a failure
-  are calm, with a retry. The Legends page's Endless card and the Endless start panel link here.
+  pattern: one tab stop, arrows, Home and End), each the top 50 (`BOARD_SIZE`, @bt/core, which the
+  board query and the snapshots share) in an accessible table (caption, `th scope`), "Retired
+  name" for a retired one, the player's own row highlighted and marked "You", the total, "Resets in
+  5 hours 12 minutes" and the previous period's winner in one line ("HardyOffside889 got a 23
+  streak yesterday", "last week", "last month"; nothing when there was none); the framing line "Personal bests — everyone
+  gets a different run, so luck plays a part"; links to play; and "On this device", the 10 best
+  runs. The 50 are shown **ten to a page**, client-side, with no further requests: Previous, the
+  page numbers and Next under the table (secondary buttons, disabled at the ends), "1–10 of 50",
+  and "Page 2 of 5" said politely as the page changes; focus stays on the control pressed. A new
+  tab starts on page 1. The table keeps ten rows' height on every page (each row one line, a long
+  name ending in an ellipsis), plus the pinned row's when the player has one, so the controls never
+  move. **Every rank is the server's**: a row shows the rank it came with, never its place in the
+  list, and nothing is ever put into the list. The player's own position is **live**: on load,
+  if `bt:published` holds a publish to a current period, the page asks
+  `POST /api/board/endless/me` once (`loadMine` in `game/leaderboard.ts`). When their row isn't on the
+  page on show — another page, or below the top 50, or not on the minute-old cached board yet — it
+  is **pinned above the table, apart from it** (a gap and a gold rule, in the "You" style), with
+  the live rank and "151st of 193" (`pinnedRow`); in the top 50 it is a button to its page, which
+  then moves focus to the row. If the lookup fails, the rank the publish came back with is shown,
+  marked "when published", never as if it were current. Loading and a failure are calm, with a
+  retry. The Legends page's Endless card and the Endless start panel link here.
   It looks like the Legends page: its centred two-line heading in the gold glow and drifting gold
   lights, the site's call to action (prose.css `.cta`, which now has the game's glow, hover and
   press), the boards in the cards' glass, tabs as the secondary button's outlined pills (prose.css

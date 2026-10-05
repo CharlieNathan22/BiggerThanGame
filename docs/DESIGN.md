@@ -789,7 +789,7 @@ This is the headline board.
 
 ### Endless boards
 
-Three boards: **Today**, **This week** and **This month**. Each is the top 100 of each device's
+Three boards: **Today**, **This week** and **This month**. Each is the top 50 of each device's
 **best single published run** in the period — the highest streak, then the lower total answer time
 the server measured, then who published first. Framed as personal-best boards, not a ranking —
 see section 3 — and the board page says so plainly: "Personal bests — everyone gets a different
@@ -807,8 +807,9 @@ run, so luck plays a part." Nicknames are **not** required to be unique here.
   device has published on the run's day (a run that can't beat the day's best can't beat the
   week's or the month's either); an equal score doesn't. Otherwise it says "Your best today is 18
   — beat it to move up the leaderboard", with a link to the board.
-- **Previous winners.** At each reset the closing period's top 100 is kept, so the page can name
-  "Yesterday's winner", "Last week's winner" and "Last month's winner".
+- **Previous winners.** At each reset the closing period's top 50 is kept, so the page can name
+  each period's winner: "HardyOffside889 got a 23 streak yesterday" (or "last week", "last
+  month"), and nothing for a period nobody published to.
 - **Retention.** Scores are deleted 100 days after the day their run started; the snapshots stay.
 - **Only fresh random runs are published.** A challenge link starts a fresh run against a score
   (above), so challenge runs are published like any other. The server checks a run was dealt by
@@ -832,7 +833,7 @@ expect a meaningful number of legends to have no usable free image at all.
 
 - **Anonymous nicknames** in v1; accounts later.
 - The nickname is entered **after the run ends**, and publishing to the global board is **opt-in**.
-  Anyone who wants to appear publicly provides a name — not only those reaching the top 100 — so
+  Anyone who wants to appear publicly provides a name — not only those reaching the top 50 — so
   that ranks and shares stay coherent. In Endless, "Publish to leaderboard" on the game-over panel
   opens a small dialog: the nickname (prefilled with the last name published from this device,
   or a generated one the first time), one line on what's stored — the nickname and
@@ -863,10 +864,17 @@ expect a meaningful number of legends to have no usable free image at all.
 
 ### What the player sees
 
-The board page shows the **top 100**. Every published player is also told **their own rank out of
-the period's total** — "412th of 3,208" is a real result and a reason to come back, where a bare
-"not in the top 100" is not. Their own row is highlighted, and shows straight away, from their own
-device, even before the board (cached for up to a minute) has caught up.
+The board page shows the **top 50, ten to a page** (Previous, the page numbers and Next under the
+table, and "1–10 of 50"; a new tab starts on page 1). Every published player is also told **their
+own rank out of the period's total** — "412th of 3,208" is a real result and a reason to come back,
+where a bare "not in the top 50" is not. Every rank on the page is the server's; the player's own
+entry is never slotted into the list. Their own row is highlighted in place on its page; on any
+other page, and on every page when they're below the top 50, their position is **pinned above the
+table, apart from it**, with their **live** rank, name and streak and "151st of 193" under it — the
+page asks the server once as it loads, because others publish after them. In the top 50 the
+pinned row also takes them to their page. If that lookup fails, the rank their publish came back
+with is shown, marked "when published". Nothing is pinned for a period they haven't published
+to.
 
 The page also shows **this device's 10 best Endless runs**, with their dates and scores, published
 or not. They are kept in the browser, and need no network.

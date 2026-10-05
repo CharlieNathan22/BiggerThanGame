@@ -29,6 +29,7 @@ import { runNightly } from "./cron.js";
 import type { AnalyticsDataset, EventContext, GameEvent } from "./analytics.js";
 import { feedbackLogLine, handleFeedback } from "./feedback.js";
 import { handleLeave } from "./leave.js";
+import { MAX_MINE_BYTES, MINE_PATH, handleMine } from "./mine.js";
 import { describeError, log, problemMessage } from "./log.js";
 import type { Logger } from "./log.js";
 import { buildPlainTextMime, isPlainAddress } from "./mail.js";
@@ -83,6 +84,8 @@ export interface Env {
   readonly DB?: D1Like;
   /** Publishes per IP. */
   readonly RUN_SUBMITS?: RateLimiter;
+  /** Live rank lookups per IP. */
+  readonly BOARD_LOOKUPS?: RateLimiter;
 }
 
 /** The part of the Workers `ExecutionContext` the app uses. */
@@ -127,6 +130,7 @@ export const RUN_START_PATH = "/api/run/start";
 export const GUESS_PATH = "/api/round/guess";
 export { SUBMIT_PATH };
 export const BOARD_PATH = "/api/board/endless";
+export { MINE_PATH };
 
 /**
  * An Endless start: a Turnstile token (up to 2,048 characters) and perhaps a
@@ -154,7 +158,8 @@ type Route =
   | typeof RUN_START_PATH
   | typeof GUESS_PATH
   | typeof SUBMIT_PATH
-  | typeof BOARD_PATH;
+  | typeof BOARD_PATH
+  | typeof MINE_PATH;
 
 /** The run's Durable Object failed us: our problem, a calm 503. */
 class RunStoreError extends Error {
@@ -658,6 +663,66 @@ export function createApp(deps: AppDeps): {
     }
   }
 
+  /**
+   * Where this device stands now (mine.ts). Behind the flood limit, then its
+   * own per IP. Per player, so never cached (`no-store`, as every API answer).
+   * The device id is hashed for the query and never logged; a D1 failure is a
+   * calm 503.
+   */
+  async function mine(request: Request, env: Env): Promise<Response> {
+    const route = MINE_PATH;
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+    const flood = await checkRateLimit(limitersOf(env), "flood", ip);
+    if (!flood.ok) return rateLimited(route, flood.retryAfter, "flood");
+    if (request.method !== "POST") {
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "POST" } });
+    }
+    const { RUN_SECRET: secret, DB: db, BOARD_LOOKUPS: lookups } = env;
+    if (!secret || db === undefined || !lookups) {
+      const missing = [
+        secret ? "" : "RUN_SECRET",
+        db === undefined ? "DB" : "",
+        lookups ? "" : "BOARD_LOOKUPS",
+      ].filter((name) => name !== "");
+      return refuse(route, 500, "internal", {
+        reason: "not_configured",
+        cause: `${missing.join(", ")} missing`,
+      });
+    }
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > MAX_MINE_BYTES) {
+      return refuse(route, 400, "bad_request", { detail: "body too large" });
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return refuse(route, 400, "bad_request", { detail: "body must be JSON" });
+    }
+    try {
+      const result = await handleMine(body, {
+        db,
+        secret,
+        clock,
+        limit: async () => {
+          const { success } = await lookups.limit({ key: ip });
+          return success ? { ok: true } : { ok: false, retryAfter: RATE_LIMITS.lookups.period };
+        },
+      });
+      if (result.status === 200) return json(200, result.body);
+      if (result.status === 429) return rateLimited(route, result.retryAfter, "lookups");
+      return refuse(route, 400, "bad_request", {
+        ...(result.body.detail !== undefined ? { detail: result.body.detail } : {}),
+      });
+    } catch (err) {
+      return refuse(route, 503, "unavailable", {
+        detail: "scores",
+        reason: "scores",
+        ...describeCause(err),
+      });
+    }
+  }
+
   return {
     /**
      * The nightly job (cron.ts). One `info` line with what it did, or an
@@ -706,6 +771,7 @@ export function createApp(deps: AppDeps): {
       const { pathname } = new URL(request.url);
       if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
       if (pathname === SUBMIT_PATH) return submit(request, env);
+      if (pathname === MINE_PATH) return mine(request, env);
       const period = parseBoardPeriod(pathname);
       if (period !== undefined) return board(request, env, period, ctx);
       if (pathname === FEEDBACK_PATH) return feedback(request, env);

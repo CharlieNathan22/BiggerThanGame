@@ -16,7 +16,8 @@
  * `/api/feedback` has a binding of its own, keyed on the IP like run starts:
  * each message costs a Turnstile check and an email, and nobody honest sends
  * many. So has `/api/run/submit`: each publish costs a Turnstile check and a
- * write, and needs a real finished run besides.
+ * write, and needs a real finished run besides. And `/api/board/endless/me`:
+ * each lookup is a few uncached reads.
  *
  * Workers Rate Limiting bindings, configured in `wrangler.toml` (periods
  * can only be 10 or 60 seconds). The numbers live there; `RATE_LIMITS` mirrors
@@ -45,15 +46,22 @@ export const RATE_LIMITS = {
    * together, retries for a refused name included.
    */
   submits: { binding: "RUN_SUBMITS", limit: 60, period: 60 },
+  /**
+   * Live rank lookups per IP (`/api/board/endless/me`). The board page asks
+   * once as it loads, and only on a device that has published; this allows a
+   * classroom opening the page together, and reloads.
+   */
+  lookups: { binding: "BOARD_LOOKUPS", limit: 60, period: 60 },
 } as const;
 
 export type RateRule = keyof typeof RATE_LIMITS;
 
 /**
- * The limiters every route can reach. Submissions have their own binding,
- * which only `/api/run/submit` needs and checks for.
+ * The limiters every route can reach. Submissions and rank lookups have their
+ * own bindings, which only `/api/run/submit` and `/api/board/endless/me` need
+ * and check for.
  */
-export type SharedRule = Exclude<RateRule, "submits">;
+export type SharedRule = Exclude<RateRule, "submits" | "lookups">;
 
 export type RateLimiters = { readonly [K in SharedRule]: RateLimiter };
 

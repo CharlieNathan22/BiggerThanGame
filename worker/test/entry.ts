@@ -53,6 +53,7 @@ export default {
       ROUND_FLOOD: allow,
       FEEDBACK_SENDS: allow,
       RUN_SUBMITS: allow,
+      BOARD_LOOKUPS: allow,
     });
   },
   scheduled: (controller: ScheduledController, env: Env) => app.scheduled(controller, env),

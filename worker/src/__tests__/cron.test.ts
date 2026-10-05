@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { CRONS, RETAIN_DAYS, runNightly } from "../cron.js";
-import { insertScore, readSnapshot } from "../scores.js";
+import { BOARD_SIZE, insertScore, readSnapshot } from "../scores.js";
 import { sqliteD1 } from "./d1-sqlite.js";
 import type { TestD1 } from "./d1-sqlite.js";
 
@@ -100,6 +100,17 @@ describe("the nightly job", () => {
     const day = await readSnapshot(db, "endless", "day", "2026-09-29");
     expect(day?.entries[0]?.streak).toBe(40);
     expect(day?.takenAt).toBe(Date.parse("2026-09-30T01:30:00Z"));
+  });
+
+  it("keeps the top 50 in a snapshot, and the full total", async () => {
+    const db = sqliteD1();
+    for (let i = 0; i < 64; i += 1) await add(db, 20260929, i + 1);
+    await runNightly(db, new Date("2026-09-30T00:00:00Z"));
+    const day = await readSnapshot(db, "endless", "day", "2026-09-29");
+    expect(day?.entries).toHaveLength(BOARD_SIZE);
+    expect(day?.entries[0]).toMatchObject({ rank: 1, streak: 64 });
+    expect(day?.entries.at(-1)).toMatchObject({ rank: 50, streak: 15 });
+    expect(day?.total).toBe(64);
   });
 
   it("leaves shadowed scores out of the snapshot", async () => {

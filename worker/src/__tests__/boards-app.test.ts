@@ -8,11 +8,19 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   BoardResponse,
   GuessResponse,
+  MineResponse,
   RoundPayload,
   RunStartResponse,
   SubmitResponse,
 } from "@bt/core";
-import { BOARD_PATH, GUESS_PATH, RUN_START_PATH, SUBMIT_PATH, createApp } from "../app.js";
+import {
+  BOARD_PATH,
+  GUESS_PATH,
+  MINE_PATH,
+  RUN_START_PATH,
+  SUBMIT_PATH,
+  createApp,
+} from "../app.js";
 import type { Env } from "../app.js";
 import type { BoardCache } from "../board.js";
 import type { LogLine } from "../log.js";
@@ -26,7 +34,9 @@ import { SAMPLE_DECK, SECRET, TODAY, correctGuess, uuidFrom, wrongGuess } from "
 
 const DEVICE = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
 
-function setup(over: { db?: D1Like; cache?: BoardCache; submits?: boolean } = {}) {
+function setup(
+  over: { db?: D1Like; cache?: BoardCache; submits?: boolean; lookups?: boolean } = {},
+) {
   let now = TODAY.getTime();
   let n = 0;
   const lines: LogLine[] = [];
@@ -53,6 +63,7 @@ function setup(over: { db?: D1Like; cache?: BoardCache; submits?: boolean } = {}
     RUNS: fakeRuns(),
     DB: db,
     RUN_SUBMITS: { limit: vi.fn(async () => ({ success: over.submits ?? true })) },
+    BOARD_LOOKUPS: { limit: vi.fn(async () => ({ success: over.lookups ?? true })) },
   };
   const call = (path: string, body?: unknown, method = body === undefined ? "GET" : "POST") =>
     app.fetch(
@@ -249,6 +260,100 @@ describe("GET /api/board/endless/:period", () => {
     const res = await s.call(`${BOARD_PATH}/week`);
     expect(res.status).toBe(503);
     expect(s.lines.at(-1)).toMatchObject({ level: "error", reason: "scores" });
+  });
+});
+
+describe("POST /api/board/endless/me", () => {
+  const OTHER = "7d6c5b4a-3e2f-4a1b-8c9d-0e1f2a3b4c5d";
+  const THIRD = "0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d";
+  const me = async (s: Setup, deviceId = DEVICE) => {
+    const res = await s.call(MINE_PATH, { deviceId });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    return (await res.json()) as MineResponse;
+  };
+
+  it("gives this device's live rank, after others have published since", async () => {
+    const s = setup();
+    const mine = (await (
+      await s.call(SUBMIT_PATH, submitBody(await playRun(s, 3)))
+    ).json()) as SubmitResponse;
+    expect(mine.periods.day).toMatchObject({ rank: 1, total: 1 });
+    // Two better runs from other devices since: the stored rank is now stale.
+    for (const device of [OTHER, THIRD]) {
+      const token = await playRun(s, 6);
+      expect((await s.call(SUBMIT_PATH, { ...submitBody(token), deviceId: device })).status).toBe(
+        200,
+      );
+    }
+    const live = await me(s);
+    for (const period of ["day", "week", "month"] as const) {
+      expect(live.periods[period]).toMatchObject({
+        entryId: mine.id,
+        rank: 3,
+        total: 3,
+        streak: 3,
+        nickname: "SwiftVolley42",
+      });
+    }
+    expect(live.periods.day?.key).toBe(mine.periods.day.key);
+  });
+
+  it("gives null for each period a device has nothing in", async () => {
+    const s = setup();
+    expect(await me(s)).toEqual({ periods: { day: null, week: null, month: null } });
+  });
+
+  it("never logs or stores the device id", async () => {
+    const db = sqliteD1();
+    const s = setup({ db });
+    await s.call(SUBMIT_PATH, submitBody(await playRun(s, 2)));
+    await me(s);
+    await s.call(MINE_PATH, { deviceId: "not-a-uuid" });
+    expect(JSON.stringify(s.lines)).not.toContain(DEVICE);
+    expect(JSON.stringify(db.rows("SELECT * FROM scores"))).not.toContain(DEVICE);
+  });
+
+  it("refuses a bad body, and anything but POST", async () => {
+    const s = setup();
+    for (const body of [{}, { deviceId: "x" }, { deviceId: DEVICE, extra: 1 }, []]) {
+      expect((await s.call(MINE_PATH, body)).status).toBe(400);
+    }
+    const get = await s.call(MINE_PATH);
+    expect(get.status).toBe(405);
+    expect(get.headers.get("allow")).toBe("POST");
+  });
+
+  it("answers its own limit with a calm 429 and its retry-after", async () => {
+    const s = setup({ lookups: false });
+    const res = await s.call(MINE_PATH, { deviceId: DEVICE });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe(String(RATE_LIMITS.lookups.period));
+  });
+
+  it("fails closed without its limiter, and answers 503 when D1 fails", async () => {
+    const s = setup();
+    const rest: Env = { ...s.env };
+    delete (rest as { BOARD_LOOKUPS?: unknown }).BOARD_LOOKUPS;
+    const res = await s.app.fetch(
+      new Request(`https://biggerthangame.com${MINE_PATH}`, {
+        method: "POST",
+        body: JSON.stringify({ deviceId: DEVICE }),
+      }),
+      rest,
+    );
+    expect(res.status).toBe(500);
+    const broken = setup({
+      db: {
+        prepare: () => {
+          throw new Error("D1 down");
+        },
+        batch: async () => [],
+      },
+    });
+    const down = await broken.call(MINE_PATH, { deviceId: DEVICE });
+    expect(down.status).toBe(503);
+    expect(broken.lines.at(-1)).toMatchObject({ level: "error", reason: "scores" });
   });
 });
 

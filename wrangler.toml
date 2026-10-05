@@ -87,6 +87,15 @@ namespace_id = "1007"
   limit = 60
   period = 60
 
+# Live rank lookups per IP (POST /api/board/endless/me).
+[[ratelimits]]
+name = "BOARD_LOOKUPS"
+namespace_id = "1008"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60
+
 # One Durable Object per Endless run (worker/run-do.ts, ARCHITECTURE.md §8):
 # it spends each progress token once, keeps the run's answer times and closes a
 # run that goes silent. SQLite-backed, which the free plan supports; the

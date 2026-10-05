@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { periodOf } from "@bt/core";
 import {
+  BOARD_SIZE,
   DuplicateRunError,
   insertScore,
   ownStanding,
@@ -120,16 +121,18 @@ describe("the public board", () => {
     expect(JSON.stringify(board)).not.toContain("Rude");
   });
 
-  it("stops at the board's size", async () => {
+  it("stops at the board's size, 50, and still counts everyone", async () => {
+    expect(BOARD_SIZE).toBe(50);
     const db = sqliteD1();
     await seed(
       db,
       Array.from({ length: 105 }, (_, i) => score({ device: `d${i}`, streak: i + 1 })),
     );
     const board = await publicBoard(db, "endless", DAY);
-    expect(board.entries).toHaveLength(100);
+    expect(board.entries).toHaveLength(50);
     expect(board.total).toBe(105);
     expect(board.entries[0]?.streak).toBe(105);
+    expect(board.entries.at(-1)).toMatchObject({ rank: 50, streak: 56 });
   });
 
   it("keeps modes apart", async () => {

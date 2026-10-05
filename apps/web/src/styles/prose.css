@@ -194,6 +194,14 @@
 .prose .secondary:active {
   transform: scale(var(--press-scale));
 }
+/* At an end (Previous on the first page): there, dimmed, and still. */
+.prose .secondary:disabled {
+  cursor: default;
+  opacity: var(--disabled-opacity);
+  background: var(--btn2-bg);
+  box-shadow: none;
+  transform: none;
+}
 .prose .secondary:focus-visible {
   outline: var(--focus-ring) solid var(--chalk);
   outline-offset: var(--focus-offset);

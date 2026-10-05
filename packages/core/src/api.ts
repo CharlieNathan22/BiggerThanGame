@@ -313,6 +313,38 @@ export interface SubmitResponse {
   };
 }
 
+/**
+ * `POST /api/board/endless/me`: where this device stands now, in each current
+ * period. Live, never cached: other players publish after you, so the rank
+ * your own publish came back with goes out of date.
+ */
+export interface MineRequest {
+  /** The random id this browser keeps; the server only ever uses a keyed hash of it. */
+  readonly deviceId: string;
+}
+
+/** This device's best entry in a period, ranked as its owner sees it (shadowed runs included). */
+export interface MineEntry {
+  /** The period's key: `2026-09-29`, `2026-W40`, `2026-09`. */
+  readonly key: string;
+  readonly entryId: string;
+  readonly rank: number;
+  /** Devices on the board, this one counted. */
+  readonly total: number;
+  readonly streak: number;
+  /** Null for a name that has been retired. */
+  readonly nickname: string | null;
+}
+
+export interface MineResponse {
+  /** Null for a period this device has nothing in. */
+  readonly periods: {
+    readonly day: MineEntry | null;
+    readonly week: MineEntry | null;
+    readonly month: MineEntry | null;
+  };
+}
+
 export interface BoardEntry {
   readonly id: string;
   readonly rank: number;
@@ -321,7 +353,7 @@ export interface BoardEntry {
   readonly streak: number;
 }
 
-/** `GET /api/board/endless/:period` — the current period's top 100. */
+/** `GET /api/board/endless/:period` — the current period's top `BOARD_SIZE` (50). */
 export interface BoardResponse {
   readonly mode: "endless";
   readonly period: "day" | "week" | "month";

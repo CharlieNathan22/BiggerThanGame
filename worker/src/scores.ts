@@ -17,6 +17,7 @@
  * never leaves the database; the page shows "Retired name".
  */
 
+import { BOARD_SIZE } from "@bt/core";
 import type { BoardEntry } from "@bt/core";
 
 /** The parts of a D1 prepared statement used here. */
@@ -35,8 +36,8 @@ export interface D1Like {
 
 export type BoardMode = "endless";
 
-/** How many entries a board shows. */
-export const BOARD_SIZE = 100;
+/** How many entries a board shows (@bt/core): 50. */
+export { BOARD_SIZE };
 
 /** One published run, as stored. */
 export interface ScoreRow {
@@ -146,6 +147,8 @@ export interface Standing {
   /** The device's best entry in the range. */
   readonly entryId: string;
   readonly streak: number;
+  /** That entry's name; null once retired, so a retired name never leaves the database. */
+  readonly nickname: string | null;
   /** 1 + the devices whose public best beats it. */
   readonly rank: number;
   /** The other devices on the public board, plus this one. */
@@ -165,11 +168,18 @@ export async function ownStanding(
 ): Promise<Standing | undefined> {
   const best = await db
     .prepare(
-      "SELECT id, streak, elapsed_ms, created_at FROM scores " +
+      "SELECT id, streak, elapsed_ms, created_at, nickname, name_flagged FROM scores " +
         `WHERE mode = ?1 AND device_hash = ?2 AND day_key BETWEEN ?3 AND ?4 ORDER BY ${ORDER} LIMIT 1`,
     )
     .bind(mode, deviceHash, range.from, range.to)
-    .first<{ id: string; streak: number; elapsed_ms: number; created_at: number }>();
+    .first<{
+      id: string;
+      streak: number;
+      elapsed_ms: number;
+      created_at: number;
+      nickname: string;
+      name_flagged: number;
+    }>();
   if (best === null) return undefined;
   const beats =
     "streak > ?5 OR (streak = ?5 AND (elapsed_ms < ?6 OR (elapsed_ms = ?6 AND " +
@@ -195,6 +205,7 @@ export async function ownStanding(
   return {
     entryId: best.id,
     streak: best.streak,
+    nickname: best.name_flagged === 1 ? null : best.nickname,
     rank: (counts?.better ?? 0) + 1,
     total: (counts?.others ?? 0) + 1,
   };

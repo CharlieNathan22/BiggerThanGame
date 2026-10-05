@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BoardResponse, SubmitResponse } from "@bt/core";
+import type { SubmitResponse } from "@bt/core";
 import type { StorageAccess } from "../best";
 import {
   DEVICE_KEY,
@@ -13,8 +13,7 @@ import {
   saveStandings,
   standingsOf,
 } from "../device";
-import type { Standing } from "../device";
-import { boardView, countdownText, totalText, winnerText } from "../leaderboard";
+import { countdownText, totalText } from "../leaderboard";
 import {
   SUBMIT_ENDPOINT,
   canRetry,
@@ -248,85 +247,7 @@ describe("the text", () => {
   });
 });
 
-describe("the board page", () => {
-  const board = (entries: [string, number][], total = entries.length): BoardResponse => ({
-    mode: "endless",
-    period: "day",
-    key: "2026-09-29",
-    resetsAt: 0,
-    total,
-    entries: entries.map(([id, streak], i) => ({ id, rank: i + 1, nickname: id, streak })),
-    previous: { key: "2026-09-28", winner: null },
-  });
-  const mine = (over: Partial<Standing> = {}): Standing => ({
-    period: "day",
-    key: "2026-09-29",
-    entryId: "me",
-    nickname: "Me",
-    streak: 15,
-    rank: 2,
-    total: 4,
-    resetsAt: 0,
-    ...over,
-  });
-
-  it("marks the player's row when the board has it", () => {
-    const view = boardView(
-      board([
-        ["a", 20],
-        ["me", 15],
-        ["b", 3],
-      ]),
-      mine(),
-    );
-    expect(view.rows.map((r) => [r.rank, r.key, r.mine])).toEqual([
-      [1, "a", false],
-      [2, "me", true],
-      [3, "b", false],
-    ]);
-    expect(view.ownLine).toBeNull();
-  });
-
-  it("puts the player in at their rank when the cached board hasn't caught up", () => {
-    const view = boardView(
-      board([
-        ["a", 20],
-        ["b", 3],
-        ["c", 1],
-      ]),
-      mine(),
-    );
-    expect(view.rows.map((r) => [r.rank, r.key, r.mine])).toEqual([
-      [1, "a", false],
-      [2, "me", true],
-      [3, "b", false],
-      [4, "c", false],
-    ]);
-    expect(view.total).toBe(4);
-    // On an empty board they're first.
-    expect(boardView(board([]), mine({ rank: 1, total: 1 })).rows.map((r) => r.key)).toEqual([
-      "me",
-    ]);
-    // Last, after everyone.
-    expect(boardView(board([["a", 20]]), mine({ rank: 2 })).rows.map((r) => r.key)).toEqual([
-      "a",
-      "me",
-    ]);
-  });
-
-  it("gives a line under the table when the player is below the top 100", () => {
-    const view = boardView(board([["a", 20]], 3208), mine({ rank: 412, total: 3208 }));
-    expect(view.rows).toHaveLength(1);
-    expect(view.ownLine).toBe("You: 412th of 3,209");
-  });
-
-  it("ignores a standing from another period", () => {
-    const view = boardView(board([["a", 20]]), mine({ key: "2026-09-28" }));
-    expect(view.rows.some((r) => r.mine)).toBe(false);
-    expect(view.ownLine).toBeNull();
-    expect(boardView(board([["a", 20]]), mine({ period: "week" })).ownLine).toBeNull();
-  });
-
+describe("the board page's text", () => {
   it("counts down to the reset in the two largest units", () => {
     const reset = Date.parse("2026-09-30T00:00:00Z");
     const minutes = (m: number) => reset - m * 60_000;
@@ -338,12 +259,7 @@ describe("the board page", () => {
     expect(countdownText(reset, minutes(24 * 60))).toBe("1 day");
   });
 
-  it("names the previous winner, a retired name as retired", () => {
-    expect(winnerText({ key: "x", winner: { nickname: "Ace", streak: 31 } })).toBe("Ace, 31");
-    expect(winnerText({ key: "x", winner: { nickname: null, streak: 31 } })).toBe(
-      "Retired name, 31",
-    );
-    expect(winnerText({ key: "x", winner: null })).toBe("no one yet");
+  it("counts the players", () => {
     expect(totalText(1)).toBe("1 player");
     expect(totalText(3208)).toBe("3,208 players");
   });
