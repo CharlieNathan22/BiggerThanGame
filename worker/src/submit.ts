@@ -37,11 +37,11 @@
  */
 
 import {
-  ENDLESS_VARIANTS,
   buildRun,
   checkNickname,
   dayKey,
   flagCountry,
+  hasBoards,
   normaliseNickname,
   periodsOf,
   variantOf,
@@ -149,9 +149,10 @@ export async function handleSubmit(body: unknown, ctx: SubmitContext): Promise<S
   if (token === undefined) return badRequest("token is not one this server issued");
   const run = await verifyRunId(token.runId, ctx.secret, token.variant);
   if (run === undefined || run.replay) return badRequest("token names no fresh Endless run");
-  // A variant without boards (Instagram Endless) never publishes: refused
-  // before its Durable Object, Turnstile or the database are touched.
-  if (!ENDLESS_VARIANTS[token.variant].boards) {
+  // A variant without boards (Instagram Endless, every "Clear the squad"
+  // theme) never publishes: refused before its Durable Object, Turnstile or
+  // the database are touched.
+  if (!hasBoards(token.variant)) {
     ctx.record?.({
       type: "submit",
       mode: "endless",

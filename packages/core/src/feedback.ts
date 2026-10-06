@@ -21,9 +21,10 @@ export function textLength(text: string): number {
 }
 
 /**
- * Every page the site serves, as its path. "Report a problem" names the page
- * it came from, and the Worker accepts only these. A test in apps/web keeps
- * the list equal to the pages it builds.
+ * Every page the site serves, as its path, but for the themes' pages
+ * (`ThemePage`). "Report a problem" names the page it came from, and the
+ * Worker accepts only these. A test in apps/web keeps the list equal to the
+ * pages it builds.
  */
 export const SITE_PAGES = [
   "/",
@@ -39,8 +40,23 @@ export const SITE_PAGES = [
   "/404",
 ] as const;
 
-export type SitePage = (typeof SITE_PAGES)[number];
+/**
+ * A "Clear the squad" theme's page (themes.ts): generated from the deck, so
+ * known here by its shape — one of the three folders and a slug.
+ */
+export type ThemePage =
+  `/football-higher-or-lower/legends/${"clubs" | "leagues" | "eras"}/${string}`;
+
+export type SitePage = (typeof SITE_PAGES)[number] | ThemePage;
+
+const THEME_PAGE =
+  /^\/football-higher-or-lower\/legends\/(?:clubs|leagues|eras)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function isSitePage(path: string): path is SitePage {
-  return (SITE_PAGES as readonly string[]).includes(path);
+  return (SITE_PAGES as readonly string[]).includes(path) || isThemePage(path);
+}
+
+/** Whether `path` is shaped like a theme's page. Says nothing about which themes exist. */
+export function isThemePage(path: string): path is ThemePage {
+  return path.length <= 120 && THEME_PAGE.test(path);
 }

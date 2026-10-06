@@ -10,6 +10,14 @@
  * The setting survives a reload (localStorage), and `?delay=800` in the URL
  * sets it, which is handy in a headless browser.
  *
+ * And `?mockEnd=won`, to see a run end as won where the autopilot can't reach
+ * it — a "Clear the squad" theme, whose answers only the server knows: the
+ * guess goes to the server as usual, and its verdict for that round comes back
+ * rewritten as a right answer that ends the run, `won` ("Squad cleared"). The
+ * figures are the server's own; only the verdict and the ending are made up,
+ * so the score is the round it fired on. Like everything here it never ships:
+ * the build's `scan:dist` fails if "mockEnd" reaches `apps/web/dist`.
+ *
  * It also runs an accessibility check: axe-core against the page as it
  * stands, from the panel's "a11y" button or `window.__btAxe()` in a headless
  * browser. Violations are logged to the console. axe-core is a root
@@ -32,6 +40,10 @@ export type DevDelay = (typeof DEV_DELAYS)[number];
 
 const STORAGE_KEY = "bt:dev:delay";
 const ROUND_ENDPOINT = "/api/round/next";
+const GUESS_ENDPOINT = "/api/round/guess";
+
+/** `?mockEnd=won`: the next guess's verdict ends the run as won (see above). */
+const mockEnd = new URLSearchParams(location.search).get("mockEnd") === "won";
 
 let delay: DevDelay = initialDelay();
 
@@ -77,6 +89,48 @@ export function withDevDelay(fetchFn: Fetch): Fetch {
       .then(track, () => {});
     return res;
   };
+}
+
+/**
+ * `fetchFn`, but under `?mockEnd=won` a guess's response comes back as a right
+ * answer that ends the run `won`: the server's reveal (its figure), marked
+ * right, with its challenge link if it sent one, else one at the reveal's
+ * round. Every other request, and every request without the flag, untouched.
+ */
+export function withMockEnd(fetchFn: Fetch): Fetch {
+  if (!mockEnd) return fetchFn;
+  return async (input, init) => {
+    const res = await fetchFn(input, init);
+    if (!input.endsWith(GUESS_ENDPOINT) || !res.ok) return res;
+    const body = (await res.json()) as {
+      reveal: { round: number };
+      challenge?: { runId: string; score: number; sig: string };
+      result?: string;
+    };
+    const runId = runIdOf(init.body);
+    const won = {
+      reveal: { ...body.reveal, correct: true },
+      end: "won",
+      challenge: { ...(body.challenge ?? { runId, sig: "mock" }), score: body.reveal.round },
+      result: body.result ?? "mock",
+    };
+    console.info("mockEnd: round", body.reveal.round, "ends the run as won");
+    return new Response(JSON.stringify(won), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+}
+
+/** The run id in a guess's token, which the client can read: it's signed, not encrypted. */
+function runIdOf(body: BodyInit | null | undefined): string {
+  try {
+    const { token } = JSON.parse(String(body)) as { token: string };
+    const payload = JSON.parse(atob(token.split(".")[0]!.replace(/-/g, "+").replace(/_/g, "/")));
+    return String((payload as { runId?: unknown }).runId ?? "");
+  } catch {
+    return "";
+  }
 }
 
 function track(body: unknown): void {

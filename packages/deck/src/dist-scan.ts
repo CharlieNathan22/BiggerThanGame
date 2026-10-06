@@ -139,6 +139,22 @@ function decodeEscapes(text: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/**
+ * Markers of `pnpm dev`'s tools, which a production build must drop entirely
+ * (apps/web's game/dev.ts sits behind `import.meta.env.DEV`). Any one of them
+ * in the built site means a dev branch was bundled.
+ */
+export const DEV_TOOL_MARKERS = ["mockEnd"] as const;
+
+/** Every file in the built site that carries a dev tool's marker. */
+export function devToolsIn(files: readonly DistFile[]): string[] {
+  return files.flatMap((file) =>
+    DEV_TOOL_MARKERS.filter((marker) => file.text.includes(marker)).map(
+      (marker) => `${file.path} contains "${marker}", a pnpm dev tool`,
+    ),
+  );
+}
+
 function escape(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -1,6 +1,6 @@
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { FEEDBACK_LIMITS, SITE_PAGES } from "@bt/core";
+import { FEEDBACK_LIMITS, SITE_PAGES, isSitePage } from "@bt/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   FEEDBACK_ENDPOINT,
@@ -354,13 +354,37 @@ describe("arrivedFrom", () => {
 });
 
 describe("SITE_PAGES", () => {
+  const dir = fileURLToPath(new URL("../../pages", import.meta.url));
+  const routes = readdirSync(dir, { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".astro"))
+    .map((f) => f.replace(/\\/g, "/").replace(/\.astro$/, ""))
+    .map((name) => (name === "index" ? "/" : `/${name}`));
+
   it("lists exactly the pages the site builds, nested ones included", () => {
-    const dir = fileURLToPath(new URL("../../pages", import.meta.url));
-    const built = readdirSync(dir, { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".astro"))
-      .map((f) => f.replace(/\\/g, "/").replace(/\.astro$/, ""))
-      .map((name) => (name === "index" ? "/" : `/${name}`));
-    expect([...SITE_PAGES].sort()).toEqual(built.sort());
+    const fixed = routes.filter((route) => !route.includes("["));
+    expect([...SITE_PAGES].sort()).toEqual(fixed.sort());
+  });
+
+  it("knows the themes' pages, the one generated route, by their shape", () => {
+    expect(routes.filter((route) => route.includes("["))).toEqual([
+      "/football-higher-or-lower/legends/[kind]/[slug]",
+    ]);
+    for (const page of [
+      "/football-higher-or-lower/legends/clubs/real-madrid",
+      "/football-higher-or-lower/legends/leagues/premier-league",
+      "/football-higher-or-lower/legends/eras/2000s",
+    ]) {
+      expect(isSitePage(page)).toBe(true);
+      expect(sitePage(page)).toBe(page);
+    }
+    for (const page of [
+      "/football-higher-or-lower/legends/teams/real-madrid",
+      "/football-higher-or-lower/legends/clubs/Real-Madrid",
+      "/football-higher-or-lower/legends/clubs/",
+      "/football-higher-or-lower/legends/clubs/a/b",
+    ]) {
+      expect(isSitePage(page)).toBe(false);
+    }
   });
 });
 

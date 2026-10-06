@@ -391,3 +391,72 @@ Any relaxation, by round:
 
 The second row counts runs that ended because the engine could not deal another
 pair, rather than because the modelled player failed.
+
+## Clear the squad
+
+20,000 runs per theme. A run deals each of the theme's players once and is cleared by answering every question. Bands ramp by progress through the squad, blended by its size (`squadSchedule`, ramp.ts). Targets: cleared 4–8% for small squads, 2–5% for big leagues.
+
+| Theme | Players | Cleared | Short deals | Followers under 2× | Median progress | 90th percentile | Relaxed |
+|---|---|---|---|---|---|---|---|
+| Barcelona | 35 | 3.9% | 0.0% | 0 | 17/34 | 28/34 | 0.5% |
+| AC Milan | 27 | 4.9% | 0.0% | 0 | 12/26 | 22/26 | 0.9% |
+| Juventus | 27 | 4.9% | 0.0% | 0 | 12/26 | 22/26 | 1.0% |
+| Real Madrid | 26 | 4.8% | 0.0% | 0 | 12/25 | 21/25 | 0.9% |
+| Manchester United | 23 | 7.0% | 0.0% | 0 | 10/22 | 18/22 | 2.7% |
+| Inter | 22 | 5.0% | 0.0% | 0 | 10/21 | 17/21 | 1.4% |
+| Chelsea | 21 | 5.9% | 0.0% | 0 | 9/20 | 16/20 | 1.9% |
+| Bayern Munich | 15 | 5.1% | 0.0% | 0 | 4/14 | 9/14 | 6.0% |
+| La Liga | 69 | 2.6% | 0.0% | 0 | 35/68 | 58/68 | 0.0% |
+| Premier League | 66 | 2.8% | 0.0% | 0 | 33/65 | 55/65 | 0.1% |
+| Serie A | 65 | 2.7% | 0.0% | 0 | 32/64 | 54/64 | 0.0% |
+| Ligue 1 | 35 | 3.5% | 0.0% | 0 | 17/34 | 28/34 | 0.3% |
+| Bundesliga | 22 | 6.1% | 0.0% | 0 | 9/21 | 17/21 | 2.5% |
+| 2000s | 51 | 3.5% | 0.0% | 0 | 25/50 | 43/50 | 0.2% |
+| 2010s | 37 | 3.4% | 0.0% | 0 | 17/36 | 30/36 | 0.3% |
+| 1990s | 29 | 4.0% | 0.0% | 0 | 13/28 | 23/28 | 0.7% |
+
+Short deals are runs the dealer ended before the last player because the players left couldn't be dealt under any stat; they count as cleared. Followers under 2× counts the follower pairs dealt closer than the 2× floor, over every run dealt in full: the floor gives way only when no other stat can be dealt.
+
+### Accuracy by stretch of the squad
+
+| Theme | first 20% | to 45% | to 70% | to 85% | last 15% |
+|---|---|---|---|---|---|
+| Barcelona | 98.2% | 96.2% | 89.7% | 85.7% | 81.8% |
+| AC Milan | 97.7% | 94.1% | 86.8% | 81.2% | 82.6% |
+| Juventus | 97.9% | 94.0% | 86.8% | 81.3% | 82.8% |
+| Real Madrid | 97.6% | 93.7% | 86.2% | 81.3% | 81.1% |
+| Manchester United | 97.8% | 92.4% | 84.5% | 81.1% | 86.8% |
+| Inter | 97.6% | 92.1% | 83.6% | 77.6% | 80.5% |
+| Chelsea | 97.4% | 91.0% | 82.0% | 77.4% | 83.9% |
+| Bayern Munich | 95.6% | 79.0% | 67.7% | 82.4% | 87.3% |
+| La Liga | 98.9% | 98.4% | 95.1% | 91.9% | 86.9% |
+| Premier League | 98.9% | 98.3% | 94.8% | 91.1% | 86.7% |
+| Serie A | 98.8% | 98.2% | 94.8% | 91.2% | 86.6% |
+| Ligue 1 | 98.2% | 96.1% | 89.8% | 85.0% | 81.1% |
+| Bundesliga | 97.0% | 91.9% | 83.5% | 78.9% | 84.7% |
+| 2000s | 98.6% | 97.6% | 93.3% | 89.9% | 84.8% |
+| 2010s | 98.1% | 96.0% | 90.3% | 86.0% | 81.2% |
+| 1990s | 97.9% | 94.4% | 87.4% | 83.2% | 80.5% |
+
+### The last 3 questions
+
+Every pair dealt in a run's last three questions, whether or not the player got there: rank distance (the fan model's scale) and the larger figure as a multiple of the smaller. Names and figures of the closest are printed by `pnpm simulate`, not kept here.
+
+| Theme | Median distance | Closest ratio | Median ratio | Under 1.25× |
+|---|---|---|---|---|
+| Barcelona | 0.108 | 1.10× | 1.48× | 31.2% |
+| AC Milan | 0.093 | 1.10× | 1.44× | 27.5% |
+| Juventus | 0.112 | 1.10× | 1.46× | 29.6% |
+| Real Madrid | 0.088 | 1.10× | 1.33× | 41.0% |
+| Manchester United | 0.228 | 1.10× | 1.56× | 28.6% |
+| Inter | 0.106 | 1.10× | 1.40× | 31.1% |
+| Chelsea | 0.154 | 1.10× | 1.44× | 31.3% |
+| Bayern Munich | 0.254 | 1.10× | 2.00× | 14.9% |
+| La Liga | 0.154 | 1.10× | 1.46× | 28.1% |
+| Premier League | 0.154 | 1.10× | 1.44× | 31.4% |
+| Serie A | 0.154 | 1.10× | 1.35× | 35.6% |
+| Ligue 1 | 0.102 | 1.10× | 1.33× | 33.6% |
+| Bundesliga | 0.203 | 1.10× | 1.67× | 15.6% |
+| 2000s | 0.138 | 1.10× | 1.44× | 31.1% |
+| 2010s | 0.108 | 1.10× | 1.43× | 31.4% |
+| 1990s | 0.092 | 1.10× | 1.35× | 33.4% |

@@ -2,8 +2,9 @@
  * Run ids: `YYYYMMDD-<uuid>.<sig>`, the date in UTC.
  *
  * **Per mode.** Friendly signs `"run:" + body`, as it always has; Endless
- * signs `"run:endless:" + body`, and Instagram Endless
- * `"run:endless:instagram:" + body`. An id is only ever verified against the
+ * signs `"run:endless:" + body`, Instagram Endless
+ * `"run:endless:instagram:" + body`, and each "Clear the squad" theme
+ * `"run:squad:<theme id>:" + body`. An id is only ever verified against the
  * mode it is used in, so an Endless id can't be played as Friendly or as
  * another Endless variant, and a Friendly id minted before Endless existed
  * still verifies.
@@ -33,7 +34,8 @@
  * encoded or truncated.
  */
 
-import type { EndlessVariantId, NamedVariant } from "@bt/core";
+import { isSquadVariantId, resolveVariant } from "@bt/core";
+import type { EndlessVariantId, NamedVariant, Player, StaticVariantId } from "@bt/core";
 import { hmacSha256, timingSafeEqual, toBase64Url } from "./hmac.js";
 
 /**
@@ -48,11 +50,16 @@ export type RunMode = "friendly" | EndlessVariantId;
  * variant signs under its own, so a run id only ever verifies as the variant it
  * was minted for.
  */
-const RUN_PREFIX: Readonly<Record<RunMode, string>> = {
+const RUN_PREFIX: Readonly<Record<"friendly" | StaticVariantId, string>> = {
   friendly: "run:",
   endless: "run:endless:",
   "endless-instagram": "run:endless:instagram:",
 };
+
+/** A "Clear the squad" theme signs under `run:squad:<theme id>:`. */
+function runPrefix(mode: RunMode): string {
+  return isSquadVariantId(mode) ? `run:${mode}:` : RUN_PREFIX[mode];
+}
 
 /** The kind of run a request names: its mode, and for Endless its variant if any. */
 export function runModeOf(mode: "friendly" | "endless", variant?: NamedVariant): RunMode {
@@ -65,6 +72,15 @@ export function dealOptions(
 ):
   { readonly mode: "friendly" } | { readonly mode: "endless"; readonly variant: EndlessVariantId } {
   return kind === "friendly" ? { mode: "friendly" } : { mode: "endless", variant: kind };
+}
+
+/**
+ * Whether `deck` can deal runs of this kind: always, but for a "Clear the
+ * squad" theme the deck no longer has (its run ids still verify, since the
+ * signature names the theme, not the deck).
+ */
+export function canDeal(kind: RunMode, deck: readonly Player[]): boolean {
+  return kind === "friendly" || resolveVariant(kind, deck) !== undefined;
 }
 
 /** 128 bits of the HMAC: far beyond guessing, and 22 characters in a link. */
@@ -186,6 +202,6 @@ function ageInDays(date: Date, clock: Date): number {
 }
 
 async function signature(secret: string, body: string, mode: RunMode): Promise<string> {
-  const mac = await hmacSha256(secret, `${RUN_PREFIX[mode]}${body}`);
+  const mac = await hmacSha256(secret, `${runPrefix(mode)}${body}`);
   return toBase64Url(mac.subarray(0, SIGNATURE_BYTES));
 }

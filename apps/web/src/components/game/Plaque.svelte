@@ -35,7 +35,7 @@
 -->
 <script lang="ts">
   import { STAT_KEYS } from "@bt/core";
-  import type { StatKey, StatPayload, Tier } from "@bt/core";
+  import type { NamedVariant, StatKey, StatPayload, Tier } from "@bt/core";
   import { untrack } from "svelte";
   import { statLabel, t } from "../../i18n";
   import { TIER_COLOUR } from "../../lib/tiers";
@@ -60,6 +60,13 @@
     clock?: QuestionClock | null;
     /** `performance.now()` this frame, from the game's one frame loop. */
     now?: number;
+    /** The Endless variant: a squad reads club goals as "Total career club goals". */
+    variant?: NamedVariant | undefined;
+    /**
+     * A line under the plaque once the stat is on it: in a squad, what club
+     * goals count ("Whole career, not just Barcelona"). Empty for none.
+     */
+    note?: string;
   }
 
   let {
@@ -73,7 +80,11 @@
     stage = null,
     clock = null,
     now = 0,
+    variant,
+    note = "",
   }: Props = $props();
+
+  const label = (key: StatKey) => statLabel(key, variant);
 
   const time = $derived(clock === null ? null : clockView(clock, now, reducedMotion));
 
@@ -149,9 +160,9 @@
 
   const rows: string[] = $derived(
     strip.length > 0
-      ? [...(from === null ? [] : [from]), ...strip.map(statLabel)]
+      ? [...(from === null ? [] : [from]), ...strip.map(label)]
       : stat
-        ? [statLabel(stat.key)]
+        ? [label(stat.key)]
         : lead !== null
           ? [lead]
           : [],
@@ -163,6 +174,10 @@
 {/if}
 {#if stage === "hold"}
   <span class="aura" aria-hidden="true"></span>
+{/if}
+{#if note !== "" && landed && stat !== null}
+  <!-- Under the plaque, once the wheel has landed: what the stat counts here. -->
+  <span class="note">{note}</span>
 {/if}
 <div
   class="plaque"
@@ -321,6 +336,26 @@
     pointer-events: none;
     animation: finaltag-in var(--dur-pop) var(--ease) both;
   }
+  /* Straddling the plaque's bottom edge, as the final tag does its top. */
+  .note {
+    position: absolute;
+    left: 50%;
+    top: calc(50% + var(--plaque-h) / 2);
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    max-width: calc(100% - 2 * var(--final-tag-inset));
+    padding: var(--plaque-note-pad);
+    border-radius: var(--radius-pill);
+    background: var(--plaque-note-bg);
+    color: var(--plaque-note-text);
+    font-size: var(--fs-plaque-note);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 0 0 var(--final-tag-halo) var(--night);
+    pointer-events: none;
+    animation: finaltag-in var(--dur-pop) var(--ease) both;
+  }
   @keyframes finaltag-in {
     from {
       opacity: 0;
@@ -364,6 +399,9 @@
     }
     .finaltag {
       top: var(--plaque-top-gap);
+    }
+    .note {
+      top: calc(var(--plaque-h) + var(--plaque-top-gap));
     }
     .aura {
       top: calc(var(--plaque-h) / 2 + var(--plaque-top-gap));

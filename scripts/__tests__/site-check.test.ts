@@ -372,3 +372,20 @@ describe("siteExpectations", () => {
     expect(expect_.previewImages?.[LEADERBOARD]).toBeUndefined();
   });
 });
+
+describe("the themes' pages", () => {
+  const BARCELONA = "/football-higher-or-lower/legends/clubs/barcelona";
+  const LA_LIGA = "/football-higher-or-lower/legends/leagues/la-liga";
+
+  it("are game pages, with a breadcrumb and the game, and the default preview", () => {
+    const expect_ = siteExpectations(["/og-image.png"], [BARCELONA, LA_LIGA]);
+    expect(expect_.structuredData[BARCELONA]).toEqual(["BreadcrumbList", "VideoGame"]);
+    expect(expect_.structuredData[LA_LIGA]).toEqual(["BreadcrumbList", "VideoGame"]);
+    expect(expect_.previewImages?.[BARCELONA]).toBeUndefined();
+  });
+
+  it("must each be built: a theme with no page fails the checks", () => {
+    const expect_ = { ...EXPECT, structuredData: { ...EXPECT.structuredData, [BARCELONA]: [] } };
+    expect(checkPages(site({}), expect_)).toContain(`${BARCELONA}: expected, but not built`);
+  });
+});

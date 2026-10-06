@@ -5,6 +5,8 @@
  *   seed(endless,  runId) = HMAC-SHA256(RUN_SECRET, "endless:"  + runId)
  *   seed(endless-instagram, runId)
  *                         = HMAC-SHA256(RUN_SECRET, "endless:instagram:" + runId)
+ *   seed(squad:<theme id>, runId)
+ *                         = HMAC-SHA256(RUN_SECRET, "squad:<theme id>:" + runId)
  *
  * Each Endless variant's domain is its `seedDomain` (variants.ts in @bt/core),
  * so no two variants' runs can share a seed even if they shared a run id.
@@ -17,7 +19,7 @@
  * are at most 2³² runs per mode. Kept on purpose: ARCHITECTURE.md §7.
  */
 
-import { ENDLESS_VARIANTS } from "@bt/core";
+import { seedDomainOf } from "@bt/core";
 import type { EndlessVariantId } from "@bt/core";
 import { hmacSha256, toHex } from "./hmac.js";
 import type { RunMode } from "./run-id.js";
@@ -32,7 +34,7 @@ export async function endlessSeed(
   runId: string,
   variant: EndlessVariantId = "endless",
 ): Promise<string> {
-  return toHex(await hmacSha256(secret, `${ENDLESS_VARIANTS[variant].seedDomain}${runId}`));
+  return toHex(await hmacSha256(secret, `${seedDomainOf(variant)}${runId}`));
 }
 
 /** The seed for a run of `mode`. */

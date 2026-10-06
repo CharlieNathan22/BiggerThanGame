@@ -138,20 +138,27 @@ const LEADERBOARD = `${ENDLESS}/leaderboard`;
  * What the built site must be, given its non-page files. The Endless page is a
  * game page like Friendly's, with its own canonical and the site's default
  * preview; its leaderboard is an ordinary page under it, with a breadcrumb.
- * Instagram Endless is a game page under Endless, like Endless itself.
+ * Instagram Endless is a game page under Endless, like Endless itself. Each
+ * "Clear the squad" theme (`themePaths`, from the deck build's themes.json) is
+ * a game page too, under the Legends page.
  */
-export function siteExpectations(files: readonly string[]): SiteExpectations {
+export function siteExpectations(
+  files: readonly string[],
+  themePaths: readonly string[] = [],
+): SiteExpectations {
+  const game: readonly LdType[] = ["BreadcrumbList", "VideoGame"];
   return {
     origin: "https://biggerthangame.com",
     lang: "en-GB",
     noindex: ["/404"],
     structuredData: {
       [FOOTBALL]: ["BreadcrumbList"],
-      [LEGENDS]: ["BreadcrumbList", "VideoGame"],
-      [FRIENDLY]: ["BreadcrumbList", "VideoGame"],
-      [ENDLESS]: ["BreadcrumbList", "VideoGame"],
-      [INSTAGRAM]: ["BreadcrumbList", "VideoGame"],
+      [LEGENDS]: game,
+      [FRIENDLY]: game,
+      [ENDLESS]: game,
+      [INSTAGRAM]: game,
       [LEADERBOARD]: ["BreadcrumbList"],
+      ...Object.fromEntries(themePaths.map((path) => [path, game])),
     },
     files,
     previewImage: "/og-image.png",
@@ -246,6 +253,10 @@ export function checkPages(pages: readonly BuiltPage[], expect: SiteExpectations
       if (other !== undefined) problems.push(`${page.path}: same ${field} as ${other}`);
       else seen.set(value, page.path);
     }
+  }
+  // Every page the checks expect was built: a theme in themes.json with no page fails here.
+  for (const path of Object.keys(expect.structuredData)) {
+    if (!paths.has(path)) problems.push(`${path}: expected, but not built`);
   }
   return problems;
 }

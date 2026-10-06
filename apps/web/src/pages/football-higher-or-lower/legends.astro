@@ -1,11 +1,20 @@
 ---
 // The Legends deck: its intro and its modes (DESIGN.md §17). Static, but for
 // the few lines on each open mode's card that show this device's "Your best". Where
-// "Play" goes. Below the cards, a long read about this deck: who's
+// "Play" goes. The modes, then "Clear the squad"'s themes in a section per
+// type (Clubs, Leagues, Eras), generated from the deck build's themes.json,
+// then Daily Ranked. Below the cards, a long read about this deck: who's
 // in it, what it asks and how to play it; nothing from the football page's.
 // Names only, and no digits anywhere near them, so the leak scan has nothing
 // to weigh (dist-scan.ts). Draft copy.
-import { STATS, STAT_KEYS, WIN_ROUNDS } from "@bt/core";
+import {
+  STATS,
+  STAT_KEYS,
+  THEME_TYPES,
+  WIN_ROUNDS,
+  squadQuestions,
+  squadVariantId,
+} from "@bt/core";
 import type { Tier } from "@bt/core";
 import Page from "../../layouts/Page.astro";
 import Breadcrumb from "../../components/Breadcrumb.astro";
@@ -20,10 +29,17 @@ import {
   INSTAGRAM_PATH,
   LEADERBOARD_PATH,
   LEGENDS_PATH,
+  themePagePath,
 } from "../../lib/paths";
 import { breadcrumbLd, breadcrumbTrail, gameLd } from "../../lib/seo";
+import { loadThemes, themeColours } from "../../lib/themes";
 
 const trail = breadcrumbTrail(LEGENDS_PATH);
+/** "Clear the squad": each type's themes, in the deck build's order; a type with none has no section. */
+const sections = THEME_TYPES.map((type) => ({
+  type,
+  themes: loadThemes().filter((theme) => theme.type === type),
+})).filter((section) => section.themes.length > 0);
 
 /** A stat's label in running text: "club goals", but "Instagram followers". */
 function inSentence(label: string): string {
@@ -92,8 +108,30 @@ const tiers =
       bestOf={WIN_ROUNDS.friendly ?? undefined}
       wide
     />
-    <!-- The themed modes (Clubs, Leagues, Eras) go here, between Friendly and Daily Ranked. -->
-    <!-- Daily Ranked sits last while it's coming soon; it moves to the top when it launches. -->
+  </Cards>
+
+  {sections.map(({ type, themes }) => (
+    <section class="themes" aria-labelledby={`themes-${type}`}>
+      <h2 class="themes-heading" id={`themes-${type}`}>
+        {t(`themes.${type}`)}
+      </h2>
+      <Cards label={t(`themes.${type}`)} grid>
+        {themes.map((theme) => (
+          <Card
+            name={theme.name}
+            body={t("theme.players", { players: theme.players })}
+            href={themePagePath(theme)}
+            bestKey={bestKey("legends", squadVariantId(theme))}
+            bestOf={squadQuestions(theme.players)}
+            theme={{ id: theme.id, type: theme.type, colours: themeColours(theme) }}
+          />
+        ))}
+      </Cards>
+    </section>
+  ))}
+
+  <!-- Daily Ranked sits last while it's coming soon; it moves to the top when it launches. -->
+  <Cards label={t("mode.soon")} stack>
     <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} wide />
   </Cards>
 
@@ -160,5 +198,19 @@ const tiers =
 <style>
   .next {
     text-align: center;
+  }
+  /* "Clubs", "Leagues", "Eras": the site's gold Cinzel in its golden glow, centred. */
+  .themes-heading {
+    margin: var(--theme-heading-top) 0 0;
+    padding: 0;
+    border: 0;
+    text-align: center;
+    font-family: var(--font-display);
+    font-weight: var(--fw-legends);
+    font-variation-settings: normal;
+    font-size: var(--fs-theme-heading);
+    letter-spacing: var(--tracking-sublegend);
+    color: var(--gold);
+    text-shadow: var(--heading-glow);
   }
 </style>

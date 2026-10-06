@@ -9,11 +9,24 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { themePath } from "@bt/core";
+import type { ThemeType } from "@bt/core";
 import { checkPages, checkRobots, checkSitemap, pngSize, siteExpectations } from "./site-check.js";
 import type { BuiltPage } from "./site-check.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "apps", "web", "dist");
+/** The deck build's themes: each must have its page, as any other page must. */
+const themesFile = join(root, "packages", "deck", "dist", "themes.json");
+
+function themePaths(): string[] {
+  if (!existsSync(themesFile)) return [];
+  const themes = JSON.parse(readFileSync(themesFile, "utf8")) as {
+    type: ThemeType;
+    slug: string;
+  }[];
+  return themes.map((theme) => themePath(theme));
+}
 
 /** Every generated image, at the size it must be (scripts/site-images.ts). */
 const IMAGES: readonly [string, number, number][] = [
@@ -47,7 +60,10 @@ function main(): number {
     .filter((f) => f.endsWith(".html"))
     .map((f) => ({ path: servedPath(f), html: readFileSync(join(dist, f), "utf8") }));
 
-  const expect = siteExpectations(files.filter((f) => !f.endsWith(".html")).map((f) => `/${f}`));
+  const expect = siteExpectations(
+    files.filter((f) => !f.endsWith(".html")).map((f) => `/${f}`),
+    themePaths(),
+  );
 
   const problems = [...checkPages(pages, expect)];
   const read = (file: string) =>

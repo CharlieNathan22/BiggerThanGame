@@ -21,7 +21,7 @@
  * send are all injected, so tests drive this in Node.
  */
 
-import { STATS, buildRun, valueOf } from "@bt/core";
+import { STATS, buildRun, isSquadVariantId, statLabel, themeIdOf, valueOf } from "@bt/core";
 import type {
   ApiError,
   CorrectionRequest,
@@ -37,7 +37,7 @@ import type { FeedbackRejection } from "./feedback-validate.js";
 import type { LogLine, LogValue } from "./log.js";
 import type { PlainTextMail } from "./mail.js";
 import { figureFor } from "./payload.js";
-import { dealOptions, isRunAnswerable, runModeOf, verifyRunId } from "./run-id.js";
+import { canDeal, dealOptions, isRunAnswerable, runModeOf, verifyRunId } from "./run-id.js";
 import type { RunId, RunMode } from "./run-id.js";
 import { seedFor } from "./seed.js";
 import type { TurnstileOutcome } from "./turnstile.js";
@@ -192,6 +192,7 @@ export async function correctionReport(
   const run = await verifyRunId(req.runId, ctx.secret, mode);
   if (run === undefined || run.replay) return { ok: false, code: "invalid_run" };
   if (!isRunAnswerable(run, ctx.clock())) return { ok: false, code: "run_expired" };
+  if (!canDeal(mode, ctx.deck)) return { ok: false, code: "invalid_run" };
 
   const now = run.date;
   const seed = await seedFor(mode, ctx.secret, run.origin);
@@ -209,7 +210,7 @@ export async function correctionReport(
   const text = [
     "Correction report",
     "",
-    `Stat: ${def.label} (${def.key})`,
+    `Stat: ${statLabel(round.stat, mode === "friendly" ? undefined : mode)} (${def.key})`,
     `Shown:  ${figureLine(round.anchor, round.stat, now)}`,
     `Hidden: ${figureLine(round.challenger, round.stat, now)}`,
     "",
@@ -277,12 +278,12 @@ function figureLine(player: Player, stat: StatKey, now: Date): string {
 
 function describeRun(run: RunId, mode: RunMode): string {
   const day = run.date.toISOString().slice(0, 10);
-  const name = {
-    friendly: "run",
-    endless: "Endless run",
-    "endless-instagram": "Instagram Endless run",
-  };
-  return `${name[mode]} ${run.body} (dealt as of ${day})`;
+  const name = isSquadVariantId(mode)
+    ? `"Clear the squad" run (${themeIdOf(mode)})`
+    : { friendly: "run", endless: "Endless run", "endless-instagram": "Instagram Endless run" }[
+        mode
+      ];
+  return `${name} ${run.body} (dealt as of ${day})`;
 }
 
 function errorCode(err: unknown): string {

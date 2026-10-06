@@ -1,0 +1,57 @@
+---
+// The game: "Clear the squad" for one theme — a club, a league or an era — on
+// the Legends deck (DESIGN.md §3). One page per theme the deck build found
+// (themes.json, names and counts only), at /legends/clubs/<slug>,
+// /legends/leagues/<slug> or /legends/eras/<slug>. The same fixed-height,
+// no-scroll screen and island as Endless (Base's `game`), with the theme's own
+// title, description and canonical, and the site's default preview.
+import type { GetStaticPaths } from "astro";
+import Base from "../../../../layouts/Base.astro";
+import Footer from "../../../../components/Footer.astro";
+import Game from "../../../../components/game/Game.svelte";
+import { t } from "../../../../i18n";
+import { breadcrumbLd, gameLd, themeTrail } from "../../../../lib/seo";
+import { themePages } from "../../../../lib/themes";
+import type { ThemePage } from "../../../../lib/themes";
+
+export const getStaticPaths = (() =>
+  themePages().map((page) => ({
+    params: { kind: page.kind, slug: page.theme.slug },
+    props: { page },
+  }))) satisfies GetStaticPaths;
+
+interface Props {
+  page: ThemePage;
+}
+
+const { page } = Astro.props;
+const { theme, path, variant } = page;
+const words = { name: theme.name, players: theme.players };
+---
+
+<Base
+  title={t(`squad.title.${theme.type}`, words)}
+  description={t(`squad.description.${theme.type}`, words)}
+  game
+  structuredData={[breadcrumbLd(themeTrail(theme.name, path)), gameLd()]}
+>
+  <!-- client:load, not client:visible: the first tap must not wait (ARCHITECTURE.md §14). -->
+  <Game client:load deck="legends" mode="endless" {variant} {theme} {path} />
+  <noscript>
+    <p class="noscript">{t("start.noscript")}</p>
+  </noscript>
+  <Footer />
+</Base>
+
+<style>
+  /* The island's wrapper element must not break the page's flex column. */
+  :global(astro-island) {
+    display: contents;
+  }
+  .noscript {
+    padding: 8px 18px;
+    text-align: center;
+    font-size: var(--fs-body);
+    color: var(--dim);
+  }
+</style>

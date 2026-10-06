@@ -35,6 +35,17 @@ const deckRoot = resolve(
 export const SAMPLE_DECK: readonly Player[] = loadSampleDeck(deckRoot).players;
 export const FIXTURE_DECK: readonly Player[] = fixtureDeck;
 
+/**
+ * The sample deck with themes for "Clear the squad": its first 16 players at
+ * an invented club, Testfield (`club-testfield`, 15 questions), and the first
+ * 15 of those also at Kestrel Rovers (`club-kestrel-rovers`, 14) — the sample
+ * itself has no theme big enough.
+ */
+export const THEMED_DECK: readonly Player[] = SAMPLE_DECK.map((player, i) => ({
+  ...player,
+  mainClubs: i < 15 ? ["Testfield", "Kestrel Rovers"] : i < 16 ? ["Testfield"] : ["Elsewhere"],
+}));
+
 /** A run id's reference date, from an id the test knows is well formed. */
 export function runDay(runId: string): Date {
   const run = parseRunId(runId);

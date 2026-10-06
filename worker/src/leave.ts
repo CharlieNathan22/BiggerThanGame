@@ -17,7 +17,14 @@ import { buildRun, isNamedVariant, roundCap } from "@bt/core";
 import type { ApiError, LeavePhase, LeaveRequest, LeaveTrigger, Player } from "@bt/core";
 import { shownRound } from "./analytics.js";
 import type { GameEvent, ShownRound } from "./analytics.js";
-import { dealOptions, isRunAnswerable, parseRunId, runModeOf, verifyRunId } from "./run-id.js";
+import {
+  canDeal,
+  dealOptions,
+  isRunAnswerable,
+  parseRunId,
+  runModeOf,
+  verifyRunId,
+} from "./run-id.js";
 import { named } from "./run.js";
 import { seedFor } from "./seed.js";
 import type { Parsed } from "./validate.js";
@@ -54,7 +61,7 @@ export function parseLeaveRequest(body: unknown): Parsed<LeaveRequest> {
   if (mode !== "friendly" && mode !== "endless")
     return fail('mode must be "friendly" or "endless"');
   if ("variant" in record && (mode !== "endless" || !isNamedVariant(variant))) {
-    return fail('variant must be "endless-instagram", in Endless only');
+    return fail('variant must be "endless-instagram" or "squad:<theme>", in Endless only');
   }
   const cap = roundCap(mode);
   if (typeof runId !== "string" || parseRunId(runId) === undefined) {
@@ -96,6 +103,7 @@ export async function handleLeave(body: unknown, ctx: LeaveContext): Promise<Lea
   if (run === undefined) return badRequest("runId is not one this server issued");
   if (run.replay) return badRequest("replay ids are refused: challenge links are off in Friendly");
   if (!isRunAnswerable(run, ctx.clock())) return badRequest("runId is out of date");
+  if (!canDeal(kind, ctx.deck)) return badRequest("this run's theme is no longer in the deck");
 
   let shown: ShownRound | undefined;
   if (req.round > 0) {

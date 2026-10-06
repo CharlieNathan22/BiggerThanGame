@@ -115,10 +115,10 @@ Endless is built as a set of **variants** (`ENDLESS_VARIANTS`, `variants.ts` in 
 the same game — the clock, one life, the round protocol and its tokens, the Durable Object, the
 resend rule and the alarm, timeouts and disconnects, challenge links, the streak titles — over its
 own **pool** (which players can appear), **stat** (fixed, or the wheel), **band schedule**,
-**format** (endless; the themed "Clear the squad" modes will add their own) and **boards** (or
-none). Each has its own seed domain, run-id and challenge signatures, so runs, tokens and links of
-one variant are never accepted as another's (ARCHITECTURE.md §7). Its id names it everywhere it
-shows: the local best, the analytics mode column, the log lines.
+**format** (`endless`, or `squad` for "Clear the squad") and **boards** (or none). Each has its
+own seed domain, run-id and challenge signatures, so runs, tokens and links of one variant are
+never accepted as another's (ARCHITECTURE.md §7). Its id names it everywhere it shows: the local
+best, the log lines, and for Endless and Instagram Endless the analytics mode column.
 
 - **Endless** (`endless`) is the first: the whole deck, the wheel, the boards. Naming it changes
   nothing about a run.
@@ -130,6 +130,50 @@ shows: the local best, the analytics mode column, the log lines.
   boards**: the server refuses to publish its runs, and its game-over panel has no Publish and no
   "beat it" line. Share, challenge links ("Beat n" on a fresh Instagram Endless run) and Play again
   work as in Endless; the share text's heading reads "Bigger Than — Instagram Endless".
+- **Clear the squad** (`squad:<theme id>`, e.g. `squad:club-barcelona`) is a family of them, one
+  per **theme** — below.
+
+### Clear the squad
+
+A **theme** is a slice of the deck: a **club** (from `main_clubs`; loans count, as the data
+records them), a **league** (`leagues`) or an **era** (the decade of a player's peak, `era`).
+Themes come from the deck itself (`squadThemes`, `themes.ts` in `@bt/core`): every one with at
+least **`THEME_MIN_PLAYERS` = 15** players gets a mode, a smaller one doesn't appear at all, and a
+new one appears on its own as the deck grows. The deck build writes them to `themes.json` — id,
+type, name, slug and player count, nothing else — for the site's pages (§17). Ids are the type
+and a slug of the name (`club-real-madrid`, `league-premier-league`, `era-2000s`), and slugs are
+the name lower-cased with everything but letters and digits run into dashes. On the 131-player
+deck that is 16 themes: Barcelona 35, AC Milan 27, Juventus 27, Real Madrid 26, Manchester United
+23, Inter 22, Chelsea 21 and Bayern Munich 15; La Liga 69, Premier League 66, Serie A 65, Ligue 1
+35 and Bundesliga 22; the 2000s 51, the 2010s 37 and the 1990s 29.
+
+- **The squad.** The pool is the theme's players, and every stat is in play, on the wheel as in
+  Endless. Instagram followers keep the usual 2× floor, which gives way only as the last resort,
+  once no other stat can be dealt (§10), so a run never ends early because of it; ties are never
+  dealt. **Each player appears at most once
+  in a run**, the opening anchor included, so a run is at most squad size − 1 questions, and
+  answering every one is a win: **"Squad cleared"**. The first three questions prefer iconic
+  players where the squad has them.
+- **Play** is Endless's: one life, the same clock (15 seconds, then 10), the same round protocol
+  — tokens, the Durable Object, the resend rule, the alarm, timeouts and disconnects — under
+  seeds of the theme's own (`"squad:<theme id>:" + runId`).
+- **Difficulty ramps by progress through the squad**, not by round number (§8), so a 15-player
+  club and a 69-player league both build to a hard finish.
+- **Every player can be dealt.** The dealer keeps track of which of the players left could still
+  be paired at all, and deals first any who would otherwise be stranded (§10). If the players
+  left can't be dealt under any stat, the run ends there, as cleared. On today's deck that never
+  happens (`simulation.md` counts it per theme).
+- **Club goals reads "Total career club goals"** in every squad mode, on the plaque, the reveal,
+  the game-over panel and the share image, with a note under the plaque ("Whole career, not just
+  Barcelona"; "… every league"; "… not just the 2000s"): the figure is the whole career, not goals
+  for the squad's club.
+- **No boards.** The server refuses to publish a squad run, and the game-over panel has no
+  Publish and no "beat it" line.
+- **Share**: "I cleared the Barcelona squad 🏆", or "21/34 through the Barcelona squad · Captain",
+  with the grid stopping at the miss and no player named. Challenge links work as in Endless:
+  "Beat 21/34" on a fresh run of the same theme, or "Match 34/34" against a cleared one.
+- **Local best** per theme, `bt:best:legends:squad:<theme id>`: the furthest through the squad,
+  and whether it has ever been cleared (§17).
 
 ### Friendly Mode
 
@@ -393,6 +437,10 @@ for colourblind players.
   broken.
 - **No wheel at all in a variant that fixes the stat** (Instagram Endless, §3): not even on
   question one. The plaque shows the stat from the first deal, after the short hold.
+- **In "Clear the squad" the wheel looks for a close pair** (§3, §8): at a switch it lands only on
+  a stat whose round band can be met by a player not yet dealt (any dealable stat when none can),
+  and it also switches before its dwell is up when the held stat can't meet the band but another
+  can. So it spins a little more often there, and the squad's last questions stay hard.
 - **The opening stat is a wheel draw too**, over basic and uncommon stats only, with the same tier
   weights. **Rare stats never open a run** — a newcomer's first question should read at a glance —
   but the wheel can switch to them from the first switch, at round 3.
@@ -522,6 +570,59 @@ from 20 to 30 takes ten answers at the same odds that thinned 10 to 20). A ramp 
 round 20 reaches 0.9% at 30, but its round-30 pairs sit a median 2.5× apart against 1.5× here.
 `simulation.md` has the tables, including how close the pairs dealt at questions 10, 20 and 30
 are.
+
+**Clear the squad** ramps by **progress** — the share of the squad's questions answered — rather
+than by round, so its rows end at 20%, 45%, 70% and 85% of the way through and run to the end. A
+14-question club needs harder questions on average than a 68-question league to be cleared about
+as often, so there are two schedules with the same rows, **`SQUAD_SMALL`** (a 15-player squad)
+and **`SQUAD_LARGE`** (69), blended by squad size (`squadSchedule`): the share of the way from 15
+to 69, raised to the power 0.65 (`SQUAD_BLEND`), so only the smallest squads get the small end's
+hard middle — a small squad's last questions can only be as hard as the few players left allow.
+Both schedules **never get easier** from one row to the next, so neither does any blend of them,
+and closeness is measured in rank distance over the **whole deck**, the fan model's own scale, so
+"0.05 apart" means the same in any squad.
+
+| Progress | Small (15 players)    | Large (69 players)    |
+| -------- | --------------------- | --------------------- |
+| to 20%   | ≥0.20, no ceiling     | ≥0.45, no ceiling     |
+| to 45%   | 0.05–0.12             | ≥0.35, no ceiling     |
+| to 70%   | 0.02–0.06             | 0.22–0.45             |
+| to 85%   | 0.01–0.04, ≥10% apart | 0.14–0.32, ≥10% apart |
+| the rest | 0.01–0.03, ≥10% apart | 0.10–0.20, ≥10% apart |
+
+From 70% of the way through, every pair must also be at least 10% apart as a ratio, never relaxed
+(`SQUAD_PAIR_RULES`); unlike Endless, no narrow stat swaps its band for a value rule. The wheel
+keeps the finish hard (§7, §10): at a switch it lands on a stat whose own band can be met, and it
+switches early when the held stat can't be dealt in band but another can. Without that, a squad's
+last questions relaxed to whoever was left, and played easier than its middle.
+
+Tuned with the `fan` model, 20,000 runs per theme, against a clear rate of about 4–8% for the
+clubs and 2–5% for the big leagues:
+
+| Theme             | Players | Cleared | Median progress |
+| ----------------- | ------- | ------- | --------------- |
+| Barcelona         | 35      | 3.9%    | 17/34           |
+| AC Milan          | 27      | 4.9%    | 12/26           |
+| Juventus          | 27      | 4.9%    | 12/26           |
+| Real Madrid       | 26      | 4.8%    | 12/25           |
+| Manchester United | 23      | 7.0%    | 10/22           |
+| Inter             | 22      | 5.0%    | 10/21           |
+| Chelsea           | 21      | 5.9%    | 9/20            |
+| Bayern Munich     | 15      | 5.1%    | 4/14            |
+| La Liga           | 69      | 2.6%    | 35/68           |
+| Premier League    | 66      | 2.8%    | 33/65           |
+| Serie A           | 65      | 2.7%    | 32/64           |
+| Ligue 1           | 35      | 3.5%    | 17/34           |
+| Bundesliga        | 22      | 6.1%    | 9/21            |
+| 2000s             | 51      | 3.5%    | 25/50           |
+| 2010s             | 37      | 3.4%    | 17/36           |
+| 1990s             | 29      | 4.0%    | 13/28           |
+
+No run ended early for want of a dealable player. The big leagues are answered right 98–99% of
+the time through their first 45%, falling to about 87% in the last 15%; Bayern Munich, the
+smallest, is hardest in its middle (68% at 45–70%), since its last few questions are dealt from
+whoever is left. `simulation.md` has the tables, and `pnpm simulate` prints the closest pairs of
+each theme's last three questions (names and figures, so never in the committed report).
 
 **Friendly's twenty questions**: It opens
 on the same uncapped band for the five rounds that prefer iconic names, stays uncapped a little
@@ -662,7 +763,18 @@ Rules the pair-selection logic must enforce:
   switches.
 - **Respect the gap band** for the current round, relaxing in the order given in section 8 rather
   than ever failing to deal a pair. Every stat is banded, in rank distance (§8).
-- **Recently-seen queue** so the same player doesn't reappear within roughly a dozen rounds.
+- **Recently-seen queue** so the same player doesn't reappear within roughly a dozen rounds. In
+  "Clear the squad" (§3) the queue is every player dealt so far and is never dropped: no player
+  appears twice. Its candidates come from the squad, but distance is measured over the whole
+  deck. Before each pick the dealer checks which of the players left could still be paired with
+  any other under some stat (at its last question's rules, the strictest), and deals first any
+  player whose only partners are already used; if nobody left can be dealt at all, the run ends,
+  cleared. The wheel lands on a stat its round's band can meet, and switches early when the held
+  stat can't meet it but another can (§8). The followers' 2× floor still relaxes at the ladder's
+  last step, as in Endless, but in a squad only once **every other stat** has been tried: a stat
+  that can be dealt keeping its own floors always comes first, whether the wheel is switching or
+  the held stat could only be dealt by dropping the floor. On today's deck that leaves no follower
+  pair under 2× in any squad (without the rule, 940 such pairs came up in 64,000 runs).
 - **Correlated-stat rule.** Two stats that order players the same way ask the same question twice,
   which undercuts the stat switch whose entire point is dissonance. The wheel must **not switch
   directly between a correlated pair**; it needs an intervening stat. **Club goals and
@@ -815,6 +927,8 @@ a number.
   Zidane v Henry"); a challenge link is shared on its own, so a friend's run spoils nothing. In
   Friendly the score is "7/20", no player is named, and the grid is always two rows of ten, ⬛ for
   the questions the run didn't reach; a won run reads "🏆 20/20 · Legend", with no "Ended on".
+  Through a squad it reads "21/34 through the Barcelona squad · Captain", or "I cleared the
+  Barcelona squad 🏆", with no player named and the grid stopping at the miss (§3).
 - **Share image**: the same, plus the final round's two players and the figures the player has just
   seen, in the game's type and colours; in Friendly the score out of twenty, the twenty-cell grid
   (unreached rounds as empty outlines) and a gold trophy for a win. **No player photos** — their
@@ -844,7 +958,7 @@ This is the headline board.
 
 ### Endless boards
 
-General Endless only: Instagram Endless has no boards (§3).
+General Endless only: Instagram Endless and "Clear the squad" have no boards (§3).
 
 Three boards: **Today**, **This week** and **This month**. Each is the top 50 of each device's
 **best single published run** in the period — the highest streak, then the lower **thinking
@@ -1070,6 +1184,9 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
     └── /legends                   the Legends deck: its intro and the three modes. Static,
         │                          no JS. Where "Play" goes.
         ├── /friendly              the game: Friendly Mode. Fixed-height, no scroll.
+        ├── /clubs/<slug>          "Clear the squad", one page per theme the deck has
+        ├── /leagues/<slug>        (generated from themes.json): the Endless screen, with
+        ├── /eras/<slug>           Friendly's progress track.
         └── /endless               the game: Endless. The same screen, with a clock.
             ├── /instagram         the game: Instagram Endless. The same screen as Endless.
             └── /leaderboard       Endless's boards: today, this week, this month, and this
@@ -1090,7 +1207,8 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   everywhere; the game and a breadcrumb trail from the homepage on the football pages). The copy
   is visible text below the cards, which stay the first thing on screen. No player stat pages,
   records articles or "coming soon" pages, and no player's figure anywhere on the site.
-- **Modes on a deck's page.** Friendly and Endless link to their game pages; the Endless card
+- **Modes on a deck's page.** Every open card is one link, clickable anywhere on the card, not
+  just on its name. Friendly and Endless link to their game pages; the Endless card
   also links to its leaderboard, as does the Endless start panel. Daily Ranked is shown as a
   "Coming soon" card: not a link, not focusable, visibly dimmed, with "Coming soon" written out
   rather than carried by tint alone, and every piece of text still at WCAG AA. It is a card on the
@@ -1118,18 +1236,45 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   leaderboards" button on the right of its card from 900px wide (under its text below that, so the
   text stays centred like the other cards') — a second link beside the card's own, never inside
   it; then **Instagram Endless**, in the Endless card's style with its own deep-pink accent (the
-  darkest that still reads at AA as text on the card) and an original red heart that fills in on
-  hover (the word "Instagram" only, never its logo or marks), and no leaderboard button; then
-  Friendly; then the themed modes (Clubs, Leagues, Eras) when they come; and Daily Ranked's
-  "Coming soon" card last, until it launches and moves to the top. Every open mode's card shows
-  this device's best when there is one — "Your best: 23", Friendly's out of twenty ("Your best:
-  12/20") — in the card's accent, gold or pink; with storage blocked or no best yet, nothing.
+  darkest that still reads at AA as text on the card) fading into gold, as a theme's card fades
+  its two colours — along its top edge and across its name — and an original red heart that fills
+  in on hover (the word "Instagram" only, never its logo or marks), and no leaderboard button; then
+  Friendly; then **Clubs**, **Leagues** and **Eras**, "Clear the squad"'s themes in a section
+  each under a heading in gold Cinzel with its glow, centred (a type with no theme has no
+  section); and Daily Ranked's "Coming soon" card last, until it launches and moves to the top.
+  Every open mode's card shows this device's best when there is one — "Your best: 23", Friendly's
+  out of twenty ("Your best: 12/20") — in the card's accent, gold or pink; with storage blocked or
+  no best yet, nothing.
+- **The themes' cards** sit four to a row from 900px, two below that, one under 360px (where two
+  would break a name mid-word), every card in a row the same height, and a row that isn't full
+  centred rather than starting from the left. Each shows the theme's name,
+  its player count ("35 legends") and this device's best ("Best 12/34", or "Cleared ✓"). Each has
+  colours of its own: a band of its two colours along the top edge, its glow on hover, focus and
+  press, and its name in two tints of them that read at AA on the card. A **club's are its own
+  colours only — never a crest, logo, badge, shield, emblem or initials**, which are trademarks
+  whatever their copyright licence; the club's name alone is fine. Leagues each have an accent
+  (La Liga red-orange, the Premier League violet, Serie A azure, Ligue 1 lime and navy, the
+  Bundesliga red), and the eras a decade each: the 1990s teal and magenta over a VHS tape's
+  scanlines, the 2000s silver-blue chrome, the 2010s mint and electric blue. A theme that
+  qualifies later without colours of its own gets the gold card. The colours are tokens
+  (`--<theme id>-1`, `-2`, `-rgb`, `-text-1`, `-text-2`).
+- **A theme's page** is the Endless screen with Friendly's progress track ("12 / 34", one
+  continuous bar past twenty questions) and the clock. Its start panel shows the theme's name
+  under the deck (a long name steps down with the screen, to stay on one line at 320), "35
+  Barcelona legends. Can you clear the whole squad and win?" ("29 legends of the 1990s" for an
+  era), and the rules in one line; a squad's words use no em dashes. A cleared squad gets Friendly's win panel,
+  the trophy and "Squad cleared" in gold leaf. Each page is indexed, with its own title
+  ("Barcelona Legends Higher or Lower"), description, canonical, preview tags, JSON-LD, a
+  breadcrumb trail straight from the Legends page, and a sitemap entry.
 - **Local best** is kept per deck and mode or Endless variant — `bt:best:<deck>:<mode>`:
-  `bt:best:legends:friendly`, `bt:best:legends:endless`, `bt:best:legends:endless-instagram` —
-  and shown on the game pages under `/legends`, and Instagram Endless's on its Legends card.
+  `bt:best:legends:friendly`, `bt:best:legends:endless`, `bt:best:legends:endless-instagram`,
+  and a theme's `bt:best:legends:squad:<theme id>`, which holds the furthest through the squad and
+  whether it was ever cleared (`{"best":21,"cleared":false}`) — and shown on the game pages under
+  `/legends` and on each mode's and theme's Legends card.
 - **Challenge links** point at their own game page:
   `/football-higher-or-lower/legends/endless?challenge=…`, and Instagram Endless's at
-  `/football-higher-or-lower/legends/endless/instagram?challenge=…`. Both pages are indexed like
+  `/football-higher-or-lower/legends/endless/instagram?challenge=…`, and a theme's at its own page
+  (`/football-higher-or-lower/legends/clubs/barcelona?challenge=…`). Both Endless pages are indexed like
   Friendly's, each with its own title, description, canonical, preview tags (the site's default
   image), JSON-LD and a breadcrumb trail (Instagram Endless's under Endless's); so is the
   leaderboard page under Endless. The footer's "Suggest a legend" and

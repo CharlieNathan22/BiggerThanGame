@@ -7,8 +7,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { STATS, STAT_KEYS, eligibleStats } from "@bt/core";
-import type { Player, PlayerImage, StatKey } from "@bt/core";
+import { STATS, STAT_KEYS, eligibleStats, squadThemes } from "@bt/core";
+import type { Player, PlayerImage, SquadTheme, StatKey } from "@bt/core";
 import { licenceUrl } from "./licences.js";
 import { DECK } from "./load.js";
 import type { Manifest } from "./manifest.js";
@@ -109,6 +109,22 @@ export function buildCredits(raws: readonly RawPlayer[]): Credit[] {
         source: r.image!.source,
       };
     });
+}
+
+/**
+ * `themes.json`: the "Clear the squad" themes (themes.ts in @bt/core), for the
+ * site's pages — which exist, what they're called, how many players each has.
+ * Names and counts only: no player id, no figure. The Worker derives the same
+ * list from the deck it bundles.
+ */
+export function buildThemes(players: readonly Player[]): SquadTheme[] {
+  return squadThemes(players).map(({ id, type, name, slug, players: count }) => ({
+    id,
+    type,
+    name,
+    slug,
+    players: count,
+  }));
 }
 
 /** Bundled into the Worker: what each card needs to render its photo. */

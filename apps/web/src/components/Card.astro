@@ -6,6 +6,11 @@
 // are in Page.astro). Without, it is a mode that isn't open yet: dimmed, not
 // a link and not focusable, with "Coming soon" written out rather than shown by
 // tint alone. Dimmed text still meets AA (tokens.css, and a test).
+//
+// A "Clear the squad" theme's card (`theme`) is the same card made compact for
+// a grid of four: its name an h3 under the section's h2, in its own two tints,
+// the edge in its own colours, how many legends, and the device's best.
+import type { ThemeType } from "@bt/core";
 import { t } from "../i18n";
 
 interface Props {
@@ -41,6 +46,13 @@ interface Props {
    * aside as markup, so the page holds no bare digits near a player's name.
    */
   bestOf?: number | undefined;
+  /**
+   * A "Clear the squad" theme: compact, its name an h3. `colours` are the
+   * custom properties of its own colours (themes.ts), or none for the gold
+   * card. Its best (`bestKey`) is the squad's JSON (best.ts), shown as
+   * "Best 12/34" — `bestOf` being its questions — or "Cleared ✓".
+   */
+  theme?: { readonly id: string; readonly type: ThemeType; readonly colours: string | undefined };
 }
 
 const {
@@ -53,16 +65,22 @@ const {
   accent,
   bestKey,
   bestOf,
+  theme,
 } = Astro.props;
 const soon = href === undefined;
+const Heading = theme === undefined ? "h2" : "h3";
 ---
 
 <li
   class:list={[
     "card",
     accent,
+    theme !== undefined && ["theme", theme.type, theme.id],
+    // Two colours of its own: a theme with colours, or Instagram Endless (pink and gold).
+    { coloured: theme?.colours !== undefined || accent === "instagram" },
     { large, soon, wide, open: !soon, split: !soon && extra !== undefined },
   ]}
+  style={theme?.colours}
 >
   <div class="text">
     {accent === "instagram" && (
@@ -70,9 +88,17 @@ const soon = href === undefined;
         <path d="M12 20.5s-7.5-4.6-7.5-10.4A4.1 4.1 0 0 1 12 7.6a4.1 4.1 0 0 1 7.5 2.5c0 5.8-7.5 10.4-7.5 10.4z" />
       </svg>
     )}
-    <h2>{soon ? name : <a href={href}>{name}</a>}</h2>
+    <Heading>
+      {soon ? (
+        name
+      ) : (
+        <a href={href}>
+          <span class="name">{name}</span>
+        </a>
+      )}
+    </Heading>
     <p class="body">{body}</p>
-    {bestKey !== undefined && !soon && (
+    {bestKey !== undefined && !soon && theme === undefined && (
       <p
         class="best"
         data-best-key={bestKey}
@@ -81,8 +107,46 @@ const soon = href === undefined;
         hidden
       />
     )}
+    {bestKey !== undefined && !soon && theme !== undefined && (
+      <p
+        class="best"
+        data-squad-key={bestKey}
+        data-template={t("theme.best")}
+        data-cleared={t("theme.cleared")}
+        style={bestOf !== undefined ? `--best-of: ${bestOf}` : undefined}
+        hidden
+      />
+    )}
   </div>
-  {bestKey !== undefined && !soon && <script is:inline>
+  {bestKey !== undefined && !soon && theme !== undefined && <script is:inline>
+    // A squad's best from this device's storage, on this card only: "Best n/of",
+    // or "Cleared" once it has been. Nothing at all when storage is blocked or
+    // holds nothing readable: the line stays hidden. No digits here, so the
+    // dist leak scan has nothing to weigh.
+    (function () {
+      try {
+        const line = document.currentScript.parentElement.querySelector("[data-squad-key]");
+        const raw = localStorage.getItem(line.getAttribute("data-squad-key"));
+        if (raw === null) return;
+        const run = JSON.parse(raw);
+        if (!run || !Number.isInteger(run.best) || typeof run.cleared !== "boolean") return;
+        if (run.cleared) {
+          line.textContent = line.getAttribute("data-cleared");
+        } else {
+          if (!run.best) return;
+          const of = line.style.getPropertyValue("--best-of").trim();
+          line.textContent = line
+            .getAttribute("data-template")
+            .replace("{best}", String(run.best))
+            .replace("{of}", of);
+        }
+        line.hidden = false;
+      } catch {
+        // Storage blocked, or something else under the key: no line.
+      }
+    })();
+  </script>}
+  {bestKey !== undefined && !soon && theme === undefined && <script is:inline>
     // "Your best: n" (or "n/target") from this device's storage, on this card only.
     // Nothing at all when storage is blocked or holds no best: the line stays
     // hidden. No digits here, so the dist leak scan has nothing to weigh.
@@ -195,7 +259,8 @@ const soon = href === undefined;
     }
   }
 
-  .card h2 {
+  .card h2,
+  .card h3 {
     margin: 0;
     padding: 0;
     border: 0;
@@ -313,12 +378,12 @@ const soon = href === undefined;
     }
   }
   /* The focus ring goes round the card, not the heading inside it. */
-  .card:has(h2 a:focus-visible) {
+  .card:has(:is(h2, h3) a:focus-visible) {
     outline: var(--focus-ring) solid var(--gold);
     outline-offset: var(--focus-offset);
   }
   @supports selector(:has(a)) {
-    .card h2 a:focus-visible {
+    .card :is(h2, h3) a:focus-visible {
       outline: none;
     }
   }
@@ -345,10 +410,17 @@ const soon = href === undefined;
     transform: translateY(-50%) rotate(45deg);
   }
 
-  /* A mode with its own accent: the gold's places in pink (tokens.css). The
-       custom properties the card reads are resolved where they're declared,
-       so each is set again here rather than only the colour underneath. */
+  /* A mode with its own accent: the gold's places in pink (tokens.css), and,
+       like a theme's card (`.coloured`, below), a fade of its two colours —
+       pink into gold — along its top edge and across its name. The custom
+       properties the card reads are resolved where they're declared, so each is
+       set again here rather than only the colour underneath. */
   .card.instagram {
+    --theme-1: var(--instagram);
+    --theme-2: var(--instagram-gold);
+    --theme-rgb: var(--instagram-rgb);
+    --theme-text-1: var(--instagram);
+    --theme-text-2: var(--instagram-gold);
     --gold: var(--instagram);
     --glow-rgb: var(--instagram-rgb);
     --card-edge: rgba(var(--instagram-rgb), 0.38);
@@ -387,6 +459,93 @@ const soon = href === undefined;
   }
   .card .best[hidden] {
     display: none;
+  }
+
+  /* A theme's card: compact, for a grid of four, every card in a row the same
+     height (the grid stretches them). Over 44px tall whatever its text. */
+  .card.theme {
+    min-height: var(--theme-card-min-h);
+    padding: var(--theme-card-pad);
+    gap: calc(var(--card-inner-gap) / 2);
+  }
+  .card.theme h3 {
+    font-size: var(--fs-theme-name);
+    font-family: var(--font-display);
+    font-variation-settings: normal;
+    font-weight: var(--fw-legends);
+    overflow-wrap: anywhere;
+  }
+  .card.theme .go {
+    right: calc(var(--card-chevron-inset) / 2);
+  }
+  /* In its own colours: the edge a band of its two, and its glow on hover; its
+     name in its two tints, which turn to its first tint lit on hover. The glow
+     and shadows read --glow-rgb, so it is set here again (as for Instagram). */
+  .card.coloured {
+    --gold: var(--theme-text-1);
+    --glow-rgb: var(--theme-rgb);
+    --card-edge: rgba(var(--theme-rgb), 0.4);
+    --card-edge-hover: var(--theme-text-1);
+    --card-best: var(--theme-text-1);
+    --glow: 0 0 var(--glow-blur) rgba(var(--theme-rgb), var(--glow-opacity));
+    --glow-hover: 0 0 var(--glow-hover-blur) rgba(var(--theme-rgb), var(--glow-hover-opacity));
+    --card-shadow-lifted:
+      var(--card-top-light), 0 2px 4px rgba(0, 0, 0, 0.45), 0 22px 48px rgba(0, 0, 0, 0.45),
+      0 0 26px rgba(var(--theme-rgb), 0.36);
+    --card-shadow-pressed:
+      var(--card-top-light), 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 20px rgba(0, 0, 0, 0.4),
+      0 0 20px rgba(var(--theme-rgb), 0.3);
+  }
+  .card.coloured::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--theme-edge-w);
+    pointer-events: none;
+    background: linear-gradient(90deg, var(--theme-1), var(--theme-2));
+  }
+  /* The name's glow is on the name, never the link: a filter on the link would
+     make it the containing block for its ::after, and the card's whole-card
+     hit area would shrink to the name. */
+  .card.coloured .name {
+    background: linear-gradient(90deg, var(--theme-text-1), var(--theme-text-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 6px rgba(var(--theme-rgb), 0.45));
+    transition: filter var(--dur-card) var(--ease-card);
+  }
+  .card.coloured a {
+    text-shadow: none;
+  }
+  .card.coloured.open:hover a,
+  .card.coloured.open:active a,
+  .card.coloured a:focus-visible {
+    color: transparent;
+    text-shadow: none;
+  }
+  .card.coloured.open:hover .name,
+  .card.coloured.open:active .name,
+  .card.coloured a:focus-visible .name {
+    filter: drop-shadow(0 0 10px rgba(var(--theme-rgb), 0.85));
+  }
+  .card.coloured .go {
+    border-color: var(--theme-text-1);
+  }
+  /* The decades: the 1990s on a VHS tape's scanlines, the 2000s in chrome. */
+  .card.era-1990s {
+    background:
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px),
+      var(--card-surface);
+  }
+  .card.era-2000s {
+    background:
+      linear-gradient(170deg, rgba(214, 226, 238, 0.12), transparent 45%), var(--card-surface);
+  }
+  .card.era-2010s::after {
+    height: calc(var(--theme-edge-w) * 2);
   }
 
   /* Not open yet: the same raised card, dimmed and dashed, and still. */

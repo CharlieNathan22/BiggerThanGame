@@ -8,10 +8,11 @@
  * object. ARCHITECTURE.md §4, invariant 1.
  */
 
-import { STATS, valueOf } from "@bt/core";
+import { STATS, statLabel, valueOf } from "@bt/core";
 import type {
   AnchorCard,
   CardImage,
+  EndlessVariantId,
   Guess,
   Player,
   PlayerCard,
@@ -27,19 +28,22 @@ export type ImageLookup = Readonly<Record<string, PlayerImage>>;
 /**
  * `following` is the round after this one, when the run can deal it. Only its
  * challenger's photo travels, as `upcoming`, so the client can load it a round
- * early (ARCHITECTURE.md §9) — never its name, stat or value.
+ * early (ARCHITECTURE.md §9) — never its name, stat or value. `variant` is an
+ * Endless run's, for the stat's label in it (`statLabel`).
  */
 export function toRoundPayload(
   round: Round,
   now: Date,
   images: ImageLookup,
   following?: Round,
+  variant?: EndlessVariantId,
 ): RoundPayload {
   const def = STATS[round.stat];
   const upcoming = following === undefined ? undefined : imageFor(following.challenger, images);
+  const label = statLabel(round.stat, variant);
   return {
     index: round.index,
-    stat: { key: def.key, label: def.label, tier: def.tier, statChanged: round.statChanged },
+    stat: { key: def.key, label, tier: def.tier, statChanged: round.statChanged },
     anchor: toAnchorCard(round.anchor, round.stat, now, images),
     challenger: toPlayerCard(round.challenger, images),
     ...(upcoming !== undefined ? { upcoming } : {}),

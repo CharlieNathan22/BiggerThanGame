@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { STATS, WIN_ROUNDS, valueOf } from "@bt/core";
+import { STATS, WIN_ROUNDS, isSquadVariantId, valueOf } from "@bt/core";
 import type {
   AnswerResponse,
   GuessResponse,
@@ -21,7 +21,15 @@ import type {
   StartResponse,
 } from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
-import { FIXTURE_DECK, SAMPLE_DECK, context, fakeImages, runDay, walkRun } from "./helpers.js";
+import {
+  FIXTURE_DECK,
+  SAMPLE_DECK,
+  THEMED_DECK,
+  context,
+  fakeImages,
+  runDay,
+  walkRun,
+} from "./helpers.js";
 import { begin, harness, readToken, walk } from "./endless-helpers.js";
 import type { Ending } from "./endless-helpers.js";
 
@@ -372,7 +380,11 @@ function checkEndless(
     checkToken(response.token, response.next, variant);
   } else {
     expect(Object.keys(response).sort()).toEqual(ENDLESS_END_KEYS);
-    expect(["wrong", "timeout", "deck-exhausted"]).toContain(response.end);
+    // A squad is won by clearing it; every other Endless run runs until it's lost.
+    const ends = isSquadVariantId(variant)
+      ? ["wrong", "timeout", "won"]
+      : ["wrong", "timeout", "deck-exhausted"];
+    expect(ends).toContain(response.end);
     expect(Object.keys(response.challenge).sort()).toEqual(["runId", "score", "sig"]);
     expect(response.challenge.score).toBe(
       response.reveal.correct ? response.reveal.round : response.reveal.round - 1,
@@ -392,6 +404,12 @@ describe("Endless responses", () => {
       deck: SAMPLE_DECK,
       runs: 20,
       variant: "endless-instagram" as const,
+    },
+    {
+      name: "themed deck in a squad, cleared or not",
+      deck: THEMED_DECK,
+      runs: 20,
+      variant: "squad:club-testfield" as const,
     },
   ])(
     "never carry a hidden value across $runs complete runs on the $name",

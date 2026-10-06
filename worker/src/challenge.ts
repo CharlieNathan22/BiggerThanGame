@@ -9,7 +9,8 @@
  * `sig` signs the run and the score together — the first 16 bytes of
  * `HMAC-SHA256(RUN_SECRET, "challenge:endless:" + runBody + ":" + score)`,
  * unpadded base64url — so neither the run nor the number can be edited.
- * Instagram Endless signs under `"challenge:endless:instagram:"` and points at
+ * Instagram Endless signs under `"challenge:endless:instagram:"`, and each
+ * "Clear the squad" theme under `"challenge:squad:<theme id>:"`; each points at
  * its own page. The
  * server issues one with every Endless run's end (run.ts), for the score that
  * run reached, and the token chain behind it means the run really got there.
@@ -19,19 +20,25 @@
  * by resending a round, which made "Beat n" misleading. Its links are refused.
  */
 
-import type { ChallengeLink, EndlessVariantId } from "@bt/core";
+import { isSquadVariantId } from "@bt/core";
+import type { ChallengeLink, EndlessVariantId, StaticVariantId } from "@bt/core";
 import { hmacSha256, timingSafeEqual, toBase64Url } from "./hmac.js";
 import { SIGNATURE_BYTES, isChallengeDateCurrent, signRunBody, verifyRunId } from "./run-id.js";
 
 /**
  * What each Endless variant's challenge signature covers, before the run and
  * score. A link only ever checks out in the variant it was set in: Instagram
- * Endless's "Beat 12" can't be played as general Endless's.
+ * Endless's "Beat 12" can't be played as general Endless's, nor Barcelona's
+ * "Beat 21/34" as Chelsea's (`challenge:squad:club-barcelona:`).
  */
-const CHALLENGE_PREFIX: Readonly<Record<EndlessVariantId, string>> = {
+const CHALLENGE_PREFIX: Readonly<Record<StaticVariantId, string>> = {
   endless: "challenge:endless:",
   "endless-instagram": "challenge:endless:instagram:",
 };
+
+function challengePrefix(variant: EndlessVariantId): string {
+  return isSquadVariantId(variant) ? `challenge:${variant}:` : CHALLENGE_PREFIX[variant];
+}
 
 /** A signed link challenging a friend to beat `score`, set by the Endless run `body`. */
 export async function challengeLink(
@@ -76,6 +83,6 @@ async function challengeSignature(
   score: number,
   variant: EndlessVariantId,
 ): Promise<string> {
-  const mac = await hmacSha256(secret, `${CHALLENGE_PREFIX[variant]}${body}:${score}`);
+  const mac = await hmacSha256(secret, `${challengePrefix(variant)}${body}:${score}`);
   return toBase64Url(mac.subarray(0, SIGNATURE_BYTES));
 }

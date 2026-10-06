@@ -47,9 +47,15 @@ export {
   INSTAGRAM_SCHEDULE,
   PAIR_RULES,
   RELAXATION_LADDERS,
+  SQUAD_LARGE,
+  SQUAD_PAIR_RULES,
+  SQUAD_SIZES,
+  SQUAD_SMALL,
   VOLATILE_FLOOR,
   bandFor,
   bandForRound,
+  scheduleKey,
+  squadSchedule,
   gap,
   meetsValueRule,
   pairFits,
@@ -71,13 +77,44 @@ export {
   DEFAULT_VARIANT,
   ENDLESS_VARIANTS,
   ENDLESS_VARIANT_IDS,
+  SQUAD_ICONIC_ROUNDS,
+  formatOf,
+  hasBoards,
   hasWheel,
   isEndlessVariantId,
   isNamedVariant,
+  isSquadVariantId,
+  isStaticVariantId,
+  resolveVariant,
+  seedDomainOf,
+  squadNote,
+  squadQuestions,
+  squadVariantId,
+  statLabel,
+  themeIdOf,
   variantDeck,
   variantOf,
 } from "./variants.js";
-export type { EndlessVariant, EndlessVariantId, NamedVariant, VariantFormat } from "./variants.js";
+export type {
+  EndlessVariant,
+  EndlessVariantId,
+  NamedVariant,
+  SquadVariantId,
+  StaticVariantId,
+  VariantFormat,
+} from "./variants.js";
+export {
+  LEGENDS_ROOT,
+  THEME_FOLDERS,
+  THEME_MIN_PLAYERS,
+  THEME_TYPES,
+  inTheme,
+  squadThemes,
+  themeById,
+  themePath,
+  themeSlug,
+} from "./themes.js";
+export type { SquadTheme, ThemeType } from "./themes.js";
 
 export { SEEN_DEPTH, candidates, remember, selectChallenger, valueOf } from "./engine.js";
 export type { Match, MatchContext } from "./engine.js";
@@ -195,5 +232,5 @@ export type {
   TimedGuess,
 } from "./api.js";
 
-export { FEEDBACK_LIMITS, SITE_PAGES, isSitePage, textLength } from "./feedback.js";
-export type { SitePage } from "./feedback.js";
+export { FEEDBACK_LIMITS, SITE_PAGES, isSitePage, isThemePage, textLength } from "./feedback.js";
+export type { SitePage, ThemePage } from "./feedback.js";

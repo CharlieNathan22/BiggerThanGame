@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { THEME_COLOURS } from "../themes";
 
 const tokensCss = readFileSync(
   fileURLToPath(new URL("../../styles/tokens.css", import.meta.url)),
@@ -85,6 +86,26 @@ describe("card text contrast", () => {
   ] as const)("%s meets AA", (_, property, background) => {
     const text = over(colour(property), background);
     expect(contrast(text, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // "Clear the squad": every theme's name tints, against both ends of the card's gradient.
+  const top = over(colour("--card-bg-top"), page);
+  it.each([...THEME_COLOURS].flatMap((id) => [`--${id}-text-1`, `--${id}-text-2`]))(
+    "a theme card's name tint %s meets AA on the card",
+    (property) => {
+      for (const background of [live, top]) {
+        const text = over(colour(property), background);
+        expect(contrast(text, background)).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
+
+  it("gives every coloured theme all five of its tokens", () => {
+    for (const id of THEME_COLOURS) {
+      for (const part of ["1", "2", "rgb", "text-1", "text-2"]) {
+        expect(tokens.has(`--${id}-${part}`), `--${id}-${part}`).toBe(true);
+      }
+    }
   });
 
   it("dims a coming-soon card: its name is quieter than an open card's", () => {

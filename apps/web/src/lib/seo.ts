@@ -65,8 +65,16 @@ export function absoluteUrl(path: string): string {
   return new URL(path, SITE_URL).href;
 }
 
-/** Every page that should be in search: all of them but the 404. */
+/**
+ * Every page that should be in search: all of them but the 404. The themes'
+ * pages join them from `themes.json` (`indexablePages`).
+ */
 export const INDEXABLE_PAGES: readonly SitePage[] = SITE_PAGES.filter((page) => page !== "/404");
+
+/** The fixed pages, then each theme's page (lib/themes.ts reads which exist). */
+export function indexablePages(themePaths: readonly string[]): readonly string[] {
+  return [...INDEXABLE_PAGES, ...themePaths];
+}
 
 export interface SitemapEntry {
   /** The absolute canonical URL. */
@@ -176,6 +184,14 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
     default:
       return [];
   }
+}
+
+/**
+ * A "Clear the squad" theme's trail: Home › Football › Legends › Barcelona.
+ * Straight from Legends, since there is no Clubs, Leagues or Eras page.
+ */
+export function themeTrail(name: string, path: string): readonly Crumb[] {
+  return [...breadcrumbTrail(LEGENDS_PATH), { name, path }];
 }
 
 export function breadcrumbLd(trail: readonly Crumb[]): JsonLd {

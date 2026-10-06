@@ -14,10 +14,10 @@ import { createRng } from "./prng.js";
 import type { Rng } from "./prng.js";
 import { isEligible } from "./eligibility.js";
 import { candidates, remember, selectChallenger } from "./engine.js";
-import type { MatchContext } from "./engine.js";
-import { RELAXATION_LADDERS, bandFor, relaxations } from "./ramp.js";
+import type { Match, MatchContext } from "./engine.js";
+import { RELAXATION_LADDERS, bandFor, pairFits, percentiles, relaxations } from "./ramp.js";
 import { STATS, STAT_KEYS } from "./stats.js";
-import { ENDLESS_VARIANTS, variantDeck } from "./variants.js";
+import { resolveVariant, variantDeck } from "./variants.js";
 import type { EndlessVariant, EndlessVariantId } from "./variants.js";
 import { chooseStat, nextDwell, weightedPick } from "./wheel.js";
 import type { Mode, Player, Round, StatKey, Tier } from "./types.js";
@@ -33,7 +33,8 @@ export interface RunOptions {
   readonly maxRounds?: number;
   /**
    * Endless only: the variant being played (variants.ts) — its pool, its fixed
-   * stat, its bands. General Endless when absent, and naming it changes nothing.
+   * stat, its bands, or a "Clear the squad" theme of `deck`'s. General Endless
+   * when absent, and naming it changes nothing.
    */
   readonly variant?: EndlessVariantId;
 }
@@ -135,17 +136,16 @@ const OPENING_TIERS: ReadonlySet<Tier> = new Set<Tier>(["basic", "uncommon"]);
  * any dealable player only when no iconic one is.
  */
 function openingAnchor(
-  deck: readonly Player[],
+  base: MatchContext,
   stat: StatKey,
   mode: Mode,
-  now: Date,
   rng: Rng,
   variant?: EndlessVariant,
 ): Player | undefined {
   const band = bandFor(stat, 1, mode, variant);
-  const dealable = deck.filter(
-    (p) =>
-      isEligible(p, stat, now) && candidates(p, stat, band, { deck, now, seen: [] }).length > 0,
+  const ctx = { ...base, seen: [] };
+  const dealable = (base.pool ?? base.deck).filter(
+    (p) => isEligible(p, stat, base.now) && candidates(p, stat, band, ctx).length > 0,
   );
   const famous = dealable.filter((p) => p.iconic === true);
   return rng.pick(famous.length > 0 ? famous : dealable);
@@ -154,19 +154,35 @@ function openingAnchor(
 export function buildRun(opts: RunOptions): Round[] {
   const { seed, mode, now } = opts;
   const variant = runVariant(opts);
-  // A variant's pool is the deck its runs see: rank distance is measured within it too.
-  const deck = variant === undefined ? opts.deck : variantDeck(opts.deck, variant);
+  // "Clear the squad" deals each of its squad once, measuring distance on the whole deck.
+  const squad = variant?.format === "squad" ? variantDeck(opts.deck, variant) : undefined;
+  // Any other variant's pool is the deck its runs see: rank distance is measured within it too.
+  const deck =
+    variant === undefined || squad !== undefined ? opts.deck : variantDeck(opts.deck, variant);
   // A variant that fixes the stat has no wheel: no opening draw, no switch.
   const fixed = variant?.stat ?? null;
-  const maxRounds = Math.min(opts.maxRounds ?? Infinity, roundCap(mode));
-  const iconicRounds = ICONIC_ROUNDS[mode];
+  const maxRounds = Math.min(
+    opts.maxRounds ?? Infinity,
+    roundCap(mode),
+    variant?.questions ?? Infinity,
+  );
+  const iconicRounds = variant?.iconicRounds ?? ICONIC_ROUNDS[mode];
   const rng = createRng(seed);
+  const links =
+    squad === undefined || variant === undefined
+      ? undefined
+      : squadLinks(squad, opts.deck, mode, now, variant);
+  /** What every pick works from: the squad's pool and its no-repeat rule, if it is one. */
+  const context = (seen: readonly string[]): MatchContext =>
+    squad === undefined || links === undefined
+      ? { deck, now, seen }
+      : { deck, now, seen, pool: squad, unique: true, ...links.prefer(seen) };
 
   let stat: StatKey | undefined;
   let anchor: Player | undefined;
 
   if (fixed !== null) {
-    const pick = openingAnchor(deck, fixed, mode, now, rng, variant);
+    const pick = openingAnchor(context([]), fixed, mode, rng, variant);
     if (pick !== undefined) {
       stat = fixed;
       anchor = pick;
@@ -178,7 +194,7 @@ export function buildRun(opts: RunOptions): Round[] {
   let openers = fixed !== null ? [] : STAT_KEYS.filter((key) => OPENING_TIERS.has(STATS[key].tier));
   while (openers.length > 0) {
     const candidateStat = weightedPick(openers, rng)!;
-    const pick = openingAnchor(deck, candidateStat, mode, now, rng, variant);
+    const pick = openingAnchor(context([]), candidateStat, mode, rng, variant);
     if (pick !== undefined) {
       stat = candidateStat;
       anchor = pick;
@@ -197,11 +213,39 @@ export function buildRun(opts: RunOptions): Round[] {
   for (let index = 1; index <= maxRounds; index++) {
     const previousStat = stat;
 
-    if (fixed === null && heldFor >= dwell && index > 1) {
+    // Who has been dealt, the anchor on screen included: a squad never brings one back.
+    const ctx = context(squad === undefined ? seen : [anchor.id, ...seen]);
+
+    // A squad also switches early when the held stat can't be dealt within the
+    // round's own band but another can: as the squad runs short, holding on
+    // would mean widening the band to whoever is left, an easy pair.
+    const dwelt = heldFor >= dwell;
+    const early =
+      squad !== undefined &&
+      !dwelt &&
+      index > 1 &&
+      !inBand(anchor, stat, index, mode, ctx, variant);
+    /**
+     * The stats the wheel may fall back to for `current`: any that can be dealt
+     * at all. A squad's prefer those that can be dealt keeping their own floors
+     * (followers 2× apart); only when none can does a floor give way (§10).
+     */
+    const fallback = (current: Player): StatKey[] => {
+      const dealable = STAT_KEYS.filter((key) => isViable(current, key, index, mode, ctx, variant));
+      if (squad === undefined) return dealable;
+      const kept = dealable.filter((key) => keepsFloor(current, key, index, mode, ctx, variant));
+      return kept.length > 0 ? kept : dealable;
+    };
+
+    if (fixed === null && (dwelt || early) && index > 1) {
       const current = anchor;
-      const viable = STAT_KEYS.filter((key) =>
-        isViable(current, key, index, mode, { deck, now, seen }, variant),
-      );
+      // A squad's wheel lands where the round's own band can be met if it can,
+      // so the closing questions stay hard as the squad runs short.
+      let viable =
+        squad === undefined
+          ? []
+          : STAT_KEYS.filter((key) => inBand(current, key, index, mode, ctx, variant));
+      if (viable.length === 0 && dwelt) viable = fallback(current);
       const next = chooseStat({ current: stat, viable, rng });
       if (next !== undefined) {
         stat = next;
@@ -211,17 +255,37 @@ export function buildRun(opts: RunOptions): Round[] {
     }
 
     const preferIconic = index <= iconicRounds;
-    const ctx = { deck, now, seen };
     let match = selectChallenger(anchor, stat, index, mode, ctx, rng, preferIconic, variant);
     // The held stat can't be dealt to this anchor at all. Where the wheel
     // counts any dealable stat (Endless), switch rather than end the run: a
     // value rule never relaxes, so an anchor at the edge of a narrow stat's
     // values may have no partner on it.
-    // A fixed stat never switches: with no partner left, the run ends.
+    // A fixed stat never switches: with no partner left, the run ends. So does
+    // a squad with nobody left who can be dealt: it counts as cleared.
     if (match === undefined && fixed === null && WHEEL_VIABILITY[mode] === "any") {
-      const current = anchor;
-      const viable = STAT_KEYS.filter((key) => isViable(current, key, index, mode, ctx, variant));
+      const viable = fallback(anchor);
       const next = chooseStat({ current: stat, viable, rng });
+      if (next !== undefined) {
+        stat = next;
+        dwell = nextDwell(rng);
+        heldFor = 0;
+        match = selectChallenger(anchor, stat, index, mode, ctx, rng, preferIconic, variant);
+      }
+    }
+    // A squad's held stat could only be dealt by dropping its floor (followers
+    // under 2× apart): every other stat that keeps its own is tried first, and
+    // the floor gives way only when none can be dealt. Ties are never dealt.
+    if (
+      squad !== undefined &&
+      match !== undefined &&
+      droppedFloor(stat, match, index, mode, variant)
+    ) {
+      const current = anchor;
+      const held = stat;
+      const others = STAT_KEYS.filter(
+        (key) => key !== held && keepsFloor(current, key, index, mode, ctx, variant),
+      );
+      const next = chooseStat({ current: held, viable: others, rng });
       if (next !== undefined) {
         stat = next;
         dwell = nextDwell(rng);
@@ -241,7 +305,7 @@ export function buildRun(opts: RunOptions): Round[] {
       statChanged: index > 1 && stat !== previousStat,
     });
 
-    seen = remember(seen, anchor.id);
+    seen = squad === undefined ? remember(seen, anchor.id) : [anchor.id, ...seen];
     anchor = match.challenger;
     heldFor += 1;
   }
@@ -253,7 +317,135 @@ export function buildRun(opts: RunOptions): Round[] {
 function runVariant(opts: RunOptions): EndlessVariant | undefined {
   if (opts.variant === undefined) return undefined;
   if (opts.mode !== "endless") throw new Error(`variant ${opts.variant} outside Endless`);
-  return ENDLESS_VARIANTS[opts.variant];
+  const variant = resolveVariant(opts.variant, opts.deck);
+  if (variant === undefined) throw new Error(`no theme for ${opts.variant} in this deck`);
+  return variant;
+}
+
+/**
+ * Whether a challenger for `stat` can be dealt at some step of the relaxation
+ * ladder that keeps the band's volatility floor (`minRatio`, followers 2×
+ * apart): every step but the last, for a stat that has one.
+ */
+function keepsFloor(
+  anchor: Player,
+  stat: StatKey,
+  round: number,
+  mode: Mode,
+  ctx: MatchContext,
+  variant?: EndlessVariant,
+): boolean {
+  if (!isEligible(anchor, stat, ctx.now)) return false;
+  const band = bandFor(stat, round, mode, variant);
+  return relaxations(band, RELAXATION_LADDERS[mode])
+    .filter((step) => band.minRatio === undefined || step.minRatio !== undefined)
+    .some((step) => candidates(anchor, stat, step, ctx).length > 0);
+}
+
+/** Whether `match` was dealt by dropping its stat's volatility floor, the ladder's last resort. */
+function droppedFloor(
+  stat: StatKey,
+  match: Match,
+  round: number,
+  mode: Mode,
+  variant?: EndlessVariant,
+): boolean {
+  return (
+    bandFor(stat, round, mode, variant).minRatio !== undefined && match.band.minRatio === undefined
+  );
+}
+
+/** Whether a challenger for `stat` can be dealt within the round's own band, unrelaxed. */
+function inBand(
+  anchor: Player,
+  stat: StatKey,
+  round: number,
+  mode: Mode,
+  ctx: MatchContext,
+  variant?: EndlessVariant,
+): boolean {
+  if (!isEligible(anchor, stat, ctx.now)) return false;
+  return candidates(anchor, stat, bandFor(stat, round, mode, variant), ctx).length > 0;
+}
+
+/**
+ * Which of a squad's players could ever be paired: some stat both are eligible
+ * for whose values fit its loosest band at the run's last question, where the
+ * rules are strictest — so a link holds at every round. A player whose every
+ * link is to someone already dealt can only be saved by dealing them now:
+ * `prefer` names them, and the engine draws from them first when it can. With
+ * more than one, someone is stranded, and the run ends cleared when it gets
+ * there (simulation.md counts how often).
+ */
+interface SquadLinks {
+  prefer(seen: readonly string[]): { prefer?: (player: Player) => boolean };
+}
+
+/** Per squad array and reference date: the same for every run of the theme that day. */
+const linksMemo = new WeakMap<readonly Player[], Map<string, SquadLinks>>();
+
+function squadLinks(
+  squad: readonly Player[],
+  deck: readonly Player[],
+  mode: Mode,
+  now: Date,
+  variant: EndlessVariant,
+): SquadLinks {
+  let byKey = linksMemo.get(squad);
+  if (byKey === undefined) {
+    byKey = new Map();
+    linksMemo.set(squad, byKey);
+  }
+  const key = `${variant.id}@${now.getTime()}`;
+  const hit = byKey.get(key);
+  if (hit !== undefined) return hit;
+  const built = buildLinks(squad, deck, mode, now, variant);
+  byKey.set(key, built);
+  return built;
+}
+
+function buildLinks(
+  squad: readonly Player[],
+  deck: readonly Player[],
+  mode: Mode,
+  now: Date,
+  variant: EndlessVariant,
+): SquadLinks {
+  const n = squad.length;
+  const linked = new Uint8Array(n * n);
+  const last = variant.questions ?? 1;
+  for (const stat of STAT_KEYS) {
+    const band = bandFor(stat, last, mode, variant);
+    const loosest = relaxations(band, RELAXATION_LADDERS[mode]).at(-1) ?? band;
+    const table = percentiles(deck, stat, now);
+    const values = squad.map((p) =>
+      isEligible(p, stat, now) ? STATS[stat].get(p, now) : undefined,
+    );
+    for (let i = 0; i < n; i++) {
+      const a = values[i];
+      if (a === undefined) continue;
+      for (let j = i + 1; j < n; j++) {
+        const b = values[j];
+        if (b === undefined || linked[i * n + j] === 1) continue;
+        if (pairFits(table, a, b, loosest)) {
+          linked[i * n + j] = 1;
+          linked[j * n + i] = 1;
+        }
+      }
+    }
+  }
+  return {
+    prefer(seen) {
+      const used = new Set(seen);
+      const open: number[] = [];
+      for (let i = 0; i < n; i++) if (!used.has(squad[i]!.id)) open.push(i);
+      const stranded = new Set<string>();
+      for (const i of open) {
+        if (!open.some((j) => j !== i && linked[i * n + j] === 1)) stranded.add(squad[i]!.id);
+      }
+      return stranded.size === 0 ? {} : { prefer: (player) => stranded.has(player.id) };
+    },
+  };
 }
 
 /**

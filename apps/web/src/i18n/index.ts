@@ -3,7 +3,8 @@
  * shaped like `en.ts` and choosing it here. No switching is built yet.
  */
 
-import type { StatKey } from "@bt/core";
+import { isSquadVariantId } from "@bt/core";
+import type { NamedVariant, StatKey } from "@bt/core";
 import { en } from "./en";
 import type { MessageKey } from "./en";
 
@@ -35,7 +36,14 @@ export function interpolate(template: string, params: Params): string {
   });
 }
 
-export function statLabel(key: StatKey): string {
+/**
+ * A stat's label; in "Clear the squad", club goals is "Total career club
+ * goals" (`statLabel` in @bt/core, which a test keeps this equal to).
+ */
+export function statLabel(key: StatKey, variant?: NamedVariant): string {
+  if (key === "club_goals" && variant !== undefined && isSquadVariantId(variant)) {
+    return t("stat.squad.club_goals");
+  }
   return t(`stat.${key}`);
 }
 

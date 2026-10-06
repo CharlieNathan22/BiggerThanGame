@@ -13,15 +13,14 @@
  * Friendly used to have challenge links too. One arriving there now is
  * `retired`: never sent, with a note that it has expired.
  *
- * Each Endless variant's links open its own page (`PLAY_PATHS`): Instagram
- * Endless's "Beat n" is played on Instagram Endless.
+ * Each Endless variant's links open its own page (`playPath`): Instagram
+ * Endless's "Beat n" is played on Instagram Endless, a squad's on its theme's.
  */
 
 import { CHALLENGES, roundCap } from "@bt/core";
 import type { ChallengeLink } from "@bt/core";
+import { ENDLESS_PATH } from "../lib/paths";
 import type { GameMode } from "./machine";
-import { PLAY_PATHS } from "./variant";
-import type { PlayId } from "./variant";
 
 export const CHALLENGE_PARAMS = ["challenge", "score", "sig"] as const;
 
@@ -54,14 +53,18 @@ export function readChallenge(search: string, mode: GameMode): ChallengeParam {
   return { kind: "link", link: { runId, score, sig } };
 }
 
-/** The shareable URL for `link`: `play`'s game page on `site` (an origin, no trailing slash). */
-export function challengeUrl(site: string, link: ChallengeLink, play: PlayId = "endless"): string {
+/** The shareable URL for `link`: the game page at `path` on `site` (an origin, no trailing slash). */
+export function challengeUrl(
+  site: string,
+  link: ChallengeLink,
+  path: string = ENDLESS_PATH,
+): string {
   const params = new URLSearchParams({
     challenge: link.runId,
     score: String(link.score),
     sig: link.sig,
   });
-  return `${site}${PLAY_PATHS[play]}?${params.toString()}`;
+  return `${site}${path}?${params.toString()}`;
 }
 
 /** `search` without the challenge parameters, for `history.replaceState` once a link is used. */

@@ -3,29 +3,36 @@
  * and the edge cases are under test rather than buried in markup.
  */
 
-import { STREAK_TITLES, WIN_ROUNDS, isFinalRound, questionLimit, streakTitle } from "@bt/core";
-import type { Mode, PlayerCard, StatKey, Tier } from "@bt/core";
+import { STREAK_TITLES, questionLimit, streakTitle } from "@bt/core";
+import type { PlayerCard, StatKey, Tier } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
 import type { GameState, Hitch, QuestionClock, RoundRecord } from "./machine";
+import { asPlay } from "./variant";
+import type { PlayLike } from "./variant";
 
 /**
- * A score as the mode shows it: out of the win target where the mode has one
- * (`7/20` in Friendly), else the plain number.
+ * A score as the play shows it: out of the win target where it has one
+ * (`7/20` in Friendly, `21/34` through a squad), else the plain number.
  */
-export function scoreFigure(score: number, mode: Mode): string {
-  const target = WIN_ROUNDS[mode];
+export function scoreFigure(score: number, play: PlayLike): string {
+  const { target } = asPlay(play);
   return target === null ? String(score) : t("score.of", { score, target });
+}
+
+/** Whether `round` is the play's final question: the last of its win target. */
+function isLast(round: number, play: PlayLike): boolean {
+  return asPlay(play).target === round;
 }
 
 /**
  * "Question 7 of 20": the round on screen, in a mode with a win target, and
  * "Final question — question 20 of 20" on its last. Empty otherwise.
  */
-export function progressText(state: GameState, mode: Mode): string {
-  const target = WIN_ROUNDS[mode];
+export function progressText(state: GameState, play: PlayLike): string {
+  const { target } = asPlay(play);
   const round = state.round?.index ?? 1;
   if (target === null) return "";
-  return isFinalRound(round, mode)
+  return isLast(round, play)
     ? t("progress.final", { round, target })
     : t("progress.question", { round, target });
 }
@@ -34,9 +41,9 @@ export function progressText(state: GameState, mode: Mode): string {
  * The final question is on screen: the last round of the mode's win target,
  * dealt and not yet over. The plaque and the track mark it.
  */
-export function isFinalQuestion(state: GameState, mode: Mode): boolean {
+export function isFinalQuestion(state: GameState, play: PlayLike): boolean {
   if (state.round === null || state.phase === "idle" || state.phase === "over") return false;
-  return isFinalRound(state.round.index, mode);
+  return isLast(state.round.index, play);
 }
 
 /**
@@ -56,8 +63,8 @@ export interface TrackStep {
  * mode without one. Built from the round history, so it holds nothing the
  * player hasn't seen.
  */
-export function trackSteps(state: GameState, mode: Mode): TrackStep[] {
-  const target = WIN_ROUNDS[mode];
+export function trackSteps(state: GameState, play: PlayLike): TrackStep[] {
+  const { target } = asPlay(play);
   if (target === null) return [];
   const byIndex = new Map<number, RoundRecord>(state.history.map((r) => [r.index, r]));
   const onScreen = state.phase === "idle" || state.phase === "over" ? null : state.round?.index;
@@ -112,27 +119,27 @@ export function reelStrip(
  * with a win target each question starts with where the run is ("Question 7
  * of 20"), the text equivalent of the progress track.
  */
-export function announcement(state: GameState, mode: Mode): string {
+export function announcement(state: GameState, play: PlayLike): string {
   const { round, reveal } = state;
   if (round === null) return "";
-  const target = WIN_ROUNDS[mode];
+  const { target, theme } = asPlay(play);
   // Once, as the title card comes up: "Question 1 of 20" (after "Beat 7/20"
   // for a replayed challenge).
   if (state.phase === "title") {
-    const lead = plaqueLead(state, mode) ?? "";
-    const card = titleCard(state, mode) ?? "";
+    const lead = plaqueLead(state, play) ?? "";
+    const card = titleCard(state, play) ?? "";
     return card === lead ? `${lead}.` : `${card}. ${lead}.`;
   }
   if (state.phase === "awaiting") {
     // Say so when the stat has just changed: the plaque is the question.
     const key = round.stat.statChanged ? "live.statChanged" : "live.question";
     const question = t(key, {
-      stat: statLabel(round.stat.key),
+      stat: statLabel(round.stat.key, state.variant),
       anchor: round.anchor.name,
       value: round.anchor.display,
       challenger: round.challenger.name,
     });
-    return target === null ? question : `${progressText(state, mode)}. ${question}`;
+    return target === null ? question : `${progressText(state, play)}. ${question}`;
   }
   // Once, as the game-over panel comes up; the verdict was said a moment ago.
   const best = bestOutcome(state);
@@ -141,7 +148,11 @@ export function announcement(state: GameState, mode: Mode): string {
     const params = { challenger: round.challenger.name, value: reveal.display };
     if (state.end === "timeout") return t("live.timeout", params);
     if (!reveal.correct) return t("live.wrong", params);
-    if (state.end === "won") return t("live.won", { ...params, score: state.streak });
+    if (state.end === "won") {
+      return theme === undefined
+        ? t("live.won", { ...params, score: state.streak })
+        : t("live.squadCleared", { ...params, squad: theme.name });
+    }
     return target === null
       ? t("live.correct", { ...params, streak: state.streak })
       : t("live.correctOf", { ...params, score: state.streak, target });
@@ -285,16 +296,16 @@ export function anchorFading(state: GameState): boolean {
  * "Match 20/20"). Null otherwise. It glides into the plaque, which then reads
  * "Question 1 of 20" (`plaqueLead`).
  */
-export function titleCard(state: GameState, mode: Mode): string | null {
+export function titleCard(state: GameState, play: PlayLike): string | null {
   if (state.phase !== "title") return null;
   const { challenge } = state;
   if (challenge?.status === "accepted") {
-    const score = scoreFigure(challenge.score, mode);
-    return WIN_ROUNDS[mode] === challenge.score
+    const score = scoreFigure(challenge.score, play);
+    return isLast(challenge.score, play)
       ? t("challenge.headingPerfect", { score })
       : t("challenge.heading", { score });
   }
-  return plaqueLead(state, mode);
+  return plaqueLead(state, play);
 }
 
 /**
@@ -323,11 +334,11 @@ export function isIntro(state: GameState): boolean {
  * in a mode with a win target, else "Question 1". Null once a stat is on it,
  * and when no run is on the pitch. The wheel spins from it into the stat.
  */
-export function plaqueLead(state: GameState, mode: Mode): string | null {
+export function plaqueLead(state: GameState, play: PlayLike): string | null {
   const { phase, round } = state;
   if (round === null || round.index !== 1 || state.plaque !== null) return null;
   if (phase === "idle" || phase === "starting" || phase === "over") return null;
-  const target = WIN_ROUNDS[mode];
+  const { target } = asPlay(play);
   return target === null
     ? t("plaque.question", { round: 1 })
     : t("plaque.questionOf", { round: 1, target });
@@ -347,8 +358,8 @@ export interface ScoreBadge {
   readonly milestone: boolean;
 }
 
-export function scoreBadge(state: GameState, mode: Mode): ScoreBadge | null {
-  const target = WIN_ROUNDS[mode];
+export function scoreBadge(state: GameState, play: PlayLike): ScoreBadge | null {
+  const { mode, target } = asPlay(play);
   if (state.streak === 0 || state.end === "won") return null;
   const { phase } = state;
   if (
@@ -362,7 +373,7 @@ export function scoreBadge(state: GameState, mode: Mode): ScoreBadge | null {
   }
   const last = state.history.at(-1);
   if (last === undefined || !last.correct) return null;
-  const score = scoreFigure(state.streak, mode);
+  const score = scoreFigure(state.streak, play);
   const title = STREAK_TITLES[mode].find(
     (t) => t.min === state.streak && (target === null || t.min < target),
   );
@@ -409,8 +420,9 @@ export function onNewBest(state: GameState): boolean {
  * mode without a progress track (Endless): "Starter". Empty below the first,
  * and in a mode with a track.
  */
-export function titleChip(state: Pick<GameState, "streak">, mode: Mode): string {
-  if (WIN_ROUNDS[mode] !== null) return "";
+export function titleChip(state: Pick<GameState, "streak">, play: PlayLike): string {
+  const { mode, target } = asPlay(play);
+  if (target !== null) return "";
   const title = streakTitle(state.streak, mode);
   return title === undefined ? "" : t(`title.${title.id}`);
 }
@@ -419,9 +431,9 @@ export function titleChip(state: Pick<GameState, "streak">, mode: Mode): string 
  * The note on the game-over panel when the run didn't end on a revealed round:
  * a dropped connection, with the streak kept. Empty otherwise.
  */
-export function bankedText(state: Pick<GameState, "end" | "streak">, mode: Mode): string {
+export function bankedText(state: Pick<GameState, "end" | "streak">, play: PlayLike): string {
   if (state.end !== "network") return "";
-  return WIN_ROUNDS[mode] === null
+  return asPlay(play).target === null
     ? t("over.networkSaved", { streak: state.streak })
     : t("over.network", { streak: state.streak });
 }
@@ -527,8 +539,12 @@ export function clockAnnouncement(
   return "";
 }
 
-/** "in a row", "correct, then out" for a streak of one, or "a perfect run" for a win. */
-export function overCaption(state: Pick<GameState, "streak" | "end">): string {
+/**
+ * "in a row", "correct, then out" for a streak of one, or "a perfect run" for a
+ * win; "through the squad" for a squad not cleared.
+ */
+export function overCaption(state: Pick<GameState, "streak" | "end">, play?: PlayLike): string {
   if (state.end === "won") return t("over.caption.won");
+  if (play !== undefined && asPlay(play).theme !== undefined) return t("over.caption.squad");
   return state.streak === 1 ? t("over.caption.one") : t("over.caption.other");
 }

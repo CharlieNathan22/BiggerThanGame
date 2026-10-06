@@ -3,19 +3,23 @@
 // first (the homepage's games, the football page's decks). `stack` is a
 // deck's modes: one per row on a phone, then two to a row (a `wide` card
 // taking a whole row, the others sharing the rows below), and from 900px
-// across a band wider than the text (--cards-wide-w), centred.
+// across a band wider than the text (--cards-wide-w), centred. `grid` is a
+// deck's themes: four to a row in the same band from 900px, two below that,
+// one on the narrowest phones, every card in a row the same height, and a row
+// that isn't full centred rather than starting from the left.
 interface Props {
   /** Names the list for screen readers, e.g. "Modes". */
   label: string;
   stack?: boolean;
+  grid?: boolean;
   /** More room above and between the cards: the homepage's games. */
   roomy?: boolean;
 }
 
-const { label, stack = false, roomy = false } = Astro.props;
+const { label, stack = false, grid = false, roomy = false } = Astro.props;
 ---
 
-<ul class:list={["cards", { stack, roomy }]} role="list" aria-label={label}>
+<ul class:list={["cards", { stack, grid, roomy }]} role="list" aria-label={label}>
   <slot />
 </ul>
 
@@ -40,10 +44,32 @@ const { label, stack = false, roomy = false } = Astro.props;
       grid-template-columns: repeat(2, 1fr);
     }
   }
+  /* A wrapping row rather than a grid, so a short last row sits centred. Each
+     card is a column's width; the cards in a row stretch to its tallest. */
+  .cards.grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: stretch;
+    --grid-cols: 1;
+  }
+  .cards.grid > :global(li) {
+    flex: 0 0 calc((100% - (var(--grid-cols) - 1) * var(--card-gap)) / var(--grid-cols));
+    min-width: 0;
+  }
+  @media (min-width: 360px) {
+    .cards.grid {
+      --grid-cols: 2;
+    }
+  }
   @media (min-width: 900px) {
-    .cards.stack {
+    .cards.stack,
+    .cards.grid {
       width: var(--cards-wide-w);
       margin-left: calc((100% - var(--cards-wide-w)) / 2);
+    }
+    .cards.grid {
+      --grid-cols: 4;
     }
   }
 </style>

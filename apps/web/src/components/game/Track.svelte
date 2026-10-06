@@ -1,8 +1,10 @@
 <!--
-  The progress track, in a mode with a win target (Friendly's twenty): a thin
-  row of segments under the title bar, one per round. An answered round fills
-  in gold, the miss in red, and the round on screen is lit.
-  Thin enough to cost the game almost no height on a phone.
+  The progress track, in a play with a win target (Friendly's twenty, a
+  squad's questions): a thin row of segments under the title bar, one per
+  round. An answered round fills in gold, the miss in red, and the round on
+  screen is lit. Thin enough to cost the game almost no height on a phone.
+  Past `DENSE_STEPS` (a big squad's 68) the segments close up into one
+  continuous bar, rather than crowding into slivers.
 
   The last segment, the final question, is gold. While the final question is
   on screen a gold "Final question" tag hangs under the track's end, over the
@@ -29,6 +31,9 @@
   }
 
   let { steps, answered, label, final }: Props = $props();
+
+  /** More steps than this and the track is one continuous bar. */
+  const DENSE_STEPS = 20;
 </script>
 
 <div
@@ -39,6 +44,7 @@
   aria-valuemax={steps.length}
   aria-valuenow={answered}
   aria-valuetext={label}
+  class:dense={steps.length > DENSE_STEPS}
   style:--steps={steps.length}
 >
   {#each steps as step, i (i)}
@@ -60,12 +66,24 @@
     padding: 0 var(--track-pad-x);
     background: var(--track-bg);
   }
+  .track.dense {
+    gap: 0;
+  }
   .step {
     border-radius: var(--track-radius);
     background: var(--track-todo);
     transition:
       background-color var(--dur-tint),
       box-shadow var(--dur-tint);
+  }
+  .dense .step {
+    border-radius: 0;
+  }
+  .dense .step:first-child {
+    border-radius: var(--track-radius) 0 0 var(--track-radius);
+  }
+  .dense .step:last-of-type {
+    border-radius: 0 var(--track-radius) var(--track-radius) 0;
   }
   .step.hit {
     background: var(--track-hit);

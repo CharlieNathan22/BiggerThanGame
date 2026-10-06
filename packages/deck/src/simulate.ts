@@ -40,12 +40,12 @@ import {
   valueOf,
 } from "@bt/core";
 import type {
-  EndlessVariantId,
   Mode,
   Player,
   Relaxation,
   Round,
   StatKey,
+  StaticVariantId,
   ValueRule,
 } from "@bt/core";
 
@@ -236,7 +236,7 @@ export interface SimOptions {
   /** Further models scored on the same rounds and skill draws, for comparison only. */
   readonly compare?: readonly PlayerModel[];
   /** An Endless variant to deal instead of the mode's own runs (Endless only). */
-  readonly variant?: EndlessVariantId;
+  readonly variant?: StaticVariantId;
   /** Questions whose pairs to measure for closeness, as a ratio (`Closeness`). */
   readonly closenessAt?: readonly number[];
 }
@@ -280,7 +280,7 @@ export interface ModelOutcome {
 export interface SimResult {
   readonly mode: Mode;
   /** The Endless variant dealt, when not the mode's own runs. */
-  readonly variant?: EndlessVariantId;
+  readonly variant?: StaticVariantId;
   readonly runs: number;
   /** The playing model's outcome first, then each `compare` model's. */
   readonly outcomes: readonly ModelOutcome[];
@@ -605,7 +605,7 @@ function mean(values: readonly number[]): number {
  * Endless's late rounds its pair rules: wide stats also ≥10% apart, narrow ones
  * paired by value instead (`PAIR_RULES`, listed under the table).
  */
-export function bandText(round: number, mode: Mode, variant?: EndlessVariantId): string {
+export function bandText(round: number, mode: Mode, variant?: StaticVariantId): string {
   if (variant !== undefined && variant !== "endless") {
     const band = bandForRound(round, mode, ENDLESS_VARIANTS[variant]);
     const range = band.ceiling === null ? `≥${band.floor}` : `${band.floor}–${band.ceiling}`;
@@ -912,7 +912,8 @@ function instagramSection(r: SimResult, cap: number): string[] {
 
 /**
  * One simulation per mode, over the same seeds, reported side by side; then
- * Instagram Endless, when given, in a section of its own.
+ * Instagram Endless, when given, in a section of its own. "Clear the squad"
+ * has its own (simulate-squad.ts), which the build appends.
  */
 export function simulationReport(
   results: readonly SimResult[],

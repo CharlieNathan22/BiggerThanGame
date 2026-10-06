@@ -4,6 +4,7 @@ import {
   buildFullDeck,
   buildImages,
   buildIndexes,
+  buildThemes,
   deckVersion,
   scanForLeakedValues,
 } from "../artifacts.js";
@@ -290,5 +291,47 @@ describe("scanForLeakedValues", () => {
     );
     // A bare 2 and 3 must not be accused, even though they are real values.
     expect(scanForLeakedValues("[1,2,3]", [small], NOW)).toEqual([]);
+  });
+});
+
+describe("buildThemes", () => {
+  // Sixteen players at one club, a league they all played in, and an era only five share.
+  const squad: Player[] = Array.from({ length: 16 }, (_, i) => ({
+    ...players[i % players.length]!,
+    id: `squad-${i}`,
+    name: `Squad Player ${i}`,
+    mainClubs: i < 15 ? ["Real Testford", "Elsewhere"] : ["Elsewhere"],
+    leagues: ["Test League"],
+    ...(i < 5 ? { era: "1990s" } : {}),
+  }));
+
+  it("writes each theme with enough players: id, type, name, slug and count only", () => {
+    expect(buildThemes(squad)).toEqual([
+      { id: "club-elsewhere", type: "club", name: "Elsewhere", slug: "elsewhere", players: 16 },
+      {
+        id: "club-real-testford",
+        type: "club",
+        name: "Real Testford",
+        slug: "real-testford",
+        players: 15,
+      },
+      {
+        id: "league-test-league",
+        type: "league",
+        name: "Test League",
+        slug: "test-league",
+        players: 16,
+      },
+    ]);
+  });
+
+  it("carries no player id and no figure", () => {
+    const text = JSON.stringify(buildThemes(squad));
+    for (const p of squad) expect(text).not.toContain(p.id);
+    expect(text).not.toMatch(/stats|club_goals|caps/);
+  });
+
+  it("is empty for a deck with no theme big enough", () => {
+    expect(buildThemes(players)).toEqual([]);
   });
 });

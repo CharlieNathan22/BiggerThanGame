@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Player } from "@bt/core";
-import { NAME_WINDOW, readableText, scanDist, valuesNearName } from "../dist-scan.js";
+import {
+  DEV_TOOL_MARKERS,
+  NAME_WINDOW,
+  devToolsIn,
+  readableText,
+  scanDist,
+  valuesNearName,
+} from "../dist-scan.js";
 
 const NOW = new Date("2026-09-26T00:00:00Z");
 
@@ -102,5 +109,17 @@ describe("the name window", () => {
   it("skips inline styles, whose numbers aren't data", () => {
     const html = '<style>.x{padding:0 4px;margin:105px}</style><p style="order:0">Ainsley Vale</p>';
     expect(scan("a.html", html)).toEqual([]);
+  });
+});
+
+describe("the dev tools check", () => {
+  it("finds pnpm dev's mockEnd shim anywhere in the built site", () => {
+    const files = [
+      { path: "index.html", text: "<p>clean</p>" },
+      { path: "_astro/Game.js", text: 'const m=new URLSearchParams(l).get("mockEnd")' },
+    ];
+    expect(devToolsIn(files)).toEqual(['_astro/Game.js contains "mockEnd", a pnpm dev tool']);
+    expect(devToolsIn([{ path: "index.html", text: "<p>clean</p>" }])).toEqual([]);
+    expect(DEV_TOOL_MARKERS).toContain("mockEnd");
   });
 });

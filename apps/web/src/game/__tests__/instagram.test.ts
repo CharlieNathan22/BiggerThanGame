@@ -15,7 +15,7 @@ import { dealDelay, initialState, reduce, shouldSpin, wheelOf } from "../machine
 import type { GameEvent, GameState } from "../machine";
 import { challengeText, shareHeading, shareText } from "../share";
 import { TIMINGS } from "../timing";
-import { PLAY_PATHS, hasBoards, modeSubtitle, playId, spins, startIntro } from "../variant";
+import { hasBoards, modeSubtitle, playId, playPath, spins, startIntro } from "../variant";
 import { RUN_ID, link, round, wrong } from "./fixtures";
 
 const IG = "endless-instagram" as const;
@@ -29,11 +29,9 @@ describe("the plays a page can be", () => {
     expect(playId("friendly")).toBe("friendly");
     expect(playId("endless")).toBe("endless");
     expect(playId("endless", IG)).toBe(IG);
-    expect(PLAY_PATHS).toEqual({
-      friendly: "/football-higher-or-lower/legends/friendly",
-      endless: "/football-higher-or-lower/legends/endless",
-      "endless-instagram": "/football-higher-or-lower/legends/endless/instagram",
-    });
+    expect(playPath("friendly")).toBe("/football-higher-or-lower/legends/friendly");
+    expect(playPath("endless")).toBe("/football-higher-or-lower/legends/endless");
+    expect(playPath(IG)).toBe("/football-higher-or-lower/legends/endless/instagram");
   });
 
   it("gives Endless boards and the wheel, and Instagram Endless neither", () => {
@@ -174,7 +172,7 @@ describe("sharing", () => {
   });
 
   it("points a challenge at Instagram Endless's own page", () => {
-    const url = challengeUrl("https://biggerthangame.com", link(7), IG);
+    const url = challengeUrl("https://biggerthangame.com", link(7), playPath(IG));
     expect(url).toMatch(
       /^https:\/\/biggerthangame\.com\/football-higher-or-lower\/legends\/endless\/instagram\?challenge=/,
     );

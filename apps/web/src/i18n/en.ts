@@ -110,6 +110,37 @@ export const en = {
   "mode.ranked.name": "Daily Ranked",
   "mode.ranked.body": "One run a day, the same for everyone, on a global leaderboard.",
   "mode.soon": "Coming soon",
+  // The Legends page's "Clear the squad" sections, a card per theme
+  "themes.club": "Clubs",
+  "themes.league": "Leagues",
+  "themes.era": "Eras",
+  "theme.players": "{players} legends",
+  // A theme card's best, from this device: {best} and {of} are filled in there
+  "theme.best": "Best {best}/{of}",
+  "theme.cleared": "Cleared ✓",
+
+  // A "Clear the squad" theme's game page. Drafts.
+  "squad.title.club": "{name} Legends Higher or Lower | Bigger Than Game",
+  "squad.title.league": "{name} Legends Higher or Lower | Bigger Than Game",
+  "squad.title.era": "{name} Football Legends Higher or Lower | Bigger Than Game",
+  // Within the search checks' 110 to 170 characters, from "Inter" to "Paris Saint-Germain"
+  "squad.description.club":
+    "Clear the {name} squad: {players} legends, one at a time. Higher or lower on goals, caps and trophies, with one life and a short clock. Free in your browser.",
+  "squad.description.league":
+    "Clear the {name} squad: {players} legends, one at a time. Higher or lower on goals, caps and trophies, with one life and a short clock. Free in your browser.",
+  "squad.description.era":
+    "Clear the {name} squad: {players} legends at their peak in the {name}. Higher or lower on goals, caps and trophies, one life and a short clock. Free in your browser.",
+  // Its start panel, under the theme's name: the squad, then the rules in one line
+  // No dashes anywhere in a squad's copy.
+  "squad.count.club": "{players} {name} legends. Can you clear the whole squad and win?",
+  "squad.count.league": "{players} {name} legends. Can you clear the whole squad and win?",
+  "squad.count.era": "{players} legends of the {name}. Can you clear the whole squad and win?",
+  "squad.rules":
+    "One life, 15 seconds for the first question and 10 for the rest, and every player comes up once.",
+  // Under the plaque, when the stat is club goals
+  "squad.note.club": "Whole career, not just {name}",
+  "squad.note.league": "Whole career, every league",
+  "squad.note.era": "Whole career, not just the {name}",
 
   // The Endless game page (/football-higher-or-lower/legends/endless). Drafts.
   "endless.title": "Endless Football Legends Higher or Lower | Bigger Than Game",
@@ -246,6 +277,7 @@ export const en = {
   "live.correct": "{challenger}: {value}. Correct. Streak {streak}.",
   "live.correctOf": "{challenger}: {value}. Correct. {score} of {target}.",
   "live.won": "{challenger}: {value}. Correct — that's all {score}. You won!",
+  "live.squadCleared": "{challenger}: {value}. Correct. You've cleared the {squad} squad!",
   "live.wrong": "{challenger}: {value}. Wrong. The run is over.",
   "live.timeout": "{challenger}: {value}. Out of time. The run is over.",
   "live.newHighScore": "New high score!",
@@ -255,7 +287,9 @@ export const en = {
   "over.caption.one": "correct, then out",
   "over.caption.other": "in a row",
   "over.caption.won": "a perfect run",
+  "over.caption.squad": "through the squad",
   "over.won": "You won",
+  "over.squadCleared": "Squad cleared",
   "over.best": "Best {best}",
   "over.newHighScore": "New high score",
   "over.matchedBest": "Matched your best",
@@ -392,6 +426,9 @@ export const en = {
   // What gets shared
   "share.heading": "Bigger Than — Football Legends",
   "share.headingInstagram": "Bigger Than — Instagram Endless",
+  // "Clear the squad"'s score line
+  "share.squadCleared": "I cleared the {squad} squad 🏆",
+  "share.squadProgress": "{score}/{target} through the {squad} squad",
   "share.score.one": "{score} correct, then out",
   "share.score.other": "{score} in a row",
   "share.endedOn": "Ended on: {stat}",
@@ -405,6 +442,8 @@ export const en = {
 
   // Stat labels, by StatKey
   "stat.club_goals": "Club goals",
+  // "Clear the squad": the figure is the whole career, not goals for the squad's club
+  "stat.squad.club_goals": "Total career club goals",
   "stat.caps": "International caps",
   "stat.apps": "Club appearances",
   "stat.ig": "Instagram followers",

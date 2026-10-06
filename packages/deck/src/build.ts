@@ -11,8 +11,15 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { THEME_MIN_PLAYERS } from "@bt/core";
 
-import { buildCredits, buildFullDeck, buildImages, buildIndexes } from "./artifacts.js";
+import {
+  buildCredits,
+  buildFullDeck,
+  buildImages,
+  buildIndexes,
+  buildThemes,
+} from "./artifacts.js";
 import { checkManifest, loadManifest } from "./manifest.js";
 import { DECK, MIN_PRIVATE_DECK, fallbackNotice, loadDeck, manifestPathFor } from "./load.js";
 import type { LoadedDeck } from "./load.js";
@@ -28,6 +35,7 @@ import {
   simulationReport,
 } from "./simulate.js";
 import type { PlayerModel } from "./simulate.js";
+import { simulateSquads, squadPairsText, squadSection } from "./simulate-squad.js";
 import { formatProblems, formatStaleInstagram, staleInstagram, validateDeck } from "./validate.js";
 import { viabilityReport } from "./viability.js";
 
@@ -189,6 +197,14 @@ export function runBuild(opts: BuildOptions = {}): number {
   write(join(outDir, "indexes.json"), JSON.stringify(indexes));
   write(join(outDir, "credits.json"), JSON.stringify(credits));
   write(join(outDir, "images.json"), JSON.stringify(images));
+  // The "Clear the squad" themes: names and counts only, for the site's pages.
+  const themes = buildThemes(loaded.players);
+  write(join(outDir, "themes.json"), JSON.stringify(themes));
+  console.log(
+    themes.length === 0
+      ? `  no themes (none has ${THEME_MIN_PLAYERS} players)`
+      : `  ${themes.length} theme(s): ${themes.map((t) => `${t.name} ${t.players}`).join(", ")}`,
+  );
 
   console.log("deck: viability report");
   write(join(packageRoot, "viability.md"), viabilityReport(loaded.players, now));
@@ -226,14 +242,22 @@ export function runBuild(opts: BuildOptions = {}): number {
       compare,
       closenessAt: INSTAGRAM_CLOSENESS_AT,
     });
+    const squads = simulateSquads({ deck: loaded.players, now, runs, model });
     console.log(`  ${((Date.now() - started) / 1000).toFixed(1)}s`);
     write(
       join(packageRoot, "simulation.md"),
-      simulationReport(results, loaded.players.length, now, instagram),
+      [
+        simulationReport(results, loaded.players.length, now, instagram),
+        ...squadSection(squads),
+      ].join("\n"),
     );
     // Names beside figures: for the terminal only, never the committed report.
     console.log("deck: Instagram Endless, the closest pairs dealt");
     for (const line of closestPairsText(instagram)) console.log(line);
+    if (squads.length > 0) {
+      console.log("deck: Clear the squad, the closest pairs in each theme's last questions");
+      for (const line of squadPairsText(squads)) console.log(line);
+    }
   }
 
   console.log("deck: done");

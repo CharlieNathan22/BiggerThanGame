@@ -16,7 +16,8 @@
  *   index1  the run key: the run id's body, before the "." (never the signature)
  *   blob1   event        "start" | "answer" | "end" | "leave"
  *   blob2   mode         "friendly" | "endless", or for an Endless variant its id
- *                        ("endless-instagram"), so every per-mode query splits it out
+ *                        ("endless-instagram"), so every per-mode query splits it out;
+ *                        "squad" for every "Clear the squad" theme (its id in blob10)
  *   blob3   run kind     "fresh" | "challenge" (Endless, a fresh run against a link's
  *                        score) | "replay" (Friendly's retired challenge replays)
  *   blob4   deck version "legends-107-3f9c21e0"
@@ -34,6 +35,9 @@
  *   submit: blob6 published ("1" | "0"), blob7 shadowed ("1" | "0"), blob8 the day
  *           rank's bucket ("1-10" | "11-100" | "101-1000" | "1000+"; "" if refused),
  *           blob9 why it was refused ("" if published); double1 the run's score
+ *   blob10  theme        "Clear the squad" only, on every event: the theme id
+ *                        ("club-barcelona"); absent (so "") for every other mode. The
+ *                        events' own blobs above are padded to reach it.
  *
  * Privacy (§19): nothing personal — no IP, not even hashed, no user agent, no
  * cookie, nothing kept in the browser. Country only. No stat value in a data
@@ -50,16 +54,18 @@
  */
 
 import {
-  ENDLESS_VARIANTS,
   STATS,
   bandForRound,
   isFinalRound,
+  isSquadVariantId,
   percentiles,
   rankDistance,
+  themeIdOf,
   valueOf,
 } from "@bt/core";
 import type {
   Band,
+  BandRules,
   LeavePhase,
   LeaveTrigger,
   Mode,
@@ -123,6 +129,12 @@ export interface AnswerEvent extends RunFacts {
    * server's own measure, never the client's. Absent in Friendly.
    */
   readonly answerMs?: number;
+  /**
+   * The round's scheduled band (`bandLabel`), from the run's own rules: an
+   * Endless variant's, which for a squad depend on the deck. Absent in
+   * Friendly, whose band is the mode's own.
+   */
+  readonly band?: string;
 }
 
 export interface EndEvent extends RunFacts {
@@ -247,10 +259,34 @@ export const RELAXATION_STEP: Readonly<Record<Relaxation, number>> = {
  * scheduled for, not the one relaxation settled on: `double4` says whether it
  * gave, and `double5` how far apart the pair actually was.
  */
-export function bandLabel(round: number, mode: Mode, variant?: NamedVariant): string {
-  return formatBand(
-    bandForRound(round, mode, variant !== undefined ? ENDLESS_VARIANTS[variant] : undefined),
-  );
+export function bandLabel(round: number, mode: Mode, rules?: BandRules): string {
+  return formatBand(bandForRound(round, mode, rules));
+}
+
+/** The mode column: the mode, an Endless variant's id, or `squad` for any theme. */
+export function modeColumn(event: Pick<RunFacts, "mode" | "variant">): string {
+  const { variant } = event;
+  if (variant === undefined) return event.mode;
+  return isSquadVariantId(variant) ? "squad" : variant;
+}
+
+/** A "Clear the squad" run's theme id, or undefined. */
+export function themeOf(event: Pick<RunFacts, "variant">): string | undefined {
+  return event.variant !== undefined && isSquadVariantId(event.variant)
+    ? themeIdOf(event.variant)
+    : undefined;
+}
+
+/** Where the theme goes: blob10, the events' own blobs padded to reach it. */
+const THEME_BLOB = 10;
+
+function withTheme(point: DataPoint, event: GameEvent): DataPoint {
+  const theme = themeOf(event);
+  if (theme === undefined) return point;
+  const blobs = [...point.blobs];
+  while (blobs.length < THEME_BLOB - 1) blobs.push("");
+  blobs.push(theme);
+  return { ...point, blobs };
 }
 
 function formatBand(band: Band): string {
@@ -313,13 +349,11 @@ export function shownRound(round: Round, now: Date, phase: LeavePhase): ShownRou
 
 /** The event as one Analytics Engine data point, in the layout above. */
 export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
-  const common = [
-    event.type,
-    event.variant ?? event.mode,
-    event.runKind,
-    ctx.deckVersion,
-    ctx.country,
-  ];
+  return withTheme(eventPoint(event, ctx), event);
+}
+
+function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
+  const common = [event.type, modeColumn(event), event.runKind, ctx.deckVersion, ctx.country];
   const indexes: [string] = [event.run];
   switch (event.type) {
     case "start":
@@ -332,7 +366,7 @@ export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
           ...common,
           event.stat,
           tier,
-          bandLabel(event.round, event.mode, event.variant),
+          event.band ?? bandLabel(event.round, event.mode),
           isFinalRound(event.round, event.mode) ? "1" : "0",
         ],
         doubles: [
@@ -378,8 +412,12 @@ export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
 export function toLogLine(event: GameEvent, ctx: EventContext, route: string): LogLine | undefined {
   const common = {
     route,
-    mode: event.mode,
-    ...(event.variant !== undefined ? { variant: event.variant } : {}),
+    // A squad's line says `squad` and its theme; any other variant's, its mode and variant.
+    mode: themeOf(event) !== undefined ? "squad" : event.mode,
+    ...(event.variant !== undefined && themeOf(event) === undefined
+      ? { variant: event.variant }
+      : {}),
+    ...(themeOf(event) !== undefined ? { theme: themeOf(event) } : {}),
     run: event.run,
     runKind: event.runKind,
     deckVersion: ctx.deckVersion,

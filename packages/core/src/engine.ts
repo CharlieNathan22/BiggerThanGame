@@ -19,10 +19,26 @@ import type { Rng } from "./prng.js";
 export const SEEN_DEPTH = 12;
 
 export interface MatchContext {
+  /** What rank distance is measured against (`percentiles`), and, without `pool`, who can be dealt. */
   readonly deck: readonly Player[];
   readonly now: Date;
   /** Player ids used recently, most recent first. */
   readonly seen: readonly string[];
+  /**
+   * "Clear the squad": who can be dealt, when not the whole of `deck`. Distance
+   * is still measured against `deck`, so a gap means the same in any squad.
+   */
+  readonly pool?: readonly Player[];
+  /**
+   * "Clear the squad": `seen` is every player dealt so far, and it is never
+   * ignored — no player appears twice in a run.
+   */
+  readonly unique?: boolean;
+  /**
+   * "Clear the squad": challengers to draw from first, at each step, when any
+   * qualifies (the players who would otherwise be stranded, sequence.ts).
+   */
+  readonly prefer?: (player: Player) => boolean;
 }
 
 /**
@@ -71,9 +87,10 @@ export function candidates(
 
   const table = percentiles(ctx.deck, stat, ctx.now);
   const out: Player[] = [];
-  for (const player of ctx.deck) {
+  const keepSeen = !ignoreSeen || ctx.unique === true;
+  for (const player of ctx.pool ?? ctx.deck) {
     if (player.id === anchor.id) continue;
-    if (!ignoreSeen && ctx.seen.includes(player.id)) continue;
+    if (keepSeen && ctx.seen.includes(player.id)) continue;
     if (!isEligible(player, stat, ctx.now)) continue;
 
     const value = valueOf(player, stat, ctx.now);
@@ -110,15 +127,23 @@ export function selectChallenger(
   const target = bandFor(stat, round, mode, variant);
   const ladder = relaxations(target, RELAXATION_LADDERS[mode]);
 
+  // The preferred challengers when any qualify; everyone otherwise.
+  const pick = (pool: readonly Player[]): Player | undefined => {
+    const { prefer } = ctx;
+    if (prefer === undefined) return rng.pick(pool);
+    const first = pool.filter(prefer);
+    return rng.pick(first.length > 0 ? first : pool);
+  };
+
   if (preferIconic) {
     const pool = candidates(anchor, stat, target, ctx).filter((p) => p.iconic === true);
-    const chosen = rng.pick(pool);
+    const chosen = pick(pool);
     if (chosen !== undefined) return { challenger: chosen, band: target, relaxation: "none" };
   }
 
   for (const [index, band] of ladder.entries()) {
     const pool = candidates(anchor, stat, band, ctx);
-    const chosen = rng.pick(pool);
+    const chosen = pick(pool);
     if (chosen !== undefined) {
       const relaxation = index > 0 ? "band" : preferIconic ? "iconic" : "none";
       return { challenger: chosen, band, relaxation };
@@ -127,7 +152,9 @@ export function selectChallenger(
 
   // Still nothing: drop the seen queue before giving up. Note this is reported
   // as "seen" even when the band itself was met, so the two causes stay
-  // distinguishable in the simulation report.
+  // distinguishable in the simulation report. A run that deals each player
+  // once has nobody to bring back.
+  if (ctx.unique === true) return undefined;
   for (const band of ladder) {
     const pool = candidates(anchor, stat, band, ctx, true);
     const chosen = rng.pick(pool);

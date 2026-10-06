@@ -122,6 +122,64 @@ export const INSTAGRAM_SCHEDULE: readonly BandRow[] = [
 ];
 
 /**
+ * "Clear the squad" (variants.ts) ramps by **progress** through the squad, not
+ * by round: `upTo` is the fraction of the run's questions answered, so a
+ * 15-player club and a 69-player league both build to a hard finish. Two
+ * endpoints with the same breakpoints, `SQUAD_SMALL` (a 15-player squad) and
+ * `SQUAD_LARGE` (69), are blended by squad size (`squadSchedule`): a short
+ * run needs harder questions on average than a long one for the two to clear
+ * about as often. Each is **never easier** from one row to the next, so any
+ * blend of them isn't either. DESIGN.md §8.
+ *
+ * Tuned against simulation.md's "Clear the squad" section with the `fan`
+ * model, 20,000 runs per theme.
+ */
+export const SQUAD_SMALL: readonly BandRow[] = [
+  { upTo: 0.2, band: { floor: 0.2, ceiling: null } },
+  { upTo: 0.45, band: { floor: 0.05, ceiling: 0.12 } },
+  { upTo: 0.7, band: { floor: 0.02, ceiling: 0.06 } },
+  { upTo: 0.85, band: { floor: 0.01, ceiling: 0.04 } },
+  { upTo: Infinity, band: { floor: 0.01, ceiling: 0.03 } },
+];
+
+export const SQUAD_LARGE: readonly BandRow[] = [
+  { upTo: 0.2, band: { floor: 0.45, ceiling: null } },
+  { upTo: 0.45, band: { floor: 0.35, ceiling: null } },
+  { upTo: 0.7, band: { floor: 0.22, ceiling: 0.45 } },
+  { upTo: 0.85, band: { floor: 0.14, ceiling: 0.32 } },
+  { upTo: Infinity, band: { floor: 0.1, ceiling: 0.2 } },
+];
+
+/** The squad sizes `SQUAD_SMALL` and `SQUAD_LARGE` are tuned for. */
+export const SQUAD_SIZES = { small: 15, large: 69 } as const;
+
+/** How far `squadSchedule`'s blend leans towards the large end: 1 is linear. */
+export const SQUAD_BLEND = 0.65;
+
+/**
+ * One squad's schedule: the two endpoints blended by its size, clamped to
+ * them. The blend leans towards the large end (`SQUAD_BLEND`, a power of the
+ * linear share under 1): only the very smallest squads need the small end's
+ * hard middle.
+ */
+export function squadSchedule(size: number): readonly BandRow[] {
+  const span = SQUAD_SIZES.large - SQUAD_SIZES.small;
+  const share = Math.min(Math.max((size - SQUAD_SIZES.small) / span, 0), 1);
+  const t = share ** SQUAD_BLEND;
+  const mix = (a: number, b: number) => a + (b - a) * t;
+  return SQUAD_SMALL.map((row, i) => {
+    const large = SQUAD_LARGE[i]!;
+    const { floor, ceiling } = row.band;
+    // An open ceiling is the top of the scale, 1, for the blend; open only if both are.
+    const top =
+      ceiling === null && large.band.ceiling === null
+        ? null
+        : mix(ceiling ?? 1, large.band.ceiling ?? 1);
+    return { upTo: row.upTo, band: { floor: mix(floor, large.band.floor), ceiling: top } };
+  });
+}
+
+/**
  * The band schedule per mode. Changing one changes every run of that mode —
  * and every golden fingerprint for it.
  */
@@ -195,6 +253,16 @@ export const PAIR_RULES: Readonly<Record<Mode, PairRules | null>> = {
   ranked: null,
 };
 
+/**
+ * "Clear the squad"'s pair rules: from 70% of the way through the squad (its
+ * `from` is a fraction of the run, like its schedule's rows), every pair at
+ * least 10% apart as a ratio, as in Endless's late rounds. Unlike Endless no
+ * narrow stat swaps its band for a value rule: the wheel lands where the band
+ * can be met (sequence.ts), so a narrow stat simply comes up less late in a
+ * squad rather than as an easy pair.
+ */
+export const SQUAD_PAIR_RULES: PairRules = { from: 0.7, wideMinRatio: 0.1, narrow: {} };
+
 /** How the ceiling relaxes when a band holds no pair (`relaxations`). */
 export type RelaxationLadder = "coarse" | "fine";
 
@@ -222,12 +290,23 @@ export interface BandRules {
   readonly schedule: readonly BandRow[];
   readonly pairRules: PairRules | null;
   readonly volatileFloor: boolean;
+  /**
+   * "Clear the squad": the run's questions. When set, the schedule's `upTo` and
+   * the pair rules' `from` are fractions of it — progress, not round number.
+   */
+  readonly questions?: number;
+}
+
+/** Where a round sits on the variant's schedule: its number, or its share of the run. */
+export function scheduleKey(round: number, variant?: BandRules): number {
+  return variant?.questions === undefined ? round : round / variant.questions;
 }
 
 /** 1-based round number and mode in, band out; a variant's own schedule when given. */
 export function bandForRound(round: number, mode: Mode, variant?: BandRules): Band {
   const schedule = variant?.schedule ?? BAND_SCHEDULES[mode];
-  const row = schedule.find((r) => round <= r.upTo);
+  const key = scheduleKey(round, variant);
+  const row = schedule.find((r) => key <= r.upTo);
   return row ? row.band : schedule[schedule.length - 1]!.band;
 }
 
@@ -245,7 +324,8 @@ export function bandForRound(round: number, mode: Mode, variant?: BandRules): Ba
  */
 export function bandFor(stat: StatKey, round: number, mode: Mode, variant?: BandRules): Band {
   const rules = variant !== undefined ? variant.pairRules : PAIR_RULES[mode];
-  if (rules !== null && round >= rules.from) {
+  const key = scheduleKey(round, variant);
+  if (rules !== null && key >= rules.from) {
     const rule = rules.narrow[stat];
     if (rule !== undefined) return { floor: 0, ceiling: null, valueRule: rule };
   }
@@ -257,7 +337,7 @@ export function bandFor(stat: StatKey, round: number, mode: Mode, variant?: Band
   if (stretch !== null && round >= stretch.from) {
     band = { ...band, strictMinRatio: stretch.minRatio };
   }
-  if (rules !== null && round >= rules.from) {
+  if (rules !== null && key >= rules.from) {
     band = { ...band, strictMinRatio: rules.wideMinRatio };
   }
   return band;

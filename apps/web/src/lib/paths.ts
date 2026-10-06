@@ -3,6 +3,9 @@
  * for the paths that links, challenge URLs and the title bar depend on.
  */
 
+import { themePath } from "@bt/core";
+import type { SquadTheme } from "@bt/core";
+
 /** The Bigger Than homepage. */
 export const HOME_PATH = "/";
 
@@ -20,6 +23,15 @@ export const ENDLESS_PATH = "/football-higher-or-lower/legends/endless";
 
 /** Instagram Endless: Endless with Instagram followers on every question, no boards. */
 export const INSTAGRAM_PATH = "/football-higher-or-lower/legends/endless/instagram";
+
+/**
+ * A "Clear the squad" theme's page, generated from the deck's themes:
+ * `/football-higher-or-lower/legends/clubs/real-madrid`, `…/leagues/la-liga`,
+ * `…/eras/2000s` (`themePath` in @bt/core, which the Worker's checks share).
+ */
+export function themePagePath(theme: Pick<SquadTheme, "type" | "slug">): string {
+  return themePath(theme);
+}
 
 /** Endless's boards: today, this week and this month. */
 export const LEADERBOARD_PATH = "/football-higher-or-lower/legends/endless/leaderboard";

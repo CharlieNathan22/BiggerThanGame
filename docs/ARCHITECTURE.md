@@ -323,6 +323,7 @@ image blocks the import wrote.
 | `dist/images.json`         | bundled into Worker         | id → `{ key, width, height }` for deck players; no source hash                                                |
 | `indexes.json`             | Worker                      | per stat: players sorted by value, tie groups                                                                 |
 | `credits.json`             | read by `/credits` at build | player name, author, licence, licence URL (absent for PD) and source per image; read with `fs`, never bundled |
+| `themes.json`              | read by the pages at build  | "Clear the squad" themes: id, type, name, slug and player count only; read with `fs`, never bundled           |
 | `data/legends/images.json` | read, not written           | the manifest: written by `images:sync`, checked here                                                          |
 | `viability.md`             | repo, committed             | per stat and gap band, how many valid pairs exist                                                             |
 | `simulation.md`            | repo, committed             | per mode: streak distribution, stat firing rates and iconic-preference fallback over 20k runs                 |
@@ -367,6 +368,9 @@ fails on:
   scoping attributes, inline styles and licence codes (`CC-BY-SA-2.5`) removed, and the credits
   page's attribution line (`data-scan="attribution"`) skipped, because photographers' names can
   hold numbers ("No 10 Downing Street") and `credits.json` holds no stat values.
+- **any of `pnpm dev`'s tools** (`devToolsIn`): the dev-only `?mockEnd=won` shim (§14) lives
+  behind `import.meta.env.DEV` and must be stripped from production builds entirely, so the word
+  `mockEnd` anywhere in the built site fails the scan.
 
 The round payload is checked by the response-shape test with `scanForLeakedValues`, which takes text
 rather than an object deliberately — it must not trust any object's shape.
@@ -422,6 +426,8 @@ seed(ranked,   gameNo) = HMAC-SHA256(RUN_SECRET, "ranked:"   + gameNo)
 seed(endless,  runId)  = HMAC-SHA256(RUN_SECRET, "endless:"  + runBody)
 seed(endless-instagram, runId)
                        = HMAC-SHA256(RUN_SECRET, "endless:instagram:" + runBody)
+seed(squad:<theme id>, runId)
+                       = HMAC-SHA256(RUN_SECRET, "squad:<theme id>:" + runBody)
 seed(friendly, runId)  = HMAC-SHA256(RUN_SECRET, "friendly:" + runBody)
 ```
 
@@ -434,6 +440,16 @@ band schedule and closeness floor replace Endless's. General Endless's settings 
 own, so naming it deals exactly the runs Endless always dealt (a test holds it, and the golden
 fingerprint).
 
+**"Clear the squad"** (DESIGN.md §3) is one variant per theme, `squad:<theme id>`
+(`squad:club-barcelona`), with the seed domain `"squad:<theme id>:"`. Which themes exist is the
+deck's business, so its config is built from the deck (`resolveVariant(id, deck)`; `squadThemes`
+in `themes.ts`), and a squad id that names no theme of the deck is refused wherever it arrives.
+Its run deals each of the theme's players once (the seen queue is every player dealt, never
+dropped), measures distance over the whole deck, ramps by progress through the squad
+(`BandRules.questions`: the schedule's rows are fractions of the run), lands the wheel where the
+round's band can be met, and deals first any player who would otherwise be stranded. When nobody
+left can be dealt the run ends, cleared. It has its own goldens; the other modes' are unchanged.
+
 Ranked's seed depends only on the game number, so **every player gets the same sequence** — that is what
 makes the board comparable. Endless and Friendly are per-run.
 
@@ -442,7 +458,8 @@ Endless alike. **They are signed per mode**: Friendly's signature covers `"run:"
 always has, and Endless's `"run:endless:" + runBody`, so an id only verifies in the mode it was
 minted for and can't be played as the other (a Friendly id from before Endless still verifies).
 Each Endless variant signs under its own prefix too — Instagram Endless's is
-`"run:endless:instagram:" + runBody` — so a run id verifies only as the variant it was minted for. The body,
+`"run:endless:instagram:" + runBody`, a squad's `"run:squad:<theme id>:" + runBody` — so a run id
+verifies only as the variant it was minted for, and a Barcelona run can't be played as Chelsea's. The body,
 `YYYYMMDD-<uuid>` (`runBody` above), names the run; `sig` is the first 16 bytes of
 `HMAC-SHA256(RUN_SECRET, "run:" + runBody)` as unpadded base64url (22 characters). The server
 answers only run ids it signed: unsigned, tampered and malformed ids are `400`. The signature is
@@ -463,8 +480,9 @@ and the client builds the URL. `sig` signs the run and the score together — th
 `HMAC-SHA256(RUN_SECRET, "challenge:endless:" + runBody + ":" + score)`, unpadded base64url — so
 neither the run nor the "Beat n" number can be edited. Instagram Endless signs under
 `"challenge:endless:instagram:"`, and its links open `/legends/endless/instagram?challenge=…`; a
-link checks out only in the variant it was set in, so one opened on the other page starts a plain
-run with the usual note.
+squad signs under `"challenge:squad:<theme id>:"`, and its links open its theme's page
+(`/legends/clubs/barcelona?challenge=…`, "Beat 21/34"). A link checks out only in the variant it
+was set in, so one opened on another page starts a plain run with the usual note.
 
 - **A link sets the score to beat, never the sequence.** A start carrying one mints an ordinary
   fresh run — its own run id, its own seed — framed as "Beat n". There are no replay ids in
@@ -544,7 +562,7 @@ type ProgressPayload = {
   v: 1;
   runId: string; // the signed Endless run id
   mode: "endless"; // Ranked will add gameNo
-  variant?: "endless-instagram"; // an Endless variant; absent for general Endless
+  variant?: "endless-instagram" | `squad:${string}`; // an Endless variant; absent for general Endless
   // Friendly issues no token — it uses /api/round/next and carries no state.
   round: number;
   streak: number; // round - 1: the answers so far were all right
@@ -610,8 +628,13 @@ with its server-measured time. **Single job: spend each nonce once.**
 ### Endpoints
 
 **`POST /api/run/start`** (Endless) → `{ mode: "endless", variant?, turnstileToken, challenge? }`
-— `variant` is `"endless-instagram"` for Instagram Endless, absent for general Endless. The run's
-Durable Object records it, so its alarm can rebuild a silent run's open round.
+— `variant` is `"endless-instagram"` for Instagram Endless, `"squad:<theme id>"` for a "Clear the
+squad" theme, absent for general Endless. A squad id whose theme the deck doesn't have is `400`
+("variant names no theme in this deck"), before Turnstile. The run's Durable Object records the
+variant, so its alarm can rebuild a silent run's open round. A squad's guess that answers its last
+question right ends the run **`won`** (cleared), as does one after which nobody left can be dealt;
+a token naming a theme the deck has since lost is `409 token_mismatch`, and a leave or correction
+for one is refused.
 
 ```jsonc
 ← { "runId": "20260929-<uuid>.<sig>", "round": RoundPayload, "token": "…",
@@ -742,7 +765,7 @@ presses Publish.
    another script is a `422`, like a blocked one.
 3. **The token**: the run's signed result, or, for a run banked after a dropped connection, its
    latest progress token. The run id in it must be an Endless one this server signed, never a
-   retired replay id (`400`); a variant without boards (Instagram Endless) is `400 no_boards`,
+   retired replay id (`400`); a variant without boards (Instagram Endless, every squad) is `400 no_boards`,
    recorded as a refused `submit` and refused before its Durable Object, Turnstile or D1 are
    touched; the streak it proves must be above 0 (`400 zero`).
 4. **The run's Durable Object agrees** (`claimForSubmit`, above): only `/api/run/start` creates
@@ -1531,10 +1554,23 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   text side by side, centred on one line, with a bigger, wider Start centred beneath both
   (`--start-cta-*`, `--start-row-gap`). Portrait phones and desktops are unaffected.
 - `/credits` reads `packages/deck/dist/credits.json` with `fs` at build time. It is never imported,
-  so it can't enter the module graph.
+  so it can't enter the module graph. **`themes.json`** is read the same way (`lib/themes.ts`), by
+  the Legends page (a section and a card per theme), the theme pages
+  (`pages/football-higher-or-lower/legends/[kind]/[slug].astro`, one per theme from
+  `getStaticPaths`), the sitemap and `check:site`, which also fails on a theme with no built page.
+  The Worker never reads it: it derives the same themes from its own deck (`squadThemes`), which
+  is also what the feedback endpoint uses to accept a theme page's path.
+- **`?mockEnd=won`** (`pnpm dev` only, `game/dev.ts`): the guess goes to the server as usual, and
+  its verdict for that round comes back rewritten as a right answer that ends the run `won`, so a
+  squad's "Squad cleared" panel, share text and local best can be seen without knowing the answers.
+  The figures are the server's; only the verdict and the ending are made up. It sits behind
+  `import.meta.env.DEV` in a dynamic import, so a production build drops it, and `scan:dist` fails
+  if it ever ships.
 - **Local best** is one number per deck and mode in `localStorage`, `bt:best:<deck>:<mode>`
   (`bt:best:legends:friendly`; `game/best.ts`), shown only on the game pages — as "Best 12/20" in
-  Friendly. It is saved as soon as the streak passes it. The run compares itself with the best it
+  Friendly. A "Clear the squad" theme's, `bt:best:legends:squad:<theme id>`, is JSON instead —
+  `{"best":21,"cleared":false}`, the furthest through the squad and whether it was ever cleared,
+  merged on every save so neither is lost (`readSquadBest`, `saveSquadBest`). It is saved as soon as the streak passes it. The run compares itself with the best it
   started from (`bestBefore`; `bestOutcome` and `onNewBest` in `game/view.ts`): the game-over
   panel's best line becomes "New high score" (gold caps, the gold glow, popping in after
   `--highscore-delay` with one brighter pulse; none with reduced motion) or a quieter "Matched your
@@ -1925,7 +1961,9 @@ dataset has those), and no 404 under `/api/`, which scanners probe all day.
 
 `run` is the run key, so a start and its end can be paired. Endless's lines carry `"mode":
 "endless"` and come from `/api/run/start` and `/api/round/guess`; an Endless variant's add
-`"variant": "endless-instagram"` (filter on `variant` to watch one). `run_end` adds the round that
+`"variant": "endless-instagram"` (filter on `variant` to watch one). A "Clear the squad" run's lines
+say `"mode": "squad"` and its `"theme": "club-barcelona"` instead (filter on `theme`), and its
+`run_end` reason is `won` when the squad was cleared. `run_end` adds the round that
 ended the run: the miss on `wrong`, the timed-out question on `timeout` (`guess` is then
 `timeout`), the final question on `won`, the last answer on `deck-exhausted`. That's `endStat`
 (the stat's id and label), `guess` and `players`, each with the figure its card showed
@@ -2034,9 +2072,12 @@ happening, sample the `rate_limited` lines rather than dropping them.
 
 One layout for every event, so a column means the same thing everywhere. Blobs are strings,
 doubles numbers; unused columns are empty. **`blob2` is the mode, or an Endless variant's id**:
-`friendly`, `endless`, `endless-instagram`. Every query below groups or filters on it, so Instagram
-Endless shows as a mode of its own and never mixes into general Endless's figures (`pnpm stats
-endless` stays general Endless's).
+`friendly`, `endless`, `endless-instagram`, and `squad` for every "Clear the squad" theme. Every
+query below groups or filters on it, so Instagram Endless and the squads show as modes of their
+own and never mix into general Endless's figures (`pnpm stats endless` stays general Endless's).
+**`blob10` is a squad's theme id** (`club-barcelona`), on every one of its events — the event's own
+blobs are padded with empties to reach it — and absent (so empty) for every other mode, whose
+data points are exactly as before. Split the squads by `blob10`.
 
 | Column    | `start`      | `answer`                          | `end`              | `leave`                                       | `submit`                 |
 | --------- | ------------ | --------------------------------- | ------------------ | --------------------------------------------- | ------------------------ |
@@ -2050,6 +2091,7 @@ endless` stays general Endless's).
 | `blob7`   |              | tier: `basic`, `uncommon`, `rare` |                    | trigger: `hidden`, `pagehide`                 | shadowed: `1` or `0`     |
 | `blob8`   |              | band: `0.45+`, `0.30-0.80`, …     |                    | stat id; empty on the intro                   | day rank bucket, `1-10`… |
 | `blob9`   |              | final question: `1` or `0`        |                    |                                               | refusal, e.g. `expired`  |
+| `blob10`  | theme id     | theme id                          | theme id           | theme id                                      | theme id                 |
 | `double1` |              | round, 1–150                      | final score        | round on screen (0 the intro)                 | the run's score          |
 | `double2` |              | correct: 1 or 0                   |                    |                                               |                          |
 | `double3` |              | streak after the answer           |                    |                                               |                          |

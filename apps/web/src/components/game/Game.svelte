@@ -7,10 +7,12 @@
   in @bt/core: Friendly's twenty questions with a progress track, and
   Endless's streak against a clock, with a Turnstile check on Start and
   challenge links. An Endless variant (Instagram Endless) is Endless with its
-  own questions, its own local best, no wheel and no boards.
+  own questions, its own local best, no wheel and no boards. "Clear the squad"
+  is one per theme: Endless over a squad, each player once, with Friendly's
+  progress track and win panel ("Squad cleared") and its own local best.
 -->
 <script lang="ts">
-  import { CHALLENGES, WIN_ROUNDS, generateNickname } from "@bt/core";
+  import { CHALLENGES, generateNickname } from "@bt/core";
   import type { Guess, NamedVariant, SitePage } from "@bt/core";
   import type { PitchCard } from "../../game/view";
   import { onMount, tick } from "svelte";
@@ -20,7 +22,14 @@
   import { TIER_COLOUR } from "../../lib/tiers";
   import { createApi, createEndlessApi } from "../../game/api";
   import type { EndlessApi, Fetch, GameApi } from "../../game/api";
-  import { bestKey, browserStorage, readBest, saveBest } from "../../game/best";
+  import {
+    bestKey,
+    browserStorage,
+    readBest,
+    readSquadBest,
+    saveBest,
+    saveSquadBest,
+  } from "../../game/best";
   import {
     deviceId,
     publishedKey,
@@ -55,7 +64,16 @@
   import type { Draft, FeedbackKind, ReportedRound } from "../../game/feedback";
   import { createDraftStore, focusAfterClose } from "../../game/modal";
   import { initialState, shouldSpin } from "../../game/machine";
-  import { hasBoards, modeSubtitle, playId, spins, startIntro } from "../../game/variant";
+  import {
+    hasBoards,
+    modeSubtitle,
+    playId,
+    playOf,
+    spins,
+    squadNoteText,
+    startIntro,
+  } from "../../game/variant";
+  import type { Theme } from "../../game/variant";
   import { NO_NOTICE, TimedNotice } from "../../game/notice";
   import type { NoticeState } from "../../game/notice";
   import type { Challenge, GameMode, GameState } from "../../game/machine";
@@ -143,13 +161,21 @@
      * decides whether the wheel spins and whether runs can be published.
      */
     variant?: NamedVariant;
+    /**
+     * "Clear the squad" only: the theme, from the deck build's `themes.json`
+     * (names and counts only). Its name heads the start panel, and its size
+     * sets the run's win target (squad size − 1).
+     */
+    theme?: Theme;
     /** The game page's path, for the title bar: "Legends" under /legends, and the current page. */
     path: string;
   }
 
-  let { deck, mode, variant, path }: Props = $props();
+  let { deck, mode, variant, theme, path }: Props = $props();
   /** The mode, or the Endless variant: what the local best is kept under. */
   const play = $derived(playId(mode, variant));
+  /** How the run scores and ends: the mode, its win target, a squad's theme. */
+  const rules = $derived(playOf(mode, theme));
   /** Whether a finished run can be published: Endless's own boards only. */
   const boards = $derived(hasBoards(mode, variant));
 
@@ -287,12 +313,15 @@
 
     let fetchFn: Fetch = (input, init) => fetch(input, init);
     let removeDevPanel: (() => void) | undefined;
-    // pnpm dev only: the delay switch. The dynamic import sits in a branch a
-    // production build removes, so neither it nor the panel ships.
+    // pnpm dev only: the delay switch, and `?mockEnd=won`. The dynamic import
+    // sits in a branch a production build removes, so none of it ships.
     if (import.meta.env.DEV) {
       const dev = import("../../game/dev");
       const plain = fetchFn;
-      fetchFn = async (input, init) => (await dev).withDevDelay(plain)(input, init);
+      fetchFn = async (input, init) => {
+        const d = await dev;
+        return d.withMockEnd(d.withDevDelay(plain))(input, init);
+      };
       void dev.then((d) => (removeDevPanel = d.mountDevPanel()));
     }
 
@@ -315,6 +344,8 @@
     const api: GameApi = endlessApi ?? createApi(fetchFn);
 
     const key = bestKey(deck, play);
+    // A squad keeps how far it got and whether it was ever cleared (best.ts).
+    const squad = theme !== undefined;
     const c = new GameController({
       api,
       mode,
@@ -324,13 +355,19 @@
       now: () => performance.now(),
       schedule,
       reducedMotion: () => reducedMotion,
-      best: readBest(browserStorage, key),
-      saveBest: (best) => void saveBest(browserStorage, key, best),
+      best: squad ? readSquadBest(browserStorage, key).best : readBest(browserStorage, key),
+      saveBest: (best) =>
+        void (squad
+          ? saveSquadBest(browserStorage, key, { best, cleared: false })
+          : saveBest(browserStorage, key, best)),
       challenge,
       // Endless: every run goes on this device's board, published or not, and
       // one that scored can be published if it beats the day's published best.
-      // A variant without boards (Instagram Endless) keeps neither.
+      // A variant without boards (Instagram Endless, a squad) keeps neither.
       onOver: (over) => {
+        if (squad && over.end === "won") {
+          saveSquadBest(browserStorage, key, { best: over.streak, cleared: true });
+        }
         if (endlessApi === null || over.end === null || !boards) return;
         recordRun(browserStorage, runsKey(deck, mode), {
           score: over.streak,
@@ -366,8 +403,8 @@
     };
   });
 
-  /** The mode's win target — Friendly's 20 — or null for a mode without one. */
-  const target = $derived(WIN_ROUNDS[mode]);
+  /** The run's win target — Friendly's 20, a squad's questions — or null for none. */
+  const target = $derived(rules.target);
   const phase = $derived(game.phase);
   const round = $derived(game.round);
   const reveal = $derived(game.reveal);
@@ -385,7 +422,7 @@
     round !== null && shouldSpin(round, spins(mode, variant)) && wheeling ? round.index : null,
   );
   /** The title card at a run's start: "Question 1 of 20", or "Beat 7/20". */
-  const titleCardText = $derived(titleCard(game, mode));
+  const titleCardText = $derived(titleCard(game, rules));
   /** The cards on the pitch; three during the carousel to the next pair. */
   const cards = $derived(pitchCards(game));
   const anchorShows = $derived(anchorFigure(game));
@@ -395,7 +432,7 @@
   /** The first deal's kick-off: round one's cards sliding in. */
   const intro = $derived(isIntro(game));
   /** "Question 1 of 20" on the plaque until round one's wheel spins into the stat. */
-  const lead = $derived(plaqueLead(game, mode));
+  const lead = $derived(plaqueLead(game, rules));
   const tier = $derived(game.plaque?.tier ?? "basic");
   // A slow-down is a pause, not a wait on the network: the number rests at "?"
   // rather than scrambling until it's over.
@@ -405,17 +442,21 @@
   const offered = $derived(game.challenge?.status === "offered" ? game.challenge.link : null);
   const notice = $derived(challengeNotice(game));
   const won = $derived(game.end === "won");
-  const title = $derived(titleText(game.streak, mode));
+  const title = $derived(titleText(game.streak, rules));
   const result = $derived(challengeResult(game));
-  const cells = $derived(gridCells(game.history, mode));
-  const steps = $derived(trackSteps(game, mode));
-  const finalQuestion = $derived(isFinalQuestion(game, mode));
+  const cells = $derived(gridCells(game.history, rules));
+  const steps = $derived(trackSteps(game, rules));
+  const finalQuestion = $derived(isFinalQuestion(game, rules));
   const verdictText = $derived(verdictLabel(game));
   /** "3/20" at the top of the pitch after a right answer, Friendly only. */
-  const badge = $derived(scoreBadge(game, mode));
+  const badge = $derived(scoreBadge(game, rules));
   const report = $derived(reportedRound(game));
   /** Endless: the streak title the run holds so far, at the top of the pitch. */
-  const chip = $derived(titleChip(game, mode));
+  const chip = $derived(titleChip(game, rules));
+  /** A squad's line under the plaque on club goals: "Whole career, not just Barcelona". */
+  const plaqueNote = $derived(
+    theme !== undefined && game.plaque !== null ? squadNoteText(game.plaque.key, theme) : "",
+  );
 
   /**
    * `performance.now()`, every frame while a question's clock runs: the one
@@ -453,7 +494,7 @@
     if (/(^|-)badge(-fade)?$/.test(event.animationName)) badgeShowing = false;
   }
   /** A run banked after the connection dropped: "your streak of n is saved". */
-  const banked = $derived(bankedText(game, mode));
+  const banked = $derived(bankedText(game, rules));
   /** A signed challenge to share, in a mode with them, once the run is over. */
   const canChallenge = $derived(CHALLENGES[mode] && game.link !== null);
 
@@ -557,8 +598,8 @@
       game.history,
       game.end,
       site(),
-      mode,
-      endingNames(game, mode),
+      rules,
+      endingNames(game, rules),
       variant,
     );
     await shareOut(text);
@@ -566,7 +607,7 @@
 
   /** "Beat n" and the link: a friend's own fresh run against this score. */
   async function onChallenge(): Promise<void> {
-    const text = challengeText(game.link, site(), mode, variant);
+    const text = challengeText(game.link, site(), rules, variant);
     if (text !== null) await shareOut(text);
   }
 
@@ -585,7 +626,7 @@
     drawing = true;
     const show = shareNotes.begin();
     try {
-      const blob = await renderShareImage(shareCard(game, SITE_LABEL, mode));
+      const blob = await renderShareImage(shareCard(game, SITE_LABEL, rules));
       const name = t("share.fileName", { score: game.streak });
       const outcome = await shareResultImage(blob, name, platform);
       show(
@@ -685,7 +726,7 @@
     <Track
       {steps}
       answered={game.history.length}
-      label={progressText(game, mode)}
+      label={progressText(game, rules)}
       final={finalQuestion}
     />
   {/if}
@@ -799,6 +840,8 @@
         stage={plaqueStage(game)}
         clock={game.clock}
         {now}
+        {variant}
+        note={plaqueNote}
       />
     {/if}
 
@@ -821,7 +864,7 @@
       </div>
     {/if}
 
-    <p class="sr" aria-live="polite">{announcement(game, mode)}</p>
+    <p class="sr" aria-live="polite">{announcement(game, rules)}</p>
     {#if phase !== "idle" && phase !== "starting"}
       <!-- The start panel's heading, "Football Legends", goes with it; the page keeps one. -->
       <h1 class="sr">{t("brand.heading")}</h1>
@@ -864,21 +907,30 @@
               {t("brand.game")}
             </div>
             <h1 class="deckname">{t("brand.footballLegends")}</h1>
-            <div class="modename"><span>{modeSubtitle(mode, variant)}</span></div>
+            <div class="modename" class:long={theme !== undefined && theme.name.length > 12}>
+              <span>{modeSubtitle(mode, variant, theme)}</span>
+            </div>
           </div>
           <div class="lead">
             <div class="blurb">
               <div class="intro">
                 {#if offered}
-                  <p class="beat">{challengeHeading(offered.score, mode)}</p>
-                  <p>{challengeIntro(offered.score, mode)}</p>
+                  <p class="beat">{challengeHeading(offered.score, rules)}</p>
+                  <p>{challengeIntro(offered.score, rules)}</p>
+                {:else if theme !== undefined}
+                  <p class="squadcount">
+                    {t(`squad.count.${theme.type}`, { players: theme.players, name: theme.name })}
+                  </p>
                 {:else if target !== null}
                   <p>{t("start.introTarget", { target })}</p>
                 {:else}
                   <p>{startIntro(mode, variant)}</p>
                 {/if}
               </div>
-              {#if mode === "endless"}
+              {#if theme !== undefined}
+                <!-- A squad's rules in one line, the clock among them. -->
+                <p class="clockline">{t("squad.rules")}</p>
+              {:else if mode === "endless"}
                 <p class="clockline">
                   {t("start.clock")}
                   {t("start.noClock")} <a href={FRIENDLY_PATH}>{t("start.playFriendly")}</a>
@@ -933,12 +985,12 @@
                   d="M7 3h10v5a5 5 0 0 1-10 0V3zM7 5H4v1.5A3.5 3.5 0 0 0 7.5 10M17 5h3v1.5A3.5 3.5 0 0 1 16.5 10M12 13v4M8.5 21h7M9.5 17h5l.5 4h-6z"
                 />
               </svg>
-              <p class="wontitle">{t("over.won")}</p>
+              <p class="wontitle">{theme !== undefined ? t("over.squadCleared") : t("over.won")}</p>
             {/if}
             <div class="final num">
               {game.streak}{#if target !== null}<span class="of">/{target}</span>{/if}
             </div>
-            <div class="finalcap">{overCaption(game)}</div>
+            <div class="finalcap">{overCaption(game, rules)}</div>
             {#if title}
               <div class="sublegend title">{title}</div>
             {/if}
@@ -948,13 +1000,13 @@
             {:else if best === "matched"}
               <div class="best matched">{t("over.matchedBest")}</div>
             {:else}
-              <div class="best">{t("over.best", { best: scoreFigure(game.best, mode) })}</div>
+              <div class="best">{t("over.best", { best: scoreFigure(game.best, rules) })}</div>
             {/if}
             {#if result}
-              <p class="outcome">{outcomeText(result.outcome, result.target, mode)}</p>
+              <p class="outcome">{outcomeText(result.outcome, result.target, rules)}</p>
             {/if}
             {#if cells.length > 0}
-              <div class="grid" role="img" aria-label={gridLabel(game.history, mode)}>
+              <div class="grid" role="img" aria-label={gridLabel(game.history, rules, variant)}>
                 {#each cells as cell, i (i)}
                   <span
                     class="cell"
@@ -970,7 +1022,7 @@
           <div class="actions">
             {#if round && reveal}
               <div class="reason">
-                <span class="lab">{statLabel(round.stat.key)}</span>
+                <span class="lab">{statLabel(round.stat.key, variant)}</span>
                 <b>{round.anchor.name}</b>
                 {round.anchor.display}
                 <span aria-hidden="true">{t("over.separator")}</span>
@@ -989,7 +1041,7 @@
             {/if}
             <button class="cta" bind:this={againButton} onclick={start}>{t("over.again")}</button>
             {#if !boards}
-              <!-- No boards (Instagram Endless): no Publish, and no best to beat. -->
+              <!-- No boards (Instagram Endless, a squad): no Publish, and no best to beat. -->
             {:else if boardLine !== null}
               <!-- Endless, once published: where it landed today; or the best to beat. And the board. -->
               <p class="published" class:stacked={boardLine.beat}>
@@ -1583,6 +1635,9 @@
     text-indent: var(--tracking-modename);
     text-transform: uppercase;
     color: var(--gold);
+  }
+  .modename.long {
+    font-size: var(--fs-modename-long);
   }
   .modename span {
     text-shadow: var(--modename-glow);

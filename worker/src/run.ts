@@ -25,12 +25,12 @@
  */
 
 import {
-  ENDLESS_VARIANTS,
   buildRun,
   deadlineFor,
   flagCountry,
   hasWheel,
   isNamedVariant,
+  resolveVariant,
   roundCap,
   valueOf,
   variantDeck,
@@ -40,6 +40,7 @@ import type {
   ApiError,
   ChallengeLink,
   ChallengeStatus,
+  EndlessVariant,
   EndlessVariantId,
   GuessContinueResponse,
   GuessEndResponse,
@@ -53,7 +54,7 @@ import type {
   RunStartResponse,
   TimedGuess,
 } from "@bt/core";
-import { finalRound, pairRankDistance, shownRound } from "./analytics.js";
+import { bandLabel, finalRound, pairRankDistance, shownRound } from "./analytics.js";
 import type { EndEvent, GameEvent, RunKind, ShownRound } from "./analytics.js";
 import { challengeLink, checkChallenge } from "./challenge.js";
 import { isCorrect, toReveal, toRoundPayload } from "./payload.js";
@@ -124,6 +125,10 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
   if (!parsed.ok) return badRequest(parsed.detail);
   const req = parsed.value;
   const variant = variantOf(req.variant);
+  // A squad names a theme, which only the deck can vouch for.
+  if (resolveVariant(variant, ctx.deck) === undefined) {
+    return badRequest("variant names no theme in this deck");
+  }
 
   const verdict = await ctx.verifyTurnstile(req.turnstileToken);
   if (verdict === "fail") return { status: 403, body: { error: "verification_failed" } };
@@ -178,7 +183,7 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
   );
   const response: RunStartResponse = {
     runId,
-    round: toRoundPayload(first, run.date, ctx.images, rounds[1]),
+    round: toRoundPayload(first, run.date, ctx.images, rounds[1], variant),
     token,
     // What the publish dialog will show as the flag; the code only.
     country: flagCountry(ctx.country),
@@ -201,6 +206,12 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
   const variant = variantOf(token.variant);
   const run = await verifyRunId(token.runId, ctx.secret, variant);
   if (run === undefined || run.replay) return badRequest("token names no Endless run");
+  // A genuine token for a theme the deck no longer has: the deck changed mid-run.
+  const config = resolveVariant(variant, ctx.deck);
+  if (config === undefined) return conflict("token_mismatch");
+  const cap = Math.min(ENDLESS_CAP, config.questions ?? ENDLESS_CAP);
+  // Out of rounds: a squad dealt in full is cleared; any other run ran out of deck.
+  const exhausted: RunEnd = config.format === "squad" ? "won" : "deck-exhausted";
 
   const limited = await ctx.limits?.answer(run.body);
   if (limited?.ok === false) return rateLimited(limited.retryAfter, "answers");
@@ -211,7 +222,7 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
 
   // Two past the answered round: the next question, and the round after it,
   // whose challenger's photo the next question carries as `upcoming`.
-  const rounds = await dealTo(ctx, run, Math.min(token.round + 2, ENDLESS_CAP), variant);
+  const rounds = await dealTo(ctx, run, Math.min(token.round + 2, cap), variant);
   const round = rounds[token.round - 1];
   if (round === undefined || !matches(token, round, now)) {
     // A genuine token the sequence doesn't bear out: the deck changed mid-run.
@@ -226,13 +237,13 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
     ? "timeout"
     : !correct
       ? "wrong"
-      : next === undefined || token.round >= ENDLESS_CAP
-        ? "deck-exhausted"
+      : next === undefined || token.round >= cap
+        ? exhausted
         : null;
 
   const outcome: StepOutcome =
     end !== null || next === undefined
-      ? { kind: "end", end: end ?? "deck-exhausted", score, endedAt: receivedAt }
+      ? { kind: "end", end: end ?? exhausted, score, endedAt: receivedAt }
       : {
           kind: "next",
           nonce: ctx.uuid(),
@@ -254,7 +265,7 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
   // A resend of the latest step is answered exactly as before, from what the
   // ledger kept: the same next token, issue time and deadline, or the same end.
   const settled = advanced.outcome;
-  // Right when it led on, or to an end at this round's score (the deck ran out).
+  // Right when it led on, or to an end at this round's score (the deck ran out, or the squad's cleared).
   const right = settled.kind === "next" || settled.score === token.round;
   const reveal = toReveal(round, now, right);
 
@@ -264,7 +275,7 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
     if (following === undefined) throw new Error("a next token for a round the run can't deal");
     const continued: GuessContinueResponse = {
       reveal,
-      next: toRoundPayload(following, now, ctx.images, rounds[token.round + 1]),
+      next: toRoundPayload(following, now, ctx.images, rounds[token.round + 1], variant),
       token: await signToken(
         ctx.secret,
         progress(
@@ -301,7 +312,7 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
 
   // Recorded once, when the answer is first accepted — never for a resend.
   if (advanced.fresh) {
-    record(ctx, run, variant, advanced.runKind, round, token, guess, right, advanced.ms, settled);
+    record(ctx, run, config, advanced.runKind, round, token, guess, right, advanced.ms, settled);
   }
   return { status: 200, body: response };
 }
@@ -321,7 +332,7 @@ export async function disconnectedEnd(
   const id = parseRunId(run.runId);
   const variant = variantOf(run.variant);
   let shown: ShownRound | undefined;
-  if (id !== undefined) {
+  if (id !== undefined && resolveVariant(variant, deck) !== undefined) {
     const seed = await endlessSeed(secret, id.origin, variant);
     const rounds = buildRun({
       deck,
@@ -351,7 +362,7 @@ export async function disconnectedEnd(
 function record(
   ctx: RunContext,
   run: RunId,
-  variant: EndlessVariantId,
+  variant: EndlessVariant,
   runKind: RunKind,
   round: Round,
   token: ProgressPayload,
@@ -361,7 +372,7 @@ function record(
   outcome: StepOutcome,
 ): void {
   if (ctx.record === undefined) return;
-  const facts = { mode: "endless", ...named(variant), run: run.body, runKind } as const;
+  const facts = { mode: "endless", ...named(variant.id), run: run.body, runKind } as const;
   ctx.record({
     type: "answer",
     ...facts,
@@ -370,8 +381,10 @@ function record(
     correct,
     streak: correct ? token.round : token.round - 1,
     relaxation: round.relaxation,
+    band: bandLabel(token.round, "endless", variant),
+    // On the deck the run measured closeness against: a squad's is the whole deck.
     rankDistance: pairRankDistance(
-      variantDeck(ctx.deck, ENDLESS_VARIANTS[variant]),
+      variant.format === "squad" ? ctx.deck : variantDeck(ctx.deck, variant),
       round,
       run.date,
     ),
@@ -481,7 +494,10 @@ export function parseRunStart(body: unknown): Parsed<RunStartRequest> {
   }
   if (record.mode !== "endless") return { ok: false, detail: 'mode must be "endless"' };
   if ("variant" in record && !isNamedVariant(record.variant)) {
-    return { ok: false, detail: 'variant must be "endless-instagram", or absent for Endless' };
+    return {
+      ok: false,
+      detail: 'variant must be "endless-instagram" or "squad:<theme>", or absent for Endless',
+    };
   }
   const variant = isNamedVariant(record.variant) ? { variant: record.variant } : {};
   const { turnstileToken } = record;

@@ -345,6 +345,12 @@
   --final-tag-halo: 3px;
   --final-tag-gap: 6px;
   --final-tag-inset: 10px;
+  /* "Clear the squad": what club goals count, on the plaque's bottom edge. Quieter
+     than the final tag: chalk on the night. */
+  --plaque-note-bg: var(--night);
+  --plaque-note-text: var(--chalk);
+  --fs-plaque-note: 11px;
+  --plaque-note-pad: 2px 10px;
   --shadow-plaque-final:
     0 0 0 2px var(--gold), 0 0 0 5px rgba(var(--glow-rgb), 0.28), 0 4px 14px rgba(0, 0, 0, 0.45),
     var(--glow-hover);
@@ -633,11 +639,109 @@
      on the card (its title on hover, its "Your best" line). Its heart is red. */
   --instagram: #f0558a;
   --instagram-rgb: 240, 85, 138;
+  /* Instagram Endless's card fades its pink into the site's gold (Card.astro). Set here, on
+     :root, so it stays gold inside the card, which takes --gold over for its pink. */
+  --instagram-gold: var(--gold);
   --heart: #ef3b4a;
   --heart-rgb: 239, 59, 74;
   /* "Your best: n" on a mode's card: gold, or the card's accent. */
   --card-best: var(--gold);
   --card-glyph: 26px;
+
+  /* "Clear the squad"'s theme cards (ThemeCard.astro), each in colours of its own,
+     by theme id: -1 and -2 its two colours, for the edge's gradient; -rgb the
+     hover glow's colour; -text-1 and -text-2 the name's two tints, which must
+     read at AA on the card (cards.test.ts). A club's are its own colours —
+     colours only, never a crest or badge. */
+  --club-barcelona-1: #a50044;
+  --club-barcelona-2: #004d98;
+  --club-barcelona-rgb: 222, 40, 110;
+  --club-barcelona-text-1: #ff7fae;
+  --club-barcelona-text-2: #7fb6ff;
+  --club-ac-milan-1: #e2001a;
+  --club-ac-milan-2: #111111;
+  --club-ac-milan-rgb: 226, 0, 26;
+  --club-ac-milan-text-1: #ff6670;
+  --club-ac-milan-text-2: #f2f2f2;
+  --club-juventus-1: #f2f2f2;
+  --club-juventus-2: #111111;
+  --club-juventus-rgb: 242, 242, 242;
+  --club-juventus-text-1: #ffffff;
+  --club-juventus-text-2: #b8b8b8;
+  --club-real-madrid-1: #ffffff;
+  --club-real-madrid-2: #febe10;
+  --club-real-madrid-rgb: 254, 210, 90;
+  --club-real-madrid-text-1: #ffffff;
+  --club-real-madrid-text-2: #ffd75e;
+  --club-manchester-united-1: #da291c;
+  --club-manchester-united-2: #111111;
+  --club-manchester-united-rgb: 230, 60, 45;
+  --club-manchester-united-text-1: #ff6b5e;
+  --club-manchester-united-text-2: #ffffff;
+  --club-inter-1: #0068a8;
+  --club-inter-2: #111111;
+  --club-inter-rgb: 40, 140, 220;
+  --club-inter-text-1: #5ab4ff;
+  --club-inter-text-2: #9ed3ff;
+  --club-chelsea-1: #034694;
+  --club-chelsea-2: #dba111;
+  --club-chelsea-rgb: 40, 110, 210;
+  --club-chelsea-text-1: #6fa8ff;
+  --club-chelsea-text-2: #e8b631;
+  --club-bayern-munich-1: #dc052d;
+  --club-bayern-munich-2: #0066b2;
+  --club-bayern-munich-rgb: 230, 30, 70;
+  --club-bayern-munich-text-1: #ff6680;
+  --club-bayern-munich-text-2: #66b3ff;
+  /* Leagues: an accent each. */
+  --league-la-liga-1: #ee4235;
+  --league-la-liga-2: #ff8a3d;
+  --league-la-liga-rgb: 245, 100, 60;
+  --league-la-liga-text-1: #ff7a6b;
+  --league-la-liga-text-2: #ffad73;
+  --league-premier-league-1: #6b2fa8;
+  --league-premier-league-2: #b46cff;
+  --league-premier-league-rgb: 160, 100, 240;
+  --league-premier-league-text-1: #c39bff;
+  --league-premier-league-text-2: #e7b8ff;
+  --league-serie-a-1: #008fd7;
+  --league-serie-a-2: #4ec3ff;
+  --league-serie-a-rgb: 40, 170, 240;
+  --league-serie-a-text-1: #5cc5ff;
+  --league-serie-a-text-2: #a6e1ff;
+  --league-ligue-1-1: #dae025;
+  --league-ligue-1-2: #091c3e;
+  --league-ligue-1-rgb: 218, 224, 37;
+  --league-ligue-1-text-1: #e3ea4a;
+  --league-ligue-1-text-2: #f1f59a;
+  --league-bundesliga-1: #d20515;
+  --league-bundesliga-2: #ff6670;
+  --league-bundesliga-rgb: 225, 40, 55;
+  --league-bundesliga-text-1: #ff6670;
+  --league-bundesliga-text-2: #ffd2d5;
+  /* Eras: a decade each (ThemeCard.astro adds the 1990s' scanlines and the 2000s' chrome). */
+  --era-1990s-1: #00b3a4;
+  --era-1990s-2: #e0007a;
+  --era-1990s-rgb: 0, 200, 185;
+  --era-1990s-text-1: #36e0cf;
+  --era-1990s-text-2: #ff6fb9;
+  --era-2000s-1: #9fb4c7;
+  --era-2000s-2: #3a6ea5;
+  --era-2000s-rgb: 170, 195, 220;
+  --era-2000s-text-1: #d6e2ee;
+  --era-2000s-text-2: #8fb4d9;
+  --era-2010s-1: #3ef0b0;
+  --era-2010s-2: #2f6bff;
+  --era-2010s-rgb: 62, 240, 176;
+  --era-2010s-text-1: #6ff5c4;
+  --era-2010s-text-2: #7fa3ff;
+  /* The theme cards' grid and section headings on the Legends page. */
+  --theme-card-pad: 18px 16px 20px;
+  --theme-card-min-h: 128px;
+  --fs-theme-name: 19px;
+  --fs-theme-heading: 26px;
+  --theme-heading-top: 44px;
+  --theme-edge-w: 3px;
 
   /* The Endless leaderboard page (Leaderboard.svelte): the boards in the
      cards' glass, tabs as the secondary button's outlined pills, the player's
@@ -718,6 +822,9 @@
      Every panel still fits at that size with room to spare. */
   --fs-modename-max: 20px;
   --fs-modename: min(var(--fs-modename-max), var(--fs-deckname));
+  /* A long squad name ("Manchester United") steps down with the screen, so it stays on
+     one line at 320 (16px there) and has the full size wherever it fits. */
+  --fs-modename-long: min(var(--fs-modename), 5vw);
   --modename-top: 22px;
   --tracking-modename: 0.16em;
   --modename-glow: var(--glow);

@@ -3,14 +3,16 @@
  * the last step of `pnpm build` and `pnpm build:prod`, so CI and every deploy
  * fail if deck data reaches `apps/web/dist`.
  *
- * Scans against the deck the build just used: `dist/deck.full.json`.
+ * Scans against the deck the build just used: `dist/deck.full.json`. It also
+ * fails on any dev tool in the built site (`devToolsIn`): `pnpm dev`'s
+ * `?mockEnd=won` shim must be stripped from production builds entirely.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Player } from "@bt/core";
-import { SCANNED_EXTENSIONS, scanDist } from "./dist-scan.js";
+import { SCANNED_EXTENSIONS, devToolsIn, scanDist } from "./dist-scan.js";
 import type { DistFile } from "./dist-scan.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -45,9 +47,16 @@ function main(): number {
   console.log(
     `scan:dist: ${files.length} file(s) in ${relative(repoRoot, siteDir)} against ${players.length} players`,
   );
+  const tools = devToolsIn(files);
+  if (tools.length > 0) {
+    console.error(`\nscan:dist: dev tools reached the built site\n`);
+    for (const p of tools) console.error(`  ${p}`);
+    console.error("");
+    return 1;
+  }
   const problems = scanDist(files, players, new Date());
   if (problems.length === 0) {
-    console.log("  no player ids, and no stat value near a player's name");
+    console.log("  no player ids, no stat value near a player's name, and no dev tools");
     return 0;
   }
   console.error(`\nscan:dist: ${problems.length} leak(s) — deck data reached the built site\n`);
