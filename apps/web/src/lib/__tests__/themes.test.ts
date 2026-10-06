@@ -19,7 +19,7 @@ const THEMES = [
   { id: "club-barcelona", type: "club", name: "Barcelona", slug: "barcelona", players: 35 },
   { id: "league-la-liga", type: "league", name: "La Liga", slug: "la-liga", players: 69 },
   { id: "era-2000s", type: "era", name: "2000s", slug: "2000s", players: 51 },
-  { id: "club-arsenal", type: "club", name: "Arsenal", slug: "arsenal", players: 15 },
+  { id: "club-napoli", type: "club", name: "Napoli", slug: "napoli", players: 12 },
 ] as const;
 
 describe("themes.json", () => {
@@ -62,9 +62,9 @@ describe("the themes' pages", () => {
       },
       {
         theme: THEMES[3],
-        path: "/football-higher-or-lower/legends/clubs/arsenal",
+        path: "/football-higher-or-lower/legends/clubs/napoli",
         kind: "clubs",
-        variant: "squad:club-arsenal",
+        variant: "squad:club-napoli",
       },
     ]);
   });
@@ -108,6 +108,9 @@ describe("the themes' colours", () => {
       "era-1990s",
       "era-2000s",
       "era-2010s",
+      "era-classic-era",
+      "club-arsenal",
+      "club-manchester-city",
     ]) {
       expect(THEME_COLOURS.has(id), id).toBe(true);
     }

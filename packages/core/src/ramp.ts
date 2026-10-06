@@ -124,12 +124,14 @@ export const INSTAGRAM_SCHEDULE: readonly BandRow[] = [
 /**
  * "Clear the squad" (variants.ts) ramps by **progress** through the squad, not
  * by round: `upTo` is the fraction of the run's questions answered, so a
- * 15-player club and a 69-player league both build to a hard finish. Two
- * endpoints with the same breakpoints, `SQUAD_SMALL` (a 15-player squad) and
- * `SQUAD_LARGE` (69), are blended by squad size (`squadSchedule`): a short
- * run needs harder questions on average than a long one for the two to clear
- * about as often. Each is **never easier** from one row to the next, so any
- * blend of them isn't either. DESIGN.md §8.
+ * 15-player club and a 69-player league both build to a hard finish. Three
+ * endpoints with the same breakpoints, `SQUAD_TINY` (a 10-player squad, the
+ * fewest a theme can have), `SQUAD_SMALL` (15) and `SQUAD_LARGE` (69), are
+ * blended by squad size (`squadSchedule`): a short run needs harder questions
+ * on average than a long one for the two to clear about as often. Each is
+ * **never easier** from one row to the next, and each is at least as hard as
+ * the next size up, row by row, so no blend of them is easier either.
+ * DESIGN.md §8.
  *
  * Tuned against simulation.md's "Clear the squad" section with the `fan`
  * model, 20,000 runs per theme.
@@ -151,31 +153,52 @@ export const SQUAD_LARGE: readonly BandRow[] = [
 ];
 
 /** The squad sizes `SQUAD_SMALL` and `SQUAD_LARGE` are tuned for. */
-export const SQUAD_SIZES = { small: 15, large: 69 } as const;
+/**
+ * A 10-player squad has 9 questions, and its last ones are dealt from whoever
+ * is left: only a hard start and middle keep its clear rate near a bigger
+ * squad's.
+ */
+export const SQUAD_TINY: readonly BandRow[] = [
+  { upTo: 0.2, band: { floor: 0.08, ceiling: 0.3 } },
+  { upTo: 0.45, band: { floor: 0.01, ceiling: 0.05 } },
+  { upTo: 0.7, band: { floor: 0.01, ceiling: 0.03 } },
+  { upTo: 0.85, band: { floor: 0.01, ceiling: 0.02 } },
+  { upTo: Infinity, band: { floor: 0.01, ceiling: 0.02 } },
+];
+
+export const SQUAD_SIZES = { tiny: 10, small: 15, large: 69 } as const;
 
 /** How far `squadSchedule`'s blend leans towards the large end: 1 is linear. */
 export const SQUAD_BLEND = 0.65;
 
 /**
- * One squad's schedule: the two endpoints blended by its size, clamped to
- * them. The blend leans towards the large end (`SQUAD_BLEND`, a power of the
- * linear share under 1): only the very smallest squads need the small end's
- * hard middle.
+ * One squad's schedule, its endpoints blended by its size and clamped to them.
+ * From 15 players up, `SQUAD_SMALL` into `SQUAD_LARGE`, the blend leaning
+ * towards the large end (`SQUAD_BLEND`, a power of the linear share under 1):
+ * only the very smallest squads need the small end's hard middle. Under 15,
+ * `SQUAD_TINY` into `SQUAD_SMALL`, linearly.
  */
 export function squadSchedule(size: number): readonly BandRow[] {
-  const span = SQUAD_SIZES.large - SQUAD_SIZES.small;
-  const share = Math.min(Math.max((size - SQUAD_SIZES.small) / span, 0), 1);
-  const t = share ** SQUAD_BLEND;
+  const { tiny, small, large } = SQUAD_SIZES;
+  if (size < small) {
+    return blend(SQUAD_TINY, SQUAD_SMALL, Math.max((size - tiny) / (small - tiny), 0));
+  }
+  const share = Math.min((size - small) / (large - small), 1);
+  return blend(SQUAD_SMALL, SQUAD_LARGE, share ** SQUAD_BLEND);
+}
+
+/** `from`'s rows `t` of the way to `to`'s, which share its breakpoints. */
+function blend(from: readonly BandRow[], to: readonly BandRow[], t: number): readonly BandRow[] {
   const mix = (a: number, b: number) => a + (b - a) * t;
-  return SQUAD_SMALL.map((row, i) => {
-    const large = SQUAD_LARGE[i]!;
+  return from.map((row, i) => {
+    const other = to[i]!;
     const { floor, ceiling } = row.band;
     // An open ceiling is the top of the scale, 1, for the blend; open only if both are.
     const top =
-      ceiling === null && large.band.ceiling === null
+      ceiling === null && other.band.ceiling === null
         ? null
-        : mix(ceiling ?? 1, large.band.ceiling ?? 1);
-    return { upTo: row.upTo, band: { floor: mix(floor, large.band.floor), ceiling: top } };
+        : mix(ceiling ?? 1, other.band.ceiling ?? 1);
+    return { upTo: row.upTo, band: { floor: mix(floor, other.band.floor), ceiling: top } };
   });
 }
 

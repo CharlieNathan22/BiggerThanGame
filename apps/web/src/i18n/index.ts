@@ -29,6 +29,11 @@ export function t(key: MessageKey, params: Params = {}): string {
   return interpolate(messages[key], params);
 }
 
+/** Whether `key` is one of the messages. */
+export function hasMessage(key: string): key is MessageKey {
+  return Object.hasOwn(messages, key);
+}
+
 export function interpolate(template: string, params: Params): string {
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => {
     const value = params[name];

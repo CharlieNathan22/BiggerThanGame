@@ -14,7 +14,8 @@ import {
   variantOf,
 } from "@bt/core";
 import type { EndlessVariantId, Mode, NamedVariant, SquadTheme, StatKey } from "@bt/core";
-import { t } from "../i18n";
+import { hasMessage, t } from "../i18n";
+import type { MessageKey, Params } from "../i18n";
 import { ENDLESS_PATH, FRIENDLY_PATH, INSTAGRAM_PATH, themePagePath } from "../lib/paths";
 import type { GameMode } from "./machine";
 
@@ -87,11 +88,28 @@ export function modeSubtitle(mode: GameMode, variant?: NamedVariant, theme?: The
 }
 
 /**
+ * A theme's words: `<kind>.<theme id>` where one theme has its own (the
+ * Classic Era says what it spans), else `<kind>.<type>`, else `<kind>`. The
+ * theme's name and player count fill `{name}` and `{players}`.
+ */
+export function themeText(
+  kind: "theme.players" | "squad.count" | "squad.title" | "squad.description" | "squad.note",
+  theme: Theme,
+  params: Params = {},
+): string {
+  const words = { name: theme.name, players: theme.players, ...params };
+  for (const key of [`${kind}.${theme.id}`, `${kind}.${theme.type}`, kind]) {
+    if (hasMessage(key)) return t(key as MessageKey, words);
+  }
+  throw new Error(`no message for ${kind} (${theme.id})`);
+}
+
+/**
  * The line under the plaque in a squad: what club goals count there ("Whole
  * career, not just Barcelona"; `squadNote` in @bt/core). Empty for any other stat.
  */
 export function squadNoteText(stat: StatKey, theme: Theme): string {
-  return stat === "club_goals" ? t(`squad.note.${theme.type}`, { name: theme.name }) : "";
+  return stat === "club_goals" ? themeText("squad.note", theme) : "";
 }
 
 /** The start panel's intro, when the run isn't a challenge and has no win target. */

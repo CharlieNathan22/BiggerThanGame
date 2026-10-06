@@ -115,6 +115,8 @@ export const en = {
   "themes.league": "Leagues",
   "themes.era": "Eras",
   "theme.players": "{players} legends",
+  // The Classic Era says what it spans
+  "theme.players.era-classic-era": "{players} legends, 1980s and older",
   // A theme card's best, from this device: {best} and {of} are filled in there
   "theme.best": "Best {best}/{of}",
   "theme.cleared": "Cleared ✓",
@@ -128,6 +130,8 @@ export const en = {
     "Clear the {name} squad: {players} legends, one at a time. Higher or lower on goals, caps and trophies, with one life and a short clock. Free in your browser.",
   "squad.description.league":
     "Clear the {name} squad: {players} legends, one at a time. Higher or lower on goals, caps and trophies, with one life and a short clock. Free in your browser.",
+  "squad.description.era-classic-era":
+    "Clear the Classic Era squad: {players} legends who peaked in the 1980s or before. Higher or lower on goals, caps and trophies, one life and a short clock. Free in your browser.",
   "squad.description.era":
     "Clear the {name} squad: {players} legends at their peak in the {name}. Higher or lower on goals, caps and trophies, one life and a short clock. Free in your browser.",
   // Its start panel, under the theme's name: the squad, then the rules in one line
@@ -135,6 +139,8 @@ export const en = {
   "squad.count.club": "{players} {name} legends. Can you clear the whole squad and win?",
   "squad.count.league": "{players} {name} legends. Can you clear the whole squad and win?",
   "squad.count.era": "{players} legends of the {name}. Can you clear the whole squad and win?",
+  "squad.count.era-classic-era":
+    "{players} legends of the Classic Era, the 1980s and older. Can you clear the whole squad and win?",
   "squad.rules":
     "One life, 15 seconds for the first question and 10 for the rest, and every player comes up once.",
   // Under the plaque, when the stat is club goals

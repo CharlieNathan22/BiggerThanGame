@@ -72,6 +72,7 @@
     spins,
     squadNoteText,
     startIntro,
+    themeText,
   } from "../../game/variant";
   import type { Theme } from "../../game/variant";
   import { NO_NOTICE, TimedNotice } from "../../game/notice";
@@ -919,7 +920,7 @@
                   <p>{challengeIntro(offered.score, rules)}</p>
                 {:else if theme !== undefined}
                   <p class="squadcount">
-                    {t(`squad.count.${theme.type}`, { players: theme.players, name: theme.name })}
+                    {themeText("squad.count", theme)}
                   </p>
                 {:else if target !== null}
                   <p>{t("start.introTarget", { target })}</p>

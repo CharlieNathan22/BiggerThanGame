@@ -406,6 +406,8 @@ pair, rather than because the modelled player failed.
 | Inter | 22 | 5.0% | 0.0% | 0 | 10/21 | 17/21 | 1.4% |
 | Chelsea | 21 | 5.9% | 0.0% | 0 | 9/20 | 16/20 | 1.9% |
 | Bayern Munich | 15 | 5.1% | 0.0% | 0 | 4/14 | 9/14 | 6.0% |
+| Arsenal | 11 | 9.6% | 0.0% | 0 | 3/10 | 9/10 | 11.7% |
+| Manchester City | 10 | 13.2% | 0.0% | 0 | 2/9 | 9/9 | 31.7% |
 | La Liga | 69 | 2.6% | 0.0% | 0 | 35/68 | 58/68 | 0.0% |
 | Premier League | 66 | 2.8% | 0.0% | 0 | 33/65 | 55/65 | 0.1% |
 | Serie A | 65 | 2.7% | 0.0% | 0 | 32/64 | 54/64 | 0.0% |
@@ -414,6 +416,7 @@ pair, rather than because the modelled player failed.
 | 2000s | 51 | 3.5% | 0.0% | 0 | 25/50 | 43/50 | 0.2% |
 | 2010s | 37 | 3.4% | 0.0% | 0 | 17/36 | 30/36 | 0.3% |
 | 1990s | 29 | 4.0% | 0.0% | 0 | 13/28 | 23/28 | 0.7% |
+| Classic Era | 14 | 4.6% | 0.0% | 0 | 4/13 | 8/13 | 4.2% |
 
 Short deals are runs the dealer ended before the last player because the players left couldn't be dealt under any stat; they count as cleared. Followers under 2× counts the follower pairs dealt closer than the 2× floor, over every run dealt in full: the floor gives way only when no other stat can be dealt.
 
@@ -429,6 +432,8 @@ Short deals are runs the dealer ended before the last player because the players
 | Inter | 97.6% | 92.1% | 83.6% | 77.6% | 80.5% |
 | Chelsea | 97.4% | 91.0% | 82.0% | 77.4% | 83.9% |
 | Bayern Munich | 95.6% | 79.0% | 67.7% | 82.4% | 87.3% |
+| Arsenal | 91.8% | 67.9% | 68.4% | 84.9% | 91.3% |
+| Manchester City | 89.6% | 69.5% | 77.2% | 89.1% | 91.8% |
 | La Liga | 98.9% | 98.4% | 95.1% | 91.9% | 86.9% |
 | Premier League | 98.9% | 98.3% | 94.8% | 91.1% | 86.7% |
 | Serie A | 98.8% | 98.2% | 94.8% | 91.2% | 86.6% |
@@ -437,6 +442,7 @@ Short deals are runs the dealer ended before the last player because the players
 | 2000s | 98.6% | 97.6% | 93.3% | 89.9% | 84.8% |
 | 2010s | 98.1% | 96.0% | 90.3% | 86.0% | 81.2% |
 | 1990s | 97.9% | 94.4% | 87.4% | 83.2% | 80.5% |
+| Classic Era | 96.0% | 75.3% | 67.3% | 81.5% | 91.6% |
 
 ### The last 3 questions
 
@@ -452,6 +458,8 @@ Every pair dealt in a run's last three questions, whether or not the player got 
 | Inter | 0.106 | 1.10× | 1.40× | 31.1% |
 | Chelsea | 0.154 | 1.10× | 1.44× | 31.3% |
 | Bayern Munich | 0.254 | 1.10× | 2.00× | 14.9% |
+| Arsenal | 0.196 | 1.10× | 1.50× | 28.6% |
+| Manchester City | 0.257 | 1.10× | 1.45× | 28.5% |
 | La Liga | 0.154 | 1.10× | 1.46× | 28.1% |
 | Premier League | 0.154 | 1.10× | 1.44× | 31.4% |
 | Serie A | 0.154 | 1.10× | 1.35× | 35.6% |
@@ -460,3 +468,4 @@ Every pair dealt in a run's last three questions, whether or not the player got 
 | 2000s | 0.138 | 1.10× | 1.44× | 31.1% |
 | 2010s | 0.108 | 1.10× | 1.43× | 31.4% |
 | 1990s | 0.092 | 1.10× | 1.35× | 33.4% |
+| Classic Era | 0.232 | 1.10× | 2.00× | 17.2% |

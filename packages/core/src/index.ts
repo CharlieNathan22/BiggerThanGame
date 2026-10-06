@@ -51,6 +51,7 @@ export {
   SQUAD_PAIR_RULES,
   SQUAD_SIZES,
   SQUAD_SMALL,
+  SQUAD_TINY,
   VOLATILE_FLOOR,
   bandFor,
   bandForRound,
@@ -104,10 +105,13 @@ export type {
   VariantFormat,
 } from "./variants.js";
 export {
+  CLASSIC_ERA,
+  FIRST_OWN_ERA,
   LEGENDS_ROOT,
   THEME_FOLDERS,
   THEME_MIN_PLAYERS,
   THEME_TYPES,
+  eraTheme,
   inTheme,
   squadThemes,
   themeById,

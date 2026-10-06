@@ -136,16 +136,20 @@ best, the log lines, and for Endless and Instagram Endless the analytics mode co
 ### Clear the squad
 
 A **theme** is a slice of the deck: a **club** (from `main_clubs`; loans count, as the data
-records them), a **league** (`leagues`) or an **era** (the decade of a player's peak, `era`).
+records them), a **league** (`leagues`) or an **era** (the decade of a player's peak, `era`):
+each decade from the 1990s is an era of its own, and the 1980s and every decade before share one,
+the **Classic Era** (`eraTheme`), whose card and start panel say it spans "1980s and older".
 Themes come from the deck itself (`squadThemes`, `themes.ts` in `@bt/core`): every one with at
-least **`THEME_MIN_PLAYERS` = 15** players gets a mode, a smaller one doesn't appear at all, and a
+least **`THEME_MIN_PLAYERS` = 10** players gets a mode, a smaller one doesn't appear at all, and a
 new one appears on its own as the deck grows. The deck build writes them to `themes.json` — id,
 type, name, slug and player count, nothing else — for the site's pages (§17). Ids are the type
 and a slug of the name (`club-real-madrid`, `league-premier-league`, `era-2000s`), and slugs are
 the name lower-cased with everything but letters and digits run into dashes. On the 131-player
-deck that is 16 themes: Barcelona 35, AC Milan 27, Juventus 27, Real Madrid 26, Manchester United
-23, Inter 22, Chelsea 21 and Bayern Munich 15; La Liga 69, Premier League 66, Serie A 65, Ligue 1
-35 and Bundesliga 22; the 2000s 51, the 2010s 37 and the 1990s 29.
+deck that is 19 themes: Barcelona 35, AC Milan 27, Juventus 27, Real Madrid 26, Manchester United
+23, Inter 22, Chelsea 21, Bayern Munich 15, Arsenal 11 and Manchester City 10; La Liga 69, Premier
+League 66, Serie A 65, Ligue 1 35 and Bundesliga 22; the 2000s 51, the 2010s 37, the 1990s 29 and
+the Classic Era 14 (the 1980s 8, the 1970s 3, the 1960s 3). Next to qualify: Paris Saint-Germain
+(9).
 
 - **The squad.** The pool is the theme's players, and every stat is in play, on the wheel as in
   Endless. Instagram followers keep the usual 2× floor, which gives way only as the last resort,
@@ -574,21 +578,23 @@ are.
 **Clear the squad** ramps by **progress** — the share of the squad's questions answered — rather
 than by round, so its rows end at 20%, 45%, 70% and 85% of the way through and run to the end. A
 14-question club needs harder questions on average than a 68-question league to be cleared about
-as often, so there are two schedules with the same rows, **`SQUAD_SMALL`** (a 15-player squad)
-and **`SQUAD_LARGE`** (69), blended by squad size (`squadSchedule`): the share of the way from 15
-to 69, raised to the power 0.65 (`SQUAD_BLEND`), so only the smallest squads get the small end's
-hard middle — a small squad's last questions can only be as hard as the few players left allow.
-Both schedules **never get easier** from one row to the next, so neither does any blend of them,
-and closeness is measured in rank distance over the **whole deck**, the fan model's own scale, so
-"0.05 apart" means the same in any squad.
+as often, so there are three schedules with the same rows, **`SQUAD_TINY`** (a 10-player squad,
+the fewest a theme can have), **`SQUAD_SMALL`** (15) and **`SQUAD_LARGE`** (69), blended by squad
+size (`squadSchedule`). From 15 up it is the share of the way from 15 to 69, raised to the power
+0.65 (`SQUAD_BLEND`), so only the smallest squads get the small end's hard middle; under 15 it is
+the linear share of the way from 10 to 15. A small squad's last questions can only be as hard as
+the few players left allow, so its start and middle carry its difficulty. Every schedule **never
+gets easier** from one row to the next, and each is at least as hard as the next size up, row by
+row, so no blend is easier either. Closeness is measured in rank distance over the **whole
+deck**, the fan model's own scale, so "0.05 apart" means the same in any squad.
 
-| Progress | Small (15 players)    | Large (69 players)    |
-| -------- | --------------------- | --------------------- |
-| to 20%   | ≥0.20, no ceiling     | ≥0.45, no ceiling     |
-| to 45%   | 0.05–0.12             | ≥0.35, no ceiling     |
-| to 70%   | 0.02–0.06             | 0.22–0.45             |
-| to 85%   | 0.01–0.04, ≥10% apart | 0.14–0.32, ≥10% apart |
-| the rest | 0.01–0.03, ≥10% apart | 0.10–0.20, ≥10% apart |
+| Progress | Tiny (10 players)     | Small (15 players)    | Large (69 players)    |
+| -------- | --------------------- | --------------------- | --------------------- |
+| to 20%   | 0.08–0.30             | ≥0.20, no ceiling     | ≥0.45, no ceiling     |
+| to 45%   | 0.01–0.05             | 0.05–0.12             | ≥0.35, no ceiling     |
+| to 70%   | 0.01–0.03             | 0.02–0.06             | 0.22–0.45             |
+| to 85%   | 0.01–0.02, ≥10% apart | 0.01–0.04, ≥10% apart | 0.14–0.32, ≥10% apart |
+| the rest | 0.01–0.02, ≥10% apart | 0.01–0.03, ≥10% apart | 0.10–0.20, ≥10% apart |
 
 From 70% of the way through, every pair must also be at least 10% apart as a ratio, never relaxed
 (`SQUAD_PAIR_RULES`); unlike Endless, no narrow stat swaps its band for a value rule. The wheel
@@ -609,6 +615,8 @@ clubs and 2–5% for the big leagues:
 | Inter             | 22      | 5.0%    | 10/21           |
 | Chelsea           | 21      | 5.9%    | 9/20            |
 | Bayern Munich     | 15      | 5.1%    | 4/14            |
+| Arsenal           | 11      | 9.6%    | 3/10            |
+| Manchester City   | 10      | 13.2%   | 2/9             |
 | La Liga           | 69      | 2.6%    | 35/68           |
 | Premier League    | 66      | 2.8%    | 33/65           |
 | Serie A           | 65      | 2.7%    | 32/64           |
@@ -617,8 +625,9 @@ clubs and 2–5% for the big leagues:
 | 2000s             | 51      | 3.5%    | 25/50           |
 | 2010s             | 37      | 3.4%    | 17/36           |
 | 1990s             | 29      | 4.0%    | 13/28           |
+| Classic Era       | 14      | 4.6%    | 4/13            |
 
-No run ended early for want of a dealable player. The big leagues are answered right 98–99% of
+Arsenal and Manchester City clear more often than the target: with 10 or 11 players, a third of Manchester City's questions can't meet their band at all and are dealt the closest pair its players have, so harder bands would only make its first questions harsher. No run ended early for want of a dealable player. The big leagues are answered right 98–99% of
 the time through their first 45%, falling to about 87% in the last 15%; Bayern Munich, the
 smallest, is hardest in its middle (68% at 45–70%), since its last few questions are dealt from
 whoever is left. `simulation.md` has the tables, and `pnpm simulate` prints the closest pairs of
@@ -1255,7 +1264,8 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   whatever their copyright licence; the club's name alone is fine. Leagues each have an accent
   (La Liga red-orange, the Premier League violet, Serie A azure, Ligue 1 lime and navy, the
   Bundesliga red), and the eras a decade each: the 1990s teal and magenta over a VHS tape's
-  scanlines, the 2000s silver-blue chrome, the 2010s mint and electric blue. A theme that
+  scanlines, the 2000s silver-blue chrome, the 2010s mint and electric blue, and the Classic Era
+  old gold and sepia in an old photograph's vignette. A theme that
   qualifies later without colours of its own gets the gold card. The colours are tokens
   (`--<theme id>-1`, `-2`, `-rgb`, `-text-1`, `-text-2`).
 - **A theme's page** is the Endless screen with Friendly's progress track ("12 / 34", one

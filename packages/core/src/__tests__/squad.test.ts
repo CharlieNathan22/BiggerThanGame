@@ -11,6 +11,7 @@ import {
   SQUAD_LARGE,
   SQUAD_PAIR_RULES,
   SQUAD_SMALL,
+  SQUAD_TINY,
   bandFor,
   bandForRound,
   relaxations,
@@ -21,6 +22,7 @@ import { valueOf } from "../engine.js";
 import { STAT_KEYS } from "../stats.js";
 import {
   THEME_MIN_PLAYERS,
+  eraTheme,
   inTheme,
   squadThemes,
   themeById,
@@ -42,11 +44,13 @@ import {
   statLabel,
 } from "../variants.js";
 import type { Band, Player, Position, Round } from "../types.js";
+import type { BandRow } from "../ramp.js";
 
 /**
  * An invented deck with themes either side of the threshold: Northfield 22
- * (with loans), Southgate exactly 15, Eastholm 14 (too few); the Testland
- * League 60 and Otherland League 14; the 2000s 30, the 1990s 18, the 1980s 12.
+ * (with loans), Southgate exactly 15, Eastholm 9 (too few); the Testland
+ * League 60 and Otherland League 14; the 2000s 30, the 1990s 18, and 12 from
+ * the 1980s and 1970s, who make the Classic Era together.
  * Values are seeded and unique per stat, so ties are rare, as in real data.
  */
 function themedDeck(): Player[] {
@@ -66,8 +70,9 @@ function themedDeck(): Player[] {
     const clubs: string[] = [];
     if (i < 22) clubs.push("Northfield");
     if (i >= 18 && i < 33) clubs.push("Southgate"); // four of them on loan from Northfield
-    if (i >= 40 && i < 54) clubs.push("Eastholm");
-    const era = i < 30 ? "2000s" : i < 48 ? "1990s" : i < 60 ? "1980s" : undefined;
+    if (i >= 40 && i < 49) clubs.push("Eastholm");
+    const era =
+      i < 30 ? "2000s" : i < 48 ? "1990s" : i < 54 ? "1980s" : i < 60 ? "1970s" : undefined;
     return {
       id: `p${i}`,
       name: `Player ${i}`,
@@ -118,14 +123,29 @@ function dealt(rounds: readonly Round[]): string[] {
 
 describe("themes from the deck", () => {
   it("lists only themes with at least THEME_MIN_PLAYERS, clubs then leagues then eras", () => {
-    expect(THEME_MIN_PLAYERS).toBe(15);
+    expect(THEME_MIN_PLAYERS).toBe(10);
     expect(squadThemes(DECK).map((t) => `${t.id}:${t.players}`)).toEqual([
       "club-northfield:22",
       "club-southgate:15",
       "league-testland-league:60",
+      "league-otherland-league:14",
       "era-2000s:30",
       "era-1990s:18",
+      "era-classic-era:12",
     ]);
+  });
+
+  it("puts the 1980s and every decade before in one Classic Era, and each later decade in its own", () => {
+    for (const era of ["1980s", "1970s", "1960s", "1950s"])
+      expect(eraTheme(era)).toBe("Classic Era");
+    for (const era of ["1990s", "2000s", "2010s"]) expect(eraTheme(era)).toBe(era);
+    const classic = themeById(DECK, "era-classic-era")!;
+    expect(classic).toMatchObject({ type: "era", name: "Classic Era", slug: "classic-era" });
+    expect(themePath(classic)).toBe("/football-higher-or-lower/legends/eras/classic-era");
+    expect(DECK.filter((p) => inTheme(p, classic)).map((p) => p.era)).toEqual(
+      expect.arrayContaining(["1980s", "1970s"]),
+    );
+    expect(themeById(DECK, "era-1980s")).toBeUndefined();
   });
 
   it("counts a player in every club they're listed at, loans included, once each", () => {
@@ -303,10 +323,10 @@ describe("squad difficulty", () => {
   const ceiling = (band: Band) => band.ceiling ?? 1;
 
   it("never gets easier as progress rises, for every squad size", () => {
-    for (const rows of [SQUAD_SMALL, SQUAD_LARGE]) {
+    for (const rows of [SQUAD_TINY, SQUAD_SMALL, SQUAD_LARGE]) {
       expect(rows.map((r) => r.upTo)).toEqual(SQUAD_SMALL.map((r) => r.upTo));
     }
-    for (let size = 15; size <= 80; size++) {
+    for (let size = 10; size <= 80; size++) {
       const schedule = squadSchedule(size);
       for (let i = 1; i < schedule.length; i++) {
         expect(schedule[i]!.band.floor).toBeLessThanOrEqual(schedule[i - 1]!.band.floor);
@@ -315,15 +335,26 @@ describe("squad difficulty", () => {
     }
   });
 
-  it("is harder for a smaller squad at the same point in it", () => {
-    const small = squadSchedule(15);
-    const large = squadSchedule(69);
-    for (let i = 0; i < small.length; i++) {
-      expect(small[i]!.band.floor).toBeLessThanOrEqual(large[i]!.band.floor);
-      expect(ceiling(small[i]!.band)).toBeLessThanOrEqual(ceiling(large[i]!.band));
+  it("is never easier for a smaller squad at the same point in it", () => {
+    for (let size = 10; size < 80; size++) {
+      const smaller = squadSchedule(size);
+      const bigger = squadSchedule(size + 1);
+      for (let i = 0; i < smaller.length; i++) {
+        expect(smaller[i]!.band.floor).toBeLessThanOrEqual(bigger[i]!.band.floor + 1e-12);
+        expect(ceiling(smaller[i]!.band)).toBeLessThanOrEqual(ceiling(bigger[i]!.band) + 1e-12);
+      }
     }
-    expect(squadSchedule(10)).toEqual(small);
-    expect(squadSchedule(90)).toEqual(large);
+    // Each endpoint at its own size, and clamped beyond the ends.
+    const near = (got: readonly BandRow[], want: readonly BandRow[]) =>
+      got.forEach((row, i) => {
+        expect(row.band.floor).toBeCloseTo(want[i]!.band.floor, 12);
+        expect(ceiling(row.band)).toBeCloseTo(ceiling(want[i]!.band), 12);
+      });
+    near(squadSchedule(10), SQUAD_TINY);
+    near(squadSchedule(8), SQUAD_TINY);
+    near(squadSchedule(15), SQUAD_SMALL);
+    near(squadSchedule(69), SQUAD_LARGE);
+    near(squadSchedule(90), SQUAD_LARGE);
   });
 
   it("ramps by progress, not round: a round's band depends on its share of the squad", () => {

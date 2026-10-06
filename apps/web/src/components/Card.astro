@@ -534,7 +534,13 @@ const Heading = theme === undefined ? "h2" : "h3";
   .card.coloured .go {
     border-color: var(--theme-text-1);
   }
-  /* The decades: the 1990s on a VHS tape's scanlines, the 2000s in chrome. */
+  /* The decades: the 1990s on a VHS tape's scanlines, the 2000s in chrome, and the
+     Classic Era (the 1980s and older) in an old photograph's sepia vignette. */
+  .card.era-classic-era {
+    background:
+      radial-gradient(ellipse at center, transparent 50%, rgba(107, 68, 35, 0.32)),
+      var(--card-surface);
+  }
   .card.era-1990s {
     background:
       repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px),

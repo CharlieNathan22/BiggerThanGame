@@ -10,6 +10,7 @@ import Base from "../../../../layouts/Base.astro";
 import Footer from "../../../../components/Footer.astro";
 import Game from "../../../../components/game/Game.svelte";
 import { t } from "../../../../i18n";
+import { themeText } from "../../../../game/variant";
 import { breadcrumbLd, gameLd, themeTrail } from "../../../../lib/seo";
 import { themePages } from "../../../../lib/themes";
 import type { ThemePage } from "../../../../lib/themes";
@@ -26,12 +27,11 @@ interface Props {
 
 const { page } = Astro.props;
 const { theme, path, variant } = page;
-const words = { name: theme.name, players: theme.players };
 ---
 
 <Base
-  title={t(`squad.title.${theme.type}`, words)}
-  description={t(`squad.description.${theme.type}`, words)}
+  title={themeText("squad.title", theme)}
+  description={themeText("squad.description", theme)}
   game
   structuredData={[breadcrumbLd(themeTrail(theme.name, path)), gameLd()]}
 >

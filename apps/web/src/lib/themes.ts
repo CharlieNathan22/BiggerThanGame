@@ -96,6 +96,8 @@ export const THEME_COLOURS: ReadonlySet<string> = new Set([
   "club-inter",
   "club-chelsea",
   "club-bayern-munich",
+  "club-arsenal",
+  "club-manchester-city",
   "league-la-liga",
   "league-premier-league",
   "league-serie-a",
@@ -104,6 +106,7 @@ export const THEME_COLOURS: ReadonlySet<string> = new Set([
   "era-1990s",
   "era-2000s",
   "era-2010s",
+  "era-classic-era",
 ]);
 
 /** The theme's colours, as the custom properties its card reads; none for the gold card. */

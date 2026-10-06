@@ -22,6 +22,7 @@ import Card from "../../components/Card.astro";
 import Cards from "../../components/Cards.astro";
 import { t } from "../../i18n";
 import { bestKey } from "../../game/best";
+import { themeText } from "../../game/variant";
 import {
   ABOUT_PATH,
   ENDLESS_PATH,
@@ -119,7 +120,7 @@ const tiers =
         {themes.map((theme) => (
           <Card
             name={theme.name}
-            body={t("theme.players", { players: theme.players })}
+            body={themeText("theme.players", theme)}
             href={themePagePath(theme)}
             bestKey={bestKey("legends", squadVariantId(theme))}
             bestOf={squadQuestions(theme.players)}

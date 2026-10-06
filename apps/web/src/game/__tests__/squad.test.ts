@@ -30,6 +30,7 @@ import {
   playPath,
   spins,
   squadNoteText,
+  themeText,
 } from "../variant";
 import type { Theme } from "../variant";
 import {
@@ -267,5 +268,34 @@ describe("a squad's words", () => {
     for (const key of squadKeys) {
       expect(en[key as keyof typeof en], key).not.toContain("—");
     }
+  });
+});
+
+describe("the Classic Era's words", () => {
+  const CLASSIC: Theme = {
+    id: "era-classic-era",
+    type: "era",
+    name: "Classic Era",
+    slug: "classic-era",
+    players: 14,
+  };
+
+  it("say what it spans, the 1980s and older, where a theme's words would", () => {
+    expect(themeText("theme.players", CLASSIC)).toBe("14 legends, 1980s and older");
+    expect(themeText("squad.count", CLASSIC)).toBe(
+      "14 legends of the Classic Era, the 1980s and older. Can you clear the whole squad and win?",
+    );
+    expect(themeText("squad.description", CLASSIC)).toContain("peaked in the 1980s or before");
+    expect(themeText("squad.title", CLASSIC)).toBe(
+      "Classic Era Football Legends Higher or Lower | Bigger Than Game",
+    );
+    expect(squadNoteText("club_goals", CLASSIC)).toBe("Whole career, not just the Classic Era");
+  });
+
+  it("fall back to a type's words, then the kind's, for every other theme", () => {
+    expect(themeText("theme.players", BARCELONA)).toBe("35 legends");
+    expect(themeText("squad.count", BARCELONA)).toBe(
+      "35 Barcelona legends. Can you clear the whole squad and win?",
+    );
   });
 });

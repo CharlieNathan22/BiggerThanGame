@@ -3,7 +3,8 @@
  * the deck's players in it. They come from the deck itself — a player's
  * `mainClubs` (loans count, as the data records them), `leagues` and `era` —
  * so a theme appears on its own once it has `THEME_MIN_PLAYERS`, and nothing
- * here names a club.
+ * here names a club. Each decade from the 1990s is an era of its own; the
+ * 1980s and every decade before share one, the Classic Era (`eraTheme`).
  *
  * Pure, and memoised per deck array: the deck build writes the list for the
  * site's pages (`themes.json`), and the Worker derives the same list from the
@@ -13,7 +14,22 @@
 import type { Player } from "./types.js";
 
 /** The fewest players a theme needs for a mode of its own. */
-export const THEME_MIN_PLAYERS = 15;
+export const THEME_MIN_PLAYERS = 10;
+
+/** The era the 1980s and every decade before them share. */
+export const CLASSIC_ERA = "Classic Era";
+
+/** The first decade with an era of its own; every earlier one is the Classic Era. */
+export const FIRST_OWN_ERA = 1990;
+
+/**
+ * The era theme a player's `era` falls in: the decade itself ("2000s"), or the
+ * Classic Era for the 1980s and before.
+ */
+export function eraTheme(era: string): string {
+  const decade = /^(\d{4})s$/.exec(era);
+  return decade !== null && Number(decade[1]) < FIRST_OWN_ERA ? CLASSIC_ERA : era;
+}
 
 export type ThemeType = "club" | "league" | "era";
 
@@ -50,7 +66,7 @@ function namesOf(player: Player, type: ThemeType): readonly string[] {
     case "league":
       return player.leagues ?? [];
     case "era":
-      return player.era === undefined ? [] : [player.era];
+      return player.era === undefined ? [] : [eraTheme(player.era)];
   }
 }
 

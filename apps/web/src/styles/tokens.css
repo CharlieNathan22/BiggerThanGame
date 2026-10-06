@@ -688,11 +688,23 @@
   --club-chelsea-rgb: 40, 110, 210;
   --club-chelsea-text-1: #6fa8ff;
   --club-chelsea-text-2: #e8b631;
-  --club-bayern-munich-1: #dc052d;
-  --club-bayern-munich-2: #0066b2;
+  /* Bayern Munich: dark red into a lighter red. */
+  --club-bayern-munich-1: #8f0a24;
+  --club-bayern-munich-2: #e8324f;
   --club-bayern-munich-rgb: 230, 30, 70;
-  --club-bayern-munich-text-1: #ff6680;
-  --club-bayern-munich-text-2: #66b3ff;
+  --club-bayern-munich-text-1: #ff5c75;
+  --club-bayern-munich-text-2: #ffa3b1;
+  /* Arsenal: red into yellow, as the "bruised banana" kit. */
+  --club-arsenal-1: #ef0107;
+  --club-arsenal-2: #fcd116;
+  --club-arsenal-rgb: 240, 40, 50;
+  --club-arsenal-text-1: #ff6b6e;
+  --club-arsenal-text-2: #ffd23f;
+  --club-manchester-city-1: #6cabdd;
+  --club-manchester-city-2: #1c2c5b;
+  --club-manchester-city-rgb: 108, 171, 221;
+  --club-manchester-city-text-1: #8cc8f0;
+  --club-manchester-city-text-2: #d3e8f8;
   /* Leagues: an accent each. */
   --league-la-liga-1: #ee4235;
   --league-la-liga-2: #ff8a3d;
@@ -735,6 +747,12 @@
   --era-2010s-rgb: 62, 240, 176;
   --era-2010s-text-1: #6ff5c4;
   --era-2010s-text-2: #7fa3ff;
+  /* The Classic Era, the 1980s and older: old gold and sepia (ThemeCard's vignette). */
+  --era-classic-era-1: #c8a165;
+  --era-classic-era-2: #6b4423;
+  --era-classic-era-rgb: 200, 161, 101;
+  --era-classic-era-text-1: #e8c890;
+  --era-classic-era-text-2: #f3e2c0;
   /* The theme cards' grid and section headings on the Legends page. */
   --theme-card-pad: 18px 16px 20px;
   --theme-card-min-h: 128px;

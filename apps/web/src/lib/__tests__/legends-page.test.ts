@@ -72,7 +72,7 @@ describe("the Legends page's modes", () => {
   it("give each theme its page, its player count and its colours", () => {
     const theme = cards[3]!;
     expect(theme).toMatch(/href=\{themePagePath\(theme\)\}/);
-    expect(theme).toMatch(/body=\{t\("theme\.players", \{ players: theme\.players \}\)\}/);
+    expect(theme).toMatch(/body=\{themeText\("theme\.players", theme\)\}/);
     expect(theme).toMatch(/colours: themeColours\(theme\)/);
   });
 
