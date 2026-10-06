@@ -32,6 +32,14 @@ describe("the Legends page's modes", () => {
     expect(page.indexOf("themed modes")).toBeGreaterThan(page.indexOf('t("mode.friendly.name")'));
   });
 
+  it("show this device's best on every open mode's card, Friendly's out of its target", () => {
+    expect(cards[0]).toMatch(/bestKey=\{bestKey\("legends", "endless"\)\}/);
+    expect(cards[1]).toMatch(/bestKey=\{bestKey\("legends", "endless-instagram"\)\}/);
+    expect(cards[2]).toMatch(/bestKey=\{bestKey\("legends", "friendly"\)\}/);
+    expect(cards[2]).toMatch(/bestOf=\{WIN_ROUNDS\.friendly \?\? undefined\}/);
+    expect(cards[3]).not.toMatch(/bestKey=/);
+  });
+
   it("give Instagram Endless its page, accent and best line, and no leaderboard button", () => {
     const instagram = cards[1]!;
     expect(instagram).toMatch(/href=\{INSTAGRAM_PATH\}/);
@@ -45,8 +53,11 @@ describe("the Legends page's modes", () => {
 describe("the card's best line", () => {
   const script = /<script is:inline>([\s\S]*?)<\/script>/.exec(card)?.[1] ?? "";
 
-  /** Runs the card's script against a page with one best line and the given storage. */
-  function runWith(storage: () => string | null): { text: string; hidden: boolean } {
+  /**
+   * Runs the card's script against its own card, with one best line, the given
+   * storage and, for a mode with a win target, its `--best-of`.
+   */
+  function runWith(storage: () => string | null, of = ""): { text: string; hidden: boolean } {
     const attrs: Record<string, string> = {
       "data-best-key": "bt:best:legends:endless-instagram",
       "data-template": "Your best: {best}",
@@ -55,8 +66,12 @@ describe("the card's best line", () => {
       textContent: "",
       hidden: true,
       getAttribute: (name: string) => attrs[name] ?? null,
+      style: { getPropertyValue: (name: string) => (name === "--best-of" ? ` ${of}` : "") },
     };
-    const document = { querySelectorAll: () => [line] };
+    const card = {
+      querySelector: (selector: string) => (selector === "[data-best-key]" ? line : null),
+    };
+    const document = { currentScript: { parentElement: card } };
     const localStorage = { getItem: storage };
     new Function("document", "localStorage", script)(document, localStorage);
     return { text: line.textContent, hidden: line.hidden };
@@ -64,6 +79,11 @@ describe("the card's best line", () => {
 
   it("shows this device's best", () => {
     expect(runWith(() => "14")).toEqual({ text: "Your best: 14", hidden: false });
+  });
+
+  it("shows a best out of the mode's target where it has one", () => {
+    expect(runWith(() => "12", "20")).toEqual({ text: "Your best: 12/20", hidden: false });
+    expect(runWith(() => "0", "20")).toEqual({ text: "", hidden: true });
   });
 
   it("does nothing with no best, a zero, or something that isn't one", () => {
@@ -84,8 +104,11 @@ describe("the card's best line", () => {
     expect(script).not.toMatch(/[0-9]/);
   });
 
-  it("draws an original glyph, never a brand's mark", () => {
+  it("draws an original glyph, never a brand's mark: a red heart that fills in on hover", () => {
     expect(card).toMatch(/class="glyph"/);
+    expect(card).toMatch(
+      /\.card\.open:hover \.glyph,\s*\.card\.open:has\(a:focus-visible\) \.glyph \{\s*fill: var\(--heart\);/,
+    );
     expect(card.toLowerCase()).not.toMatch(/instagram\.(svg|png)|glyph-instagram|logo/);
   });
 });

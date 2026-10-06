@@ -24,20 +24,36 @@ interface Props {
    */
   extra?: { readonly href: string; readonly label: string };
   /**
-   * A mode's own accent in place of the gold (Instagram Endless's rose): its
-   * edge, glow, chevron and title on hover, and an original glyph over the
-   * title — a heart, never a brand's mark.
+   * A mode's own accent in place of the gold (Instagram Endless's pink): its
+   * edge, glow, chevron, title on hover and best line, and an original glyph
+   * over the title — a red heart that fills in on hover, never a brand's mark.
    */
   accent?: "instagram";
   /**
-   * The device's best for the mode (`bt:best:legends:endless-instagram`),
-   * shown as "Your best: n" by a few lines of script when storage has one.
-   * Without storage, or with no best yet, the line stays hidden.
+   * The device's best for the mode (`bt:best:legends:endless`), shown as
+   * "Your best: n" by a few lines of script when storage has one. Without
+   * storage, or with no best yet, the line stays hidden.
    */
   bestKey?: string;
+  /**
+   * A mode with a win target (Friendly's 20): the best reads "n/20", as the
+   * game shows it. Carried in an inline style, which the dist leak scan sets
+   * aside as markup, so the page holds no bare digits near a player's name.
+   */
+  bestOf?: number | undefined;
 }
 
-const { name, body, href, large = false, wide = false, extra, accent, bestKey } = Astro.props;
+const {
+  name,
+  body,
+  href,
+  large = false,
+  wide = false,
+  extra,
+  accent,
+  bestKey,
+  bestOf,
+} = Astro.props;
 const soon = href === undefined;
 ---
 
@@ -57,23 +73,30 @@ const soon = href === undefined;
     <h2>{soon ? name : <a href={href}>{name}</a>}</h2>
     <p class="body">{body}</p>
     {bestKey !== undefined && !soon && (
-      <p class="best" data-best-key={bestKey} data-template={t("mode.yourBest")} hidden />
+      <p
+        class="best"
+        data-best-key={bestKey}
+        data-template={t("mode.yourBest")}
+        style={bestOf !== undefined ? `--best-of: ${bestOf}` : undefined}
+        hidden
+      />
     )}
   </div>
   {bestKey !== undefined && !soon && <script is:inline>
-    // "Your best: n" from this device's storage. Nothing at all when storage
-    // is blocked or holds no best: the line stays hidden. No digits here, so
-    // the dist leak scan has nothing to weigh.
+    // "Your best: n" (or "n/target") from this device's storage, on this card only.
+    // Nothing at all when storage is blocked or holds no best: the line stays
+    // hidden. No digits here, so the dist leak scan has nothing to weigh.
     (function () {
       try {
-        document.querySelectorAll("[data-best-key]").forEach(function (line) {
-          const raw = localStorage.getItem(line.getAttribute("data-best-key"));
-          if (raw === null || !/^\d+$/.test(raw) || !Number(raw)) return;
-          line.textContent = line
-            .getAttribute("data-template")
-            .replace("{best}", String(Number(raw)));
-          line.hidden = false;
-        });
+        const line = document.currentScript.parentElement.querySelector("[data-best-key]");
+        const raw = localStorage.getItem(line.getAttribute("data-best-key"));
+        if (raw === null || !/^\d+$/.test(raw) || !Number(raw)) return;
+        const best = String(Number(raw));
+        const of = line.style.getPropertyValue("--best-of").trim();
+        line.textContent = line
+          .getAttribute("data-template")
+          .replace("{best}", of === "" ? best : best + "/" + of);
+        line.hidden = false;
       } catch {
         // Storage blocked: no line.
       }
@@ -322,7 +345,7 @@ const soon = href === undefined;
     transform: translateY(-50%) rotate(45deg);
   }
 
-  /* A mode with its own accent: the gold's places in rose (tokens.css). The
+  /* A mode with its own accent: the gold's places in pink (tokens.css). The
        custom properties the card reads are resolved where they're declared,
        so each is set again here rather than only the colour underneath. */
   .card.instagram {
@@ -330,6 +353,7 @@ const soon = href === undefined;
     --glow-rgb: var(--instagram-rgb);
     --card-edge: rgba(var(--instagram-rgb), 0.38);
     --card-edge-hover: var(--instagram);
+    --card-best: var(--instagram);
     --glow: 0 0 var(--glow-blur) rgba(var(--instagram-rgb), var(--glow-opacity));
     --glow-hover: 0 0 var(--glow-hover-blur) rgba(var(--instagram-rgb), var(--glow-hover-opacity));
     --card-shadow-lifted:
@@ -339,14 +363,20 @@ const soon = href === undefined;
       var(--card-top-light), 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 20px rgba(0, 0, 0, 0.4),
       0 0 20px rgba(var(--instagram-rgb), 0.28);
   }
+  /* The heart: a red outline, filled in when the card is hovered or focused. */
   .glyph {
     width: var(--card-glyph);
     height: var(--card-glyph);
-    fill: none;
-    stroke: var(--instagram);
+    fill: transparent;
+    stroke: var(--heart);
     stroke-width: 1.8;
     stroke-linejoin: round;
-    filter: drop-shadow(0 0 6px rgba(var(--instagram-rgb), 0.55));
+    filter: drop-shadow(0 0 6px rgba(var(--heart-rgb), 0.55));
+    transition: fill var(--dur-card) var(--ease-card);
+  }
+  .card.open:hover .glyph,
+  .card.open:has(a:focus-visible) .glyph {
+    fill: var(--heart);
   }
   .card .best {
     margin: 0;

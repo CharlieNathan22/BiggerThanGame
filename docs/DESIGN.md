@@ -1117,11 +1117,13 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
 - **The Legends page's modes**, each on a full row of its own: Endless first, with a "See
   leaderboards" button on the right of its card from 900px wide (under its text below that, so the
   text stays centred like the other cards') — a second link beside the card's own, never inside
-  it; then **Instagram Endless**, in the Endless card's style with its own rose accent and an
-  original heart glyph (the word "Instagram" only, never its logo or marks), "Your best: n" from
-  this device when there is one, and no leaderboard button; then Friendly; then the themed modes
-  (Clubs, Leagues, Eras) when they come; and Daily Ranked's "Coming soon" card last, until it
-  launches and moves to the top.
+  it; then **Instagram Endless**, in the Endless card's style with its own deep-pink accent (the
+  darkest that still reads at AA as text on the card) and an original red heart that fills in on
+  hover (the word "Instagram" only, never its logo or marks), and no leaderboard button; then
+  Friendly; then the themed modes (Clubs, Leagues, Eras) when they come; and Daily Ranked's
+  "Coming soon" card last, until it launches and moves to the top. Every open mode's card shows
+  this device's best when there is one — "Your best: 23", Friendly's out of twenty ("Your best:
+  12/20") — in the card's accent, gold or pink; with storage blocked or no best yet, nothing.
 - **Local best** is kept per deck and mode or Endless variant — `bt:best:<deck>:<mode>`:
   `bt:best:legends:friendly`, `bt:best:legends:endless`, `bt:best:legends:endless-instagram` —
   and shown on the game pages under `/legends`, and Instagram Endless's on its Legends card.

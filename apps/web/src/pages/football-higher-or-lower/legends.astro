@@ -1,11 +1,11 @@
 ---
 // The Legends deck: its intro and its modes (DESIGN.md §17). Static, but for
-// the few lines that show the Instagram Endless card's "Your best". Where
+// the few lines on each open mode's card that show this device's "Your best". Where
 // "Play" goes. Below the cards, a long read about this deck: who's
 // in it, what it asks and how to play it; nothing from the football page's.
 // Names only, and no digits anywhere near them, so the leak scan has nothing
 // to weigh (dist-scan.ts). Draft copy.
-import { STATS, STAT_KEYS } from "@bt/core";
+import { STATS, STAT_KEYS, WIN_ROUNDS } from "@bt/core";
 import type { Tier } from "@bt/core";
 import Page from "../../layouts/Page.astro";
 import Breadcrumb from "../../components/Breadcrumb.astro";
@@ -73,6 +73,7 @@ const tiers =
       body={t("mode.endless.body")}
       href={ENDLESS_PATH}
       extra={{ href: LEADERBOARD_PATH, label: t("mode.endless.leaderboard") }}
+      bestKey={bestKey("legends", "endless")}
       wide
     />
     <Card
@@ -83,7 +84,14 @@ const tiers =
       bestKey={bestKey("legends", "endless-instagram")}
       wide
     />
-    <Card name={t("mode.friendly.name")} body={t("mode.friendly.body")} href={FRIENDLY_PATH} wide />
+    <Card
+      name={t("mode.friendly.name")}
+      body={t("mode.friendly.body")}
+      href={FRIENDLY_PATH}
+      bestKey={bestKey("legends", "friendly")}
+      bestOf={WIN_ROUNDS.friendly ?? undefined}
+      wide
+    />
     <!-- The themed modes (Clubs, Leagues, Eras) go here, between Friendly and Daily Ranked. -->
     <!-- Daily Ranked sits last while it's coming soon; it moves to the top when it launches. -->
     <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} wide />

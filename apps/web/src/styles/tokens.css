@@ -628,11 +628,15 @@
   --card-chevron-inset: 24px;
   /* A card with a second link (Endless's leaderboards): text and button apart. */
   --card-split-gap: 24px;
-  /* Instagram Endless's accent, in the gold's places on its card: a warm rose,
-     never a brand's colours. Its "Your best" line in it, at AA on the card. */
-  --instagram: #ff7aa2;
-  --instagram-rgb: 255, 122, 162;
-  --card-best: var(--instagram);
+  /* Instagram Endless's accent, in the gold's places on its card: a deep pink,
+     never a brand's colours, as dark as it goes and still reads at AA as text
+     on the card (its title on hover, its "Your best" line). Its heart is red. */
+  --instagram: #f0558a;
+  --instagram-rgb: 240, 85, 138;
+  --heart: #ef3b4a;
+  --heart-rgb: 239, 59, 74;
+  /* "Your best: n" on a mode's card: gold, or the card's accent. */
+  --card-best: var(--gold);
   --card-glyph: 26px;
 
   /* The Endless leaderboard page (Leaderboard.svelte): the boards in the
