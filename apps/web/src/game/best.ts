@@ -1,6 +1,7 @@
 /**
  * The player's best streak, kept in `localStorage` on this device: one best
- * per deck and mode, under `bt:best:<deck>:<mode>` (`bt:best:legends:friendly`).
+ * per deck and play, under `bt:best:<deck>:<play>` (`bt:best:legends:friendly`,
+ * `bt:best:legends:endless-instagram`).
  *
  * Only the number is stored. Storage can be missing, blocked, full or throw
  * on access (private browsing, a locked-down browser, a sandboxed iframe), so
@@ -8,14 +9,14 @@
  * page does and the game carries on as if nothing happened.
  */
 
-import type { Mode } from "@bt/core";
+import type { PlayId } from "./variant";
 
 /** The decks a best is kept for. Only Legends exists. */
 export type BestDeck = "legends";
 
-/** The storage key for one deck and mode's best. */
-export function bestKey(deck: BestDeck, mode: Mode): string {
-  return `bt:best:${deck}:${mode}`;
+/** The storage key for one deck and play's best: a mode, or an Endless variant. */
+export function bestKey(deck: BestDeck, play: PlayId): string {
+  return `bt:best:${deck}:${play}`;
 }
 
 /** How the island reaches storage. Returns null, or throws, when there is none. */

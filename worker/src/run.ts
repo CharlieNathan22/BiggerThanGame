@@ -24,15 +24,28 @@
  * Object and `record` are all injected, so tests drive this in Node.
  */
 
-import { buildRun, deadlineFor, flagCountry, roundCap, valueOf } from "@bt/core";
+import {
+  ENDLESS_VARIANTS,
+  buildRun,
+  deadlineFor,
+  flagCountry,
+  hasWheel,
+  isNamedVariant,
+  roundCap,
+  valueOf,
+  variantDeck,
+  variantOf,
+} from "@bt/core";
 import type {
   ApiError,
   ChallengeLink,
   ChallengeStatus,
+  EndlessVariantId,
   GuessContinueResponse,
   GuessEndResponse,
   GuessRequest,
   GuessResponse,
+  NamedVariant,
   Player,
   Round,
   RunEnd,
@@ -110,6 +123,7 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
   const parsed = parseRunStart(body);
   if (!parsed.ok) return badRequest(parsed.detail);
   const req = parsed.value;
+  const variant = variantOf(req.variant);
 
   const verdict = await ctx.verifyTurnstile(req.turnstileToken);
   if (verdict === "fail") return { status: 403, body: { error: "verification_failed" } };
@@ -121,7 +135,7 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
   const check =
     req.challenge === undefined
       ? undefined
-      : await checkChallenge(ctx.secret, req.challenge, ctx.clock());
+      : await checkChallenge(ctx.secret, req.challenge, ctx.clock(), variant);
   const challenge: ChallengeStatus | undefined =
     check === undefined
       ? undefined
@@ -129,12 +143,12 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
         ? { accepted: true, score: check.score }
         : { accepted: false, reason: check.reason };
 
-  const runId = await mintRunId(ctx.clock(), ctx.uuid(), ctx.secret, "endless");
+  const runId = await mintRunId(ctx.clock(), ctx.uuid(), ctx.secret, variant);
   const run = parseRunId(runId);
   // Never the id itself in the message: it reaches the logs.
   if (run === undefined) throw new Error("minted a malformed run id");
 
-  const rounds = await dealTo(ctx, run, 2);
+  const rounds = await dealTo(ctx, run, 2, variant);
   const first = rounds[0];
   if (first === undefined) {
     return { status: 503, body: { error: "unavailable", detail: "the deck cannot deal a round" } };
@@ -142,11 +156,12 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
 
   const issuedAt = ctx.clock().getTime();
   const nonce = ctx.uuid();
-  const deadline = requireDeadline(issuedAt, first);
+  const deadline = requireDeadline(issuedAt, first, variant);
   const runKind: RunKind = challenge?.accepted === true ? "challenge" : "fresh";
   const begun = await ctx.runs(run.body).begin({
     key: run.body,
     runId,
+    ...named(variant),
     runKind,
     country: ctx.country ?? "XX",
     deckVersion: ctx.deckVersion ?? "unknown",
@@ -159,7 +174,7 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
 
   const token = await signToken(
     ctx.secret,
-    progress(runId, first, run.date, issuedAt, deadline, nonce),
+    progress(runId, variant, first, run.date, issuedAt, deadline, nonce),
   );
   const response: RunStartResponse = {
     runId,
@@ -169,7 +184,7 @@ export async function handleRunStart(body: unknown, ctx: RunContext): Promise<Ru
     country: flagCountry(ctx.country),
     ...(challenge !== undefined ? { challenge } : {}),
   };
-  ctx.record?.({ type: "start", mode: "endless", run: run.body, runKind });
+  ctx.record?.({ type: "start", mode: "endless", ...named(variant), run: run.body, runKind });
   return { status: 200, body: response };
 }
 
@@ -182,7 +197,9 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
 
   const token = await verifyToken(ctx.secret, parsed.value.token);
   if (token === undefined) return badRequest("token is not one this server issued");
-  const run = await verifyRunId(token.runId, ctx.secret, "endless");
+  // The token is signed, so its variant is the server's own word for the run.
+  const variant = variantOf(token.variant);
+  const run = await verifyRunId(token.runId, ctx.secret, variant);
   if (run === undefined || run.replay) return badRequest("token names no Endless run");
 
   const limited = await ctx.limits?.answer(run.body);
@@ -194,7 +211,7 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
 
   // Two past the answered round: the next question, and the round after it,
   // whose challenger's photo the next question carries as `upcoming`.
-  const rounds = await dealTo(ctx, run, Math.min(token.round + 2, ENDLESS_CAP));
+  const rounds = await dealTo(ctx, run, Math.min(token.round + 2, ENDLESS_CAP), variant);
   const round = rounds[token.round - 1];
   if (round === undefined || !matches(token, round, now)) {
     // A genuine token the sequence doesn't bear out: the deck changed mid-run.
@@ -220,7 +237,7 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
           kind: "next",
           nonce: ctx.uuid(),
           issuedAt: receivedAt,
-          deadline: requireDeadline(receivedAt, next),
+          deadline: requireDeadline(receivedAt, next, variant),
         };
 
   const advanced = await ctx.runs(run.body).advance({
@@ -250,7 +267,15 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
       next: toRoundPayload(following, now, ctx.images, rounds[token.round + 1]),
       token: await signToken(
         ctx.secret,
-        progress(token.runId, following, now, settled.issuedAt, settled.deadline, settled.nonce),
+        progress(
+          token.runId,
+          variant,
+          following,
+          now,
+          settled.issuedAt,
+          settled.deadline,
+          settled.nonce,
+        ),
       ),
     };
     response = continued;
@@ -258,11 +283,12 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
     const ended: GuessEndResponse = {
       reveal,
       end: settled.end,
-      challenge: await challengeLink(ctx.secret, run.body, settled.score),
+      challenge: await challengeLink(ctx.secret, run.body, settled.score, variant),
       result: await signResult(ctx.secret, {
         v: 1,
         runId: token.runId,
         mode: "endless",
+        ...named(variant),
         score: settled.score,
         end: settled.end,
         startedOn: run.date.toISOString().slice(0, 10),
@@ -275,7 +301,7 @@ export async function handleGuess(body: unknown, ctx: RunContext): Promise<RunRe
 
   // Recorded once, when the answer is first accepted — never for a resend.
   if (advanced.fresh) {
-    record(ctx, run, advanced.runKind, round, token, guess, right, advanced.ms, settled);
+    record(ctx, run, variant, advanced.runKind, round, token, guess, right, advanced.ms, settled);
   }
   return { status: 200, body: response };
 }
@@ -293,16 +319,25 @@ export async function disconnectedEnd(
   secret: string,
 ): Promise<EndEvent> {
   const id = parseRunId(run.runId);
+  const variant = variantOf(run.variant);
   let shown: ShownRound | undefined;
   if (id !== undefined) {
-    const seed = await endlessSeed(secret, id.origin);
-    const rounds = buildRun({ deck, seed, mode: "endless", now: id.date, maxRounds: run.round });
+    const seed = await endlessSeed(secret, id.origin, variant);
+    const rounds = buildRun({
+      deck,
+      seed,
+      mode: "endless",
+      now: id.date,
+      maxRounds: run.round,
+      variant,
+    });
     const open = rounds[run.round - 1];
     if (open !== undefined) shown = shownRound(open, id.date, "question");
   }
   return {
     type: "end",
     mode: "endless",
+    ...named(variant),
     run: run.key,
     runKind: run.runKind,
     end: "disconnected",
@@ -316,6 +351,7 @@ export async function disconnectedEnd(
 function record(
   ctx: RunContext,
   run: RunId,
+  variant: EndlessVariantId,
   runKind: RunKind,
   round: Round,
   token: ProgressPayload,
@@ -325,7 +361,7 @@ function record(
   outcome: StepOutcome,
 ): void {
   if (ctx.record === undefined) return;
-  const facts = { mode: "endless", run: run.body, runKind } as const;
+  const facts = { mode: "endless", ...named(variant), run: run.body, runKind } as const;
   ctx.record({
     type: "answer",
     ...facts,
@@ -334,7 +370,11 @@ function record(
     correct,
     streak: correct ? token.round : token.round - 1,
     relaxation: round.relaxation,
-    rankDistance: pairRankDistance(ctx.deck, round, run.date),
+    rankDistance: pairRankDistance(
+      variantDeck(ctx.deck, ENDLESS_VARIANTS[variant]),
+      round,
+      run.date,
+    ),
     answerMs,
   });
   if (outcome.kind === "end") {
@@ -349,13 +389,27 @@ function record(
 }
 
 /** The run's rounds up to `maxRounds`, from its seed and date. */
-async function dealTo(ctx: RunContext, run: RunId, maxRounds: number): Promise<Round[]> {
-  const seed = await endlessSeed(ctx.secret, run.origin);
-  return buildRun({ deck: ctx.deck, seed, mode: "endless", now: run.date, maxRounds });
+async function dealTo(
+  ctx: RunContext,
+  run: RunId,
+  maxRounds: number,
+  variant: EndlessVariantId,
+): Promise<Round[]> {
+  const seed = await endlessSeed(ctx.secret, run.origin, variant);
+  return buildRun({ deck: ctx.deck, seed, mode: "endless", now: run.date, maxRounds, variant });
+}
+
+/**
+ * The `variant` field a payload carries for `variant`: nothing for general
+ * Endless, so its tokens, records and events are exactly as before variants.
+ */
+export function named(variant: EndlessVariantId): { readonly variant?: NamedVariant } {
+  return isNamedVariant(variant) ? { variant } : {};
 }
 
 function progress(
   runId: string,
+  variant: EndlessVariantId,
   round: Round,
   now: Date,
   issuedAt: number,
@@ -369,6 +423,7 @@ function progress(
     v: 1,
     runId,
     mode: "endless",
+    ...named(variant),
     round: round.index,
     streak: round.index - 1,
     anchorId: round.anchor.id,
@@ -392,8 +447,15 @@ function matches(token: ProgressPayload, round: Round, now: Date): boolean {
   );
 }
 
-function requireDeadline(issuedAt: number, round: Round): number {
-  const deadline = deadlineFor(issuedAt, round.index, round.statChanged, "endless");
+/** The round's deadline; a variant with a fixed stat has no wheel, so no spin in it. */
+function requireDeadline(issuedAt: number, round: Round, variant: EndlessVariantId): number {
+  const deadline = deadlineFor(
+    issuedAt,
+    round.index,
+    round.statChanged,
+    "endless",
+    hasWheel(variant),
+  );
   if (deadline === null) throw new Error("Endless has no clock");
   return deadline;
 }
@@ -412,13 +474,16 @@ export function parseRunStart(body: unknown): Parsed<RunStartRequest> {
     return { ok: false, detail: "body must be a JSON object" };
   }
   const record = body as Record<string, unknown>;
-  const keys = keysOf(record);
-  const plain = ["mode", "turnstileToken"];
-  const withLink = ["challenge", "mode", "turnstileToken"];
-  if (!same(keys, plain) && !same(keys, withLink)) {
-    return { ok: false, detail: "expected { mode, turnstileToken, challenge? }" };
+  // The optional fields aside, exactly { mode, turnstileToken }.
+  const keys = keysOf(record).filter((k) => k !== "challenge" && k !== "variant");
+  if (!same(keys, ["mode", "turnstileToken"])) {
+    return { ok: false, detail: "expected { mode, variant?, turnstileToken, challenge? }" };
   }
   if (record.mode !== "endless") return { ok: false, detail: 'mode must be "endless"' };
+  if ("variant" in record && !isNamedVariant(record.variant)) {
+    return { ok: false, detail: 'variant must be "endless-instagram", or absent for Endless' };
+  }
+  const variant = isNamedVariant(record.variant) ? { variant: record.variant } : {};
   const { turnstileToken } = record;
   if (
     typeof turnstileToken !== "string" ||
@@ -427,7 +492,9 @@ export function parseRunStart(body: unknown): Parsed<RunStartRequest> {
   ) {
     return { ok: false, detail: "turnstileToken must be a Turnstile token" };
   }
-  if (!("challenge" in record)) return { ok: true, value: { mode: "endless", turnstileToken } };
+  if (!("challenge" in record)) {
+    return { ok: true, value: { mode: "endless", ...variant, turnstileToken } };
+  }
   const link = parseLink(record.challenge);
   if (link === undefined) {
     return {
@@ -435,7 +502,7 @@ export function parseRunStart(body: unknown): Parsed<RunStartRequest> {
       detail: `challenge must be { runId, score, sig }, score an integer from 0 to ${ENDLESS_CAP}`,
     };
   }
-  return { ok: true, value: { mode: "endless", turnstileToken, challenge: link } };
+  return { ok: true, value: { mode: "endless", ...variant, turnstileToken, challenge: link } };
 }
 
 /**

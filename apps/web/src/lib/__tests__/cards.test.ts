@@ -80,6 +80,7 @@ describe("card text contrast", () => {
     ["an open card's name", "--card-name", live],
     ["an open card's description", "--card-body", live],
     ["a coming-soon card's name and description", "--card-soon-text", soon],
+    ['Instagram Endless\'s "Your best" line', "--card-best", live],
   ] as const)("%s meets AA", (_, property, background) => {
     const text = over(colour(property), background);
     expect(contrast(text, background)).toBeGreaterThanOrEqual(4.5);

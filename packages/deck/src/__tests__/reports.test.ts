@@ -20,6 +20,7 @@ import {
   accuracyAt,
   bandText,
   calibratedModel,
+  closestPairsText,
   interpolate,
   pCorrect,
   parseCalibration,
@@ -560,5 +561,69 @@ describe("simulate", () => {
     const md = simulationReport([r], players.length, NOW);
     expect(md).toContain("modelled");
     expect(md).toContain("Streak distribution");
+  });
+});
+
+describe("Instagram Endless in the simulation", () => {
+  // Thirty players with follower counts from 0.5m up, 1.3 times apart, so
+  // every round's closeness floor (down to 1.25×) can be met.
+  const igDeck: Player[] = Array.from({ length: 30 }, (_, i) =>
+    toPlayer(
+      playerSchema.parse({
+        id: `ig${i}`,
+        name: `Ig ${i}`,
+        country: "T",
+        position: "FW",
+        dob: "1985-06-15",
+        iconic: i % 3 === 0,
+        stats: {
+          caps: 10 + i,
+          ig: { value: Math.round(50 * 1.3 ** i) / 100, as_of: "2026-09-01" },
+        },
+      }),
+    ),
+  );
+  const r = simulate({
+    deck: igDeck,
+    now: NOW,
+    mode: "endless",
+    variant: "endless-instagram",
+    runs: 300,
+    closenessAt: [10, 20],
+  });
+
+  it("deals Instagram followers only, under the variant", () => {
+    expect(r.variant).toBe("endless-instagram");
+    expect(
+      Object.entries(r.statCounts)
+        .filter(([, n]) => n > 0)
+        .map(([k]) => k),
+    ).toEqual(["ig"]);
+  });
+
+  it("measures how close the pairs are at the questions asked for, never under the floor", () => {
+    const at10 = r.closeness[10]!;
+    expect(at10.gaps.length).toBeGreaterThan(0);
+    expect(at10.gaps[0]).toBeGreaterThanOrEqual(0.6 - 1e-9);
+    expect(at10.closest.length).toBeLessThanOrEqual(5);
+    expect(at10.closest[0]!.gap).toBe(at10.gaps[0]);
+    expect(r.closeness[30]).toBeUndefined();
+  });
+
+  it("reports a section of its own with ratio gaps, and names no player in it", () => {
+    const md = simulationReport([], igDeck.length, NOW, r);
+    expect(md).toContain("## Instagram Endless: a streak with no finish line");
+    expect(md).toContain("### How close the pairs get");
+    expect(md).toMatch(/\| 10 \| \d+ \| \d\.\d\d× \|/);
+    expect(md).not.toMatch(/Ig \d/);
+    expect(bandText(1, "endless", "endless-instagram")).toBe("≥0.45, ≥2.00× apart");
+    expect(bandText(40, "endless", "endless-instagram")).toMatch(/≥1\.25× apart$/);
+    expect(bandText(1, "endless", "endless")).toBe(bandText(1, "endless"));
+  });
+
+  it("prints the closest pairs, names and figures, for the terminal", () => {
+    const lines = closestPairsText(r);
+    expect(lines[0]).toMatch(/^ {2}question 10: \d+ pair\(s\) dealt; closest:$/);
+    expect(lines.some((l) => /Ig \d+ [\d.]+[mk] v Ig \d+/.test(l))).toBe(true);
   });
 });

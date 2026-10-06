@@ -6,11 +6,12 @@
   One island for both modes on the Legends deck, driven by per-mode settings
   in @bt/core: Friendly's twenty questions with a progress track, and
   Endless's streak against a clock, with a Turnstile check on Start and
-  challenge links.
+  challenge links. An Endless variant (Instagram Endless) is Endless with its
+  own questions, its own local best, no wheel and no boards.
 -->
 <script lang="ts">
   import { CHALLENGES, WIN_ROUNDS, generateNickname } from "@bt/core";
-  import type { Guess, SitePage } from "@bt/core";
+  import type { Guess, NamedVariant, SitePage } from "@bt/core";
   import type { PitchCard } from "../../game/view";
   import { onMount, tick } from "svelte";
   import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
@@ -54,6 +55,7 @@
   import type { Draft, FeedbackKind, ReportedRound } from "../../game/feedback";
   import { createDraftStore, focusAfterClose } from "../../game/modal";
   import { initialState, shouldSpin } from "../../game/machine";
+  import { hasBoards, modeSubtitle, playId, spins, startIntro } from "../../game/variant";
   import { NO_NOTICE, TimedNotice } from "../../game/notice";
   import type { NoticeState } from "../../game/notice";
   import type { Challenge, GameMode, GameState } from "../../game/machine";
@@ -135,11 +137,21 @@
      */
     deck: BestDeck;
     mode: GameMode;
+    /**
+     * Endless only: the variant, when not general Endless (Instagram Endless).
+     * It names the local best (`bt:best:legends:endless-instagram`), and
+     * decides whether the wheel spins and whether runs can be published.
+     */
+    variant?: NamedVariant;
     /** The game page's path, for the title bar: "Legends" under /legends, and the current page. */
     path: string;
   }
 
-  let { deck, mode, path }: Props = $props();
+  let { deck, mode, variant, path }: Props = $props();
+  /** The mode, or the Endless variant: what the local best is kept under. */
+  const play = $derived(playId(mode, variant));
+  /** Whether a finished run can be published: Endless's own boards only. */
+  const boards = $derived(hasBoards(mode, variant));
 
   let game: GameState = $state(initialState());
   let controller: GameController | null = $state(null);
@@ -297,14 +309,16 @@
           TURNSTILE_SITE_KEY,
           schedule,
         )),
+        variant !== undefined ? { variant } : {},
       );
     }
     const api: GameApi = endlessApi ?? createApi(fetchFn);
 
-    const key = bestKey(deck, mode);
+    const key = bestKey(deck, play);
     const c = new GameController({
       api,
       mode,
+      ...(variant !== undefined ? { variant } : {}),
       preload: createPreloader(IMAGE_BASE, () => new Image()),
       timings,
       now: () => performance.now(),
@@ -315,8 +329,9 @@
       challenge,
       // Endless: every run goes on this device's board, published or not, and
       // one that scored can be published if it beats the day's published best.
+      // A variant without boards (Instagram Endless) keeps neither.
       onOver: (over) => {
-        if (endlessApi === null || over.end === null) return;
+        if (endlessApi === null || over.end === null || !boards) return;
         recordRun(browserStorage, runsKey(deck, mode), {
           score: over.streak,
           date: localDate(),
@@ -366,7 +381,9 @@
       phase === "sliding" ||
       phase === "over",
   );
-  const spinIndex = $derived(round !== null && shouldSpin(round) && wheeling ? round.index : null);
+  const spinIndex = $derived(
+    round !== null && shouldSpin(round, spins(mode, variant)) && wheeling ? round.index : null,
+  );
   /** The title card at a run's start: "Question 1 of 20", or "Beat 7/20". */
   const titleCardText = $derived(titleCard(game, mode));
   /** The cards on the pitch; three during the carousel to the next pair. */
@@ -542,13 +559,14 @@
       site(),
       mode,
       endingNames(game, mode),
+      variant,
     );
     await shareOut(text);
   }
 
   /** "Beat n" and the link: a friend's own fresh run against this score. */
   async function onChallenge(): Promise<void> {
-    const text = challengeText(game.link, site(), mode);
+    const text = challengeText(game.link, site(), mode, variant);
     if (text !== null) await shareOut(text);
   }
 
@@ -846,7 +864,7 @@
               {t("brand.game")}
             </div>
             <h1 class="deckname">{t("brand.footballLegends")}</h1>
-            <div class="modename"><span>{t(`mode.${mode}.name`)}</span></div>
+            <div class="modename"><span>{modeSubtitle(mode, variant)}</span></div>
           </div>
           <div class="lead">
             <div class="blurb">
@@ -857,15 +875,17 @@
                 {:else if target !== null}
                   <p>{t("start.introTarget", { target })}</p>
                 {:else}
-                  <p>{t(mode === "endless" ? "start.introEndless" : "start.intro")}</p>
+                  <p>{startIntro(mode, variant)}</p>
                 {/if}
               </div>
               {#if mode === "endless"}
                 <p class="clockline">
                   {t("start.clock")}
                   {t("start.noClock")} <a href={FRIENDLY_PATH}>{t("start.playFriendly")}</a>
-                  <span aria-hidden="true">{t("over.separator")}</span>
-                  <a href={LEADERBOARD_PATH}>{t("start.leaderboard")}</a>
+                  {#if boards}
+                    <span aria-hidden="true">{t("over.separator")}</span>
+                    <a href={LEADERBOARD_PATH}>{t("start.leaderboard")}</a>
+                  {/if}
                 </p>
               {/if}
             </div>
@@ -968,6 +988,28 @@
               </div>
             {/if}
             <button class="cta" bind:this={againButton} onclick={start}>{t("over.again")}</button>
+            {#if !boards}
+              <!-- No boards (Instagram Endless): no Publish, and no best to beat. -->
+            {:else if boardLine !== null}
+              <!-- Endless, once published: where it landed today; or the best to beat. And the board. -->
+              <p class="published" class:stacked={boardLine.beat}>
+                {boardLine.text}
+                {#if !boardLine.beat}<span aria-hidden="true">{t("over.separator")}</span>{/if}
+                <a href={LEADERBOARD_PATH}>{t("over.leaderboard")}</a>
+              </p>
+            {:else if publishable !== null}
+              <!-- Endless: opt-in. The dialog takes the nickname and sends it. -->
+              <button
+                class="secondary publish"
+                bind:this={publishButton}
+                onclick={() => (publishOpen = true)}
+              >
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 20h16M7 16V10M12 16V5M17 16v-8" />
+                </svg>
+                {t("over.publish")}
+              </button>
+            {/if}
             <!-- Secondary to Play again: gold outline and text. The icons are
                decoration; each button is named by its words. -->
             <div class="shares">
@@ -1005,26 +1047,6 @@
                 </button>
               {/if}
             </div>
-            {#if boardLine !== null}
-              <!-- Endless, once published: where it landed today; or the best to beat. And the board. -->
-              <p class="published" class:stacked={boardLine.beat}>
-                {boardLine.text}
-                {#if !boardLine.beat}<span aria-hidden="true">{t("over.separator")}</span>{/if}
-                <a href={LEADERBOARD_PATH}>{t("over.leaderboard")}</a>
-              </p>
-            {:else if publishable !== null}
-              <!-- Endless: opt-in. The dialog takes the nickname and sends it. -->
-              <button
-                class="secondary publish"
-                bind:this={publishButton}
-                onclick={() => (publishOpen = true)}
-              >
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                  <path d="M4 20h16M7 16V10M12 16V5M17 16v-8" />
-                </svg>
-                {t("over.publish")}
-              </button>
-            {/if}
             <p class="status" class:fading={shareNote.fading} role="status">{shareNote.text}</p>
             {#if copyByHand !== null}
               <textarea class="copy" readonly rows="6" aria-label={t("over.shareText")}
@@ -1811,13 +1833,13 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  /* Endless: Publish, a row of its own under the shares, the same button. */
+  /* Endless: Publish, a row of its own straight under Play again, the same button. */
   .secondary.publish {
     flex: none;
     width: 100%;
     margin-top: var(--btn2-gap);
   }
-  /* In Publish's place: the day's rank once published, or the best to beat; and the board. */
+  /* In Publish's place, under Play again: the day's rank once published, or the best to beat; and the board. */
   .published {
     margin-top: var(--btn2-gap);
     min-height: var(--target-min);

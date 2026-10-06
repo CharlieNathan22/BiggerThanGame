@@ -44,6 +44,7 @@ export {
   BAND_SCHEDULES,
   FINAL_STRETCH,
   FINE_CEILING_STEP,
+  INSTAGRAM_SCHEDULE,
   PAIR_RULES,
   RELAXATION_LADDERS,
   VOLATILE_FLOOR,
@@ -57,7 +58,26 @@ export {
   relaxations,
   withinBand,
 } from "./ramp.js";
-export type { BandRow, FinalStretch, PairRules, Percentiles, RelaxationLadder } from "./ramp.js";
+export type {
+  BandRow,
+  BandRules,
+  FinalStretch,
+  PairRules,
+  Percentiles,
+  RelaxationLadder,
+} from "./ramp.js";
+
+export {
+  DEFAULT_VARIANT,
+  ENDLESS_VARIANTS,
+  ENDLESS_VARIANT_IDS,
+  hasWheel,
+  isEndlessVariantId,
+  isNamedVariant,
+  variantDeck,
+  variantOf,
+} from "./variants.js";
+export type { EndlessVariant, EndlessVariantId, NamedVariant, VariantFormat } from "./variants.js";
 
 export { SEEN_DEPTH, candidates, remember, selectChallenger, valueOf } from "./engine.js";
 export type { Match, MatchContext } from "./engine.js";

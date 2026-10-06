@@ -131,12 +131,14 @@ const FOOTBALL = "/football-higher-or-lower";
 const LEGENDS = `${FOOTBALL}/legends`;
 const FRIENDLY = `${LEGENDS}/friendly`;
 const ENDLESS = `${LEGENDS}/endless`;
+const INSTAGRAM = `${ENDLESS}/instagram`;
 const LEADERBOARD = `${ENDLESS}/leaderboard`;
 
 /**
  * What the built site must be, given its non-page files. The Endless page is a
  * game page like Friendly's, with its own canonical and the site's default
  * preview; its leaderboard is an ordinary page under it, with a breadcrumb.
+ * Instagram Endless is a game page under Endless, like Endless itself.
  */
 export function siteExpectations(files: readonly string[]): SiteExpectations {
   return {
@@ -148,6 +150,7 @@ export function siteExpectations(files: readonly string[]): SiteExpectations {
       [LEGENDS]: ["BreadcrumbList", "VideoGame"],
       [FRIENDLY]: ["BreadcrumbList", "VideoGame"],
       [ENDLESS]: ["BreadcrumbList", "VideoGame"],
+      [INSTAGRAM]: ["BreadcrumbList", "VideoGame"],
       [LEADERBOARD]: ["BreadcrumbList"],
     },
     files,

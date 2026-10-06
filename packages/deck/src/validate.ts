@@ -139,3 +139,47 @@ export function formatProblems(problems: readonly Problem[]): string {
   }
   return lines.join("\n");
 }
+
+/**
+ * Instagram figures older than this many days are due a refresh. The owner
+ * refreshes them monthly; past this the build says so — a warning, never a
+ * failure. Instagram Endless asks followers on every question, so a stale
+ * snapshot shows there first.
+ */
+export const IG_STALE_DAYS = 45;
+
+const DAY_MS = 86_400_000;
+
+export interface StaleFigure {
+  readonly playerId: string;
+  /** The snapshot's date, `YYYY-MM-DD`. */
+  readonly asOf: string;
+  /** Whole days from the snapshot to `now`. */
+  readonly days: number;
+}
+
+/** Players whose Instagram figure is more than `maxDays` old at `now`, oldest first. */
+export function staleInstagram(
+  players: readonly Player[],
+  now: Date,
+  maxDays = IG_STALE_DAYS,
+): StaleFigure[] {
+  const stale: StaleFigure[] = [];
+  for (const player of players) {
+    const ig = player.stats.ig;
+    if (ig === undefined) continue;
+    const days = Math.floor((now.getTime() - Date.parse(`${ig.asOf}T00:00:00Z`)) / DAY_MS);
+    if (days > maxDays) stale.push({ playerId: player.id, asOf: ig.asOf, days });
+  }
+  return stale.sort((a, b) => b.days - a.days || a.playerId.localeCompare(b.playerId));
+}
+
+/** The warning block the build prints. Empty when every figure is fresh. */
+export function formatStaleInstagram(stale: readonly StaleFigure[]): string[] {
+  if (stale.length === 0) return [];
+  return [
+    `${stale.length} player(s) with Instagram figures over ${IG_STALE_DAYS} days old — ` +
+      "due a refresh (players.csv, then pnpm deck:import):",
+    ...stale.map((s) => `  ${s.playerId}: as of ${s.asOf} (${s.days} days)`),
+  ];
+}

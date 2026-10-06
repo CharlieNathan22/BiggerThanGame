@@ -17,16 +17,18 @@ import { checkManifest, loadManifest } from "./manifest.js";
 import { DECK, MIN_PRIVATE_DECK, fallbackNotice, loadDeck, manifestPathFor } from "./load.js";
 import type { LoadedDeck } from "./load.js";
 import {
+  INSTAGRAM_CLOSENESS_AT,
   PLAYER_MODELS,
   SIM_MODES,
   calibratedModel,
+  closestPairsText,
   describePoints,
   parseCalibration,
   simulate,
   simulationReport,
 } from "./simulate.js";
 import type { PlayerModel } from "./simulate.js";
-import { formatProblems, validateDeck } from "./validate.js";
+import { formatProblems, formatStaleInstagram, staleInstagram, validateDeck } from "./validate.js";
 import { viabilityReport } from "./viability.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -162,6 +164,13 @@ export function runBuild(opts: BuildOptions = {}): number {
   }
   console.log("  ok");
 
+  // Follower counts drift: a warning when any is due its monthly refresh, never a failure.
+  const stale = formatStaleInstagram(staleInstagram(loaded.players, now));
+  if (stale.length > 0) {
+    console.warn(`deck: warning — ${stale[0]}`);
+    for (const line of stale.slice(1)) console.warn(line);
+  }
+
   const imageCount = Object.keys(manifest.entries).length;
   console.log(`  ${imageCount} player(s) with synced images`);
 
@@ -207,11 +216,24 @@ export function runBuild(opts: BuildOptions = {}): number {
         ...(mode === "friendly" || mode === "endless" ? { compare } : {}),
       }),
     );
+    const instagram = simulate({
+      deck: loaded.players,
+      now,
+      mode: "endless",
+      variant: "endless-instagram",
+      runs,
+      model,
+      compare,
+      closenessAt: INSTAGRAM_CLOSENESS_AT,
+    });
     console.log(`  ${((Date.now() - started) / 1000).toFixed(1)}s`);
     write(
       join(packageRoot, "simulation.md"),
-      simulationReport(results, loaded.players.length, now),
+      simulationReport(results, loaded.players.length, now, instagram),
     );
+    // Names beside figures: for the terminal only, never the committed report.
+    console.log("deck: Instagram Endless, the closest pairs dealt");
+    for (const line of closestPairsText(instagram)) console.log(line);
   }
 
   console.log("deck: done");

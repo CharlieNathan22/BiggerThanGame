@@ -34,6 +34,7 @@ export const SITE_PAGES = [
   "/football-higher-or-lower/legends",
   "/football-higher-or-lower/legends/friendly",
   "/football-higher-or-lower/legends/endless",
+  "/football-higher-or-lower/legends/endless/instagram",
   "/football-higher-or-lower/legends/endless/leaderboard",
   "/404",
 ] as const;

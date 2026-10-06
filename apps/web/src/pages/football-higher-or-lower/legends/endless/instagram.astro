@@ -1,0 +1,45 @@
+---
+// The game: Instagram Endless on the Legends deck — Endless with Instagram
+// followers on every question, no wheel and no boards (DESIGN.md §3). The same
+// fixed-height, no-scroll screen and island as Endless (Base's `game`), with
+// its own title, description and canonical, and the site's default preview.
+import Base from "../../../../layouts/Base.astro";
+import Footer from "../../../../components/Footer.astro";
+import Game from "../../../../components/game/Game.svelte";
+import { t } from "../../../../i18n";
+import { INSTAGRAM_PATH } from "../../../../lib/paths";
+import { breadcrumbLd, breadcrumbTrail, gameLd } from "../../../../lib/seo";
+---
+
+<Base
+  title={t("instagram.title")}
+  description={t("instagram.description")}
+  game
+  structuredData={[breadcrumbLd(breadcrumbTrail(INSTAGRAM_PATH)), gameLd()]}
+>
+  <!-- client:load, not client:visible: the first tap must not wait (ARCHITECTURE.md §14). -->
+  <Game
+    client:load
+    deck="legends"
+    mode="endless"
+    variant="endless-instagram"
+    path={INSTAGRAM_PATH}
+  />
+  <noscript>
+    <p class="noscript">{t("start.noscript")}</p>
+  </noscript>
+  <Footer />
+</Base>
+
+<style>
+  /* The island's wrapper element must not break the page's flex column. */
+  :global(astro-island) {
+    display: contents;
+  }
+  .noscript {
+    padding: 8px 18px;
+    text-align: center;
+    font-size: var(--fs-body);
+    color: var(--dim);
+  }
+</style>

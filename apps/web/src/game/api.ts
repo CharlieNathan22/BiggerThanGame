@@ -17,6 +17,7 @@ import type {
   ChallengeLink,
   GuessRequest,
   GuessResponse,
+  NamedVariant,
   RunStartRequest,
   RunStartResponse,
   StartRequest,
@@ -143,7 +144,10 @@ export function createApi(fetchFn: Fetch, options: ApiOptions = {}): GameApi {
 export function createEndlessApi(
   fetchFn: Fetch,
   checkHuman: () => Promise<string>,
-  options: Omit<ApiOptions, "endpoint"> = {},
+  options: Omit<ApiOptions, "endpoint"> & {
+    /** The Endless variant runs start in, when not general Endless. */
+    readonly variant?: NamedVariant;
+  } = {},
 ): EndlessApi {
   const post = poster(fetchFn, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
   let token: string | null = null;
@@ -160,6 +164,7 @@ export function createEndlessApi(
       }
       const body: RunStartRequest = {
         mode: "endless",
+        ...(options.variant !== undefined ? { variant: options.variant } : {}),
         turnstileToken,
         ...(challenge !== undefined ? { challenge } : {}),
       };

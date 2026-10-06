@@ -62,6 +62,24 @@ describe("deadlineFor", () => {
   it("is null in Friendly, which has no clock", () => {
     expect(deadlineFor(issued, 1, false, "friendly")).toBeNull();
   });
+
+  it("has no spin allowance in a variant without the wheel (Instagram Endless)", () => {
+    const t = ANSWER_TIMINGS;
+    // Round one: the title card, holds and cards, then the short hold, not the spin.
+    expect(answerAllowance(1, false, false)).toBe(
+      t.title + t.holdMin + t.holdExtra + t.introMin + t.hold,
+    );
+    expect(deadlineFor(issued, 1, false, "endless", false)).toBe(issued + 7140 + 15_000 + 3000);
+    // After question 1 it never includes the spin, whatever statChanged says.
+    for (const round of [2, 3, 10, 40, 150]) {
+      for (const changed of [false, true]) {
+        expect(answerAllowance(round, changed, false)).toBe(t.verdict + t.next + t.hold);
+        expect(deadlineFor(issued, round, changed, "endless", false)).toBe(
+          issued + 4280 + 10_000 + 3000,
+        );
+      }
+    }
+  });
 });
 
 describe("mode switches", () => {

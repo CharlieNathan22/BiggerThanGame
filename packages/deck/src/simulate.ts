@@ -8,7 +8,9 @@
  * Every mode is simulated over the same seeds, so the modes differ only by what
  * the mode itself changes: how many opening rounds prefer iconic challengers
  * (`ICONIC_ROUNDS`), the band schedule (`BAND_SCHEDULES`) and, for Friendly,
- * the twenty rounds that win the run (`WIN_ROUNDS`).
+ * the twenty rounds that win the run (`WIN_ROUNDS`). Instagram Endless, an
+ * Endless variant (variants.ts in @bt/core), is simulated over the same seeds
+ * and reported in a section of its own.
  *
  * **The streak distribution rests on a model of player skill** (`PlayerModel`),
  * and that model is an assumption, not data. Two are built in: `fan`, the
@@ -19,6 +21,7 @@
  */
 
 import {
+  ENDLESS_VARIANTS,
   FINAL_STRETCH,
   ICONIC_ROUNDS,
   PAIR_RULES,
@@ -30,12 +33,21 @@ import {
   bandForRound,
   buildRun,
   createRng,
+  gap,
   percentiles,
   rankDistance,
   roundCap,
   valueOf,
 } from "@bt/core";
-import type { Mode, Player, Relaxation, Round, StatKey, ValueRule } from "@bt/core";
+import type {
+  EndlessVariantId,
+  Mode,
+  Player,
+  Relaxation,
+  Round,
+  StatKey,
+  ValueRule,
+} from "@bt/core";
 
 /**
  * Round ranges for the per-range firing table. The opening stat dominates the
@@ -223,7 +235,34 @@ export interface SimOptions {
   readonly model?: PlayerModel;
   /** Further models scored on the same rounds and skill draws, for comparison only. */
   readonly compare?: readonly PlayerModel[];
+  /** An Endless variant to deal instead of the mode's own runs (Endless only). */
+  readonly variant?: EndlessVariantId;
+  /** Questions whose pairs to measure for closeness, as a ratio (`Closeness`). */
+  readonly closenessAt?: readonly number[];
 }
+
+/** One pair dealt, with how close its figures were as a ratio (`gap`). */
+export interface ClosePair {
+  readonly anchor: string;
+  readonly challenger: string;
+  readonly anchorValue: string;
+  readonly challengerValue: string;
+  readonly gap: number;
+}
+
+/** How close the pairs dealt at one question were, over the runs that reached it. */
+export interface Closeness {
+  /** Every pair's ratio gap (`max / min - 1`), ascending. */
+  readonly gaps: readonly number[];
+  /** The closest distinct pairs, closest first: names and figures, for a person to eyeball. */
+  readonly closest: readonly ClosePair[];
+}
+
+/** How many of the closest pairs `Closeness` keeps per question. */
+export const CLOSEST_KEPT = 5;
+
+/** The questions whose pairs Instagram Endless's report measures for closeness. */
+export const INSTAGRAM_CLOSENESS_AT: readonly number[] = [10, 20, 30];
 
 /** How one player model fared over a simulation's runs. */
 export interface ModelOutcome {
@@ -240,6 +279,8 @@ export interface ModelOutcome {
 
 export interface SimResult {
   readonly mode: Mode;
+  /** The Endless variant dealt, when not the mode's own runs. */
+  readonly variant?: EndlessVariantId;
   readonly runs: number;
   /** The playing model's outcome first, then each `compare` model's. */
   readonly outcomes: readonly ModelOutcome[];
@@ -275,6 +316,8 @@ export interface SimResult {
    * Endless), per stat; empty for a mode without them.
    */
   readonly lateStatCounts: Readonly<Record<string, number>>;
+  /** Per question asked for in `closenessAt`. */
+  readonly closeness: Readonly<Record<number, Closeness>>;
 }
 
 function quantile(sorted: readonly number[], q: number): number {
@@ -360,6 +403,7 @@ export function simulate(opts: SimOptions): SimResult {
   const relaxationCounts = emptyRelaxationCounts();
   const iconicWindow = emptyRelaxationCounts();
   const windowEnd = ICONIC_ROUNDS[opts.mode];
+  const variant = opts.variant !== undefined ? ENDLESS_VARIANTS[opts.variant] : undefined;
   const bucketTotals = new Map<string, { relaxed: number; total: number }>();
   for (const key of STAT_KEYS) statCounts[key] = 0;
 
@@ -372,11 +416,21 @@ export function simulate(opts: SimOptions): SimResult {
   }
   let exhausted = 0;
   let maxConstructible = 0;
-  const lateFrom = PAIR_RULES[opts.mode]?.from ?? Infinity;
+  const lateFrom = (variant !== undefined ? variant.pairRules : PAIR_RULES[opts.mode])?.from;
   const lateStatCounts: Record<string, number> = {};
+  const closenessAt = new Set(opts.closenessAt ?? []);
+  const gapsAt = new Map<number, number[]>();
+  const pairsAt = new Map<number, Map<string, ClosePair>>();
 
   const deal = (seed: string, rounds: number): Round[] =>
-    buildRun({ deck: opts.deck, seed, mode: opts.mode, now: opts.now, maxRounds: rounds });
+    buildRun({
+      deck: opts.deck,
+      seed,
+      mode: opts.mode,
+      now: opts.now,
+      maxRounds: rounds,
+      ...(opts.variant !== undefined ? { variant: opts.variant } : {}),
+    });
   const probe = Math.min(maxRounds, PROBE_ROUNDS);
 
   for (let i = 0; i < runs; i++) {
@@ -409,11 +463,12 @@ export function simulate(opts: SimOptions): SimResult {
       statCounts[round.stat] = (statCounts[round.stat] ?? 0) + 1;
       const inRange = statCountsByRange[rangeOf(round.index)]!;
       inRange[round.stat] = (inRange[round.stat] ?? 0) + 1;
-      if (round.index >= lateFrom) {
+      if (lateFrom !== undefined && round.index >= lateFrom) {
         lateStatCounts[round.stat] = (lateStatCounts[round.stat] ?? 0) + 1;
       }
       relaxationCounts[round.relaxation] += 1;
       if (round.index <= windowEnd) iconicWindow[round.relaxation] += 1;
+      if (closenessAt.has(round.index)) measureCloseness(round, opts.now, gapsAt, pairsAt);
 
       const bucket = `${Math.floor((round.index - 1) / 10) * 10 + 1}–${Math.floor((round.index - 1) / 10) * 10 + 10}`;
       const entry = bucketTotals.get(bucket) ?? { relaxed: 0, total: 0 };
@@ -457,7 +512,83 @@ export function simulate(opts: SimOptions): SimResult {
     openingStatRounds,
     statCountsByRange,
     lateStatCounts,
+    closeness: closenessOf(gapsAt, pairsAt),
+    ...(opts.variant !== undefined ? { variant: opts.variant } : {}),
   };
+}
+
+/** Adds one dealt pair to its question's closeness tallies. */
+function measureCloseness(
+  round: Round,
+  now: Date,
+  gapsAt: Map<number, number[]>,
+  pairsAt: Map<number, Map<string, ClosePair>>,
+): void {
+  const a = valueOf(round.anchor, round.stat, now);
+  const b = valueOf(round.challenger, round.stat, now);
+  if (a === undefined || b === undefined) return;
+  const g = gap(a, b);
+  const gaps = gapsAt.get(round.index) ?? [];
+  gaps.push(g);
+  gapsAt.set(round.index, gaps);
+  const pairs = pairsAt.get(round.index) ?? new Map<string, ClosePair>();
+  const key = [round.anchor.id, round.challenger.id].sort().join("|");
+  if (!pairs.has(key)) {
+    const format = STATS[round.stat].format;
+    pairs.set(key, {
+      anchor: round.anchor.name,
+      challenger: round.challenger.name,
+      anchorValue: format(a),
+      challengerValue: format(b),
+      gap: g,
+    });
+  }
+  pairsAt.set(round.index, pairs);
+}
+
+function closenessOf(
+  gapsAt: ReadonlyMap<number, number[]>,
+  pairsAt: ReadonlyMap<number, ReadonlyMap<string, ClosePair>>,
+): Record<number, Closeness> {
+  const out: Record<number, Closeness> = {};
+  for (const [q, gaps] of gapsAt) {
+    const closest = [...(pairsAt.get(q)?.values() ?? [])]
+      .sort((x, y) => x.gap - y.gap)
+      .slice(0, CLOSEST_KEPT);
+    out[q] = { gaps: gaps.slice().sort((x, y) => x - y), closest };
+  }
+  return out;
+}
+
+/** A ratio gap as the larger figure's multiple of the smaller: 0.25 → "1.25×". */
+export function ratioText(g: number): string {
+  return Number.isFinite(g) ? `${(1 + g).toFixed(2)}×` : "∞";
+}
+
+/** "Instagram Endless", "Endless", "Friendly": what a result is called in the report. */
+export function simName(r: Pick<SimResult, "mode" | "variant">): string {
+  if (r.variant === "endless-instagram") return "Instagram Endless";
+  return r.mode.charAt(0).toUpperCase() + r.mode.slice(1);
+}
+
+/**
+ * The closest pairs dealt at each measured question, names and figures, for
+ * the terminal only: simulation.md is committed and the deck is private.
+ */
+export function closestPairsText(r: SimResult): string[] {
+  const lines: string[] = [];
+  for (const q of Object.keys(r.closeness)
+    .map(Number)
+    .sort((a, b) => a - b)) {
+    const c = r.closeness[q]!;
+    lines.push(`  question ${q}: ${c.gaps.length} pair(s) dealt; closest:`);
+    for (const p of c.closest) {
+      lines.push(
+        `    ${ratioText(p.gap)}  ${p.anchor} ${p.anchorValue} v ${p.challenger} ${p.challengerValue}`,
+      );
+    }
+  }
+  return lines;
 }
 
 function pct(n: number, d: number): string {
@@ -474,7 +605,14 @@ function mean(values: readonly number[]): number {
  * Endless's late rounds its pair rules: wide stats also ≥10% apart, narrow ones
  * paired by value instead (`PAIR_RULES`, listed under the table).
  */
-export function bandText(round: number, mode: Mode): string {
+export function bandText(round: number, mode: Mode, variant?: EndlessVariantId): string {
+  if (variant !== undefined && variant !== "endless") {
+    const band = bandForRound(round, mode, ENDLESS_VARIANTS[variant]);
+    const range = band.ceiling === null ? `≥${band.floor}` : `${band.floor}–${band.ceiling}`;
+    return band.strictMinRatio === undefined
+      ? range
+      : `${range}, ≥${ratioText(band.strictMinRatio)} apart`;
+  }
   const band = bandForRound(round, mode);
   const range = band.ceiling === null ? `≥${band.floor}` : `${band.floor}–${band.ceiling}`;
   const stretch = FINAL_STRETCH[mode];
@@ -522,7 +660,7 @@ export const OPEN_RANGES: ReadonlyArray<{ label: string; from: number; to: numbe
  * share of the late rounds.
  */
 function openSection(r: SimResult, cap: number): string[] {
-  const name = r.mode.charAt(0).toUpperCase() + r.mode.slice(1);
+  const name = simName(r);
   const share = (x: number): string => (Number.isNaN(x) ? "—" : `${(x * 100).toFixed(1)}%`);
   const reach = (o: ModelOutcome, n: number): string =>
     pct(o.streaks.filter((s) => s >= n).length, o.streaks.length);
@@ -552,7 +690,8 @@ function openSection(r: SimResult, cap: number): string[] {
     "",
   ];
 
-  const rules = PAIR_RULES[r.mode];
+  const rules =
+    r.variant !== undefined ? ENDLESS_VARIANTS[r.variant].pairRules : PAIR_RULES[r.mode];
   if (rules !== null) {
     lines.push(`From round ${rules.from}, the pair rules (\`PAIR_RULES\`):`);
     lines.push("");
@@ -577,7 +716,7 @@ function openSection(r: SimResult, cap: number): string[] {
   const last = Math.min(cap, 40);
   for (let q = 1; q <= last; q++) {
     lines.push(
-      `| ${q} | ${bandText(q, r.mode)} | ${pct(o.reached[q - 1] ?? 0, r.runs)} | ` +
+      `| ${q} | ${bandText(q, r.mode, r.variant)} | ${pct(o.reached[q - 1] ?? 0, r.runs)} | ` +
         `${share(accuracyAt(o, q))} |`,
     );
   }
@@ -733,11 +872,53 @@ function windowTotal(r: SimResult): number {
   return RELAXATIONS.reduce((sum, k) => sum + r.iconicWindow[k], 0);
 }
 
-/** One simulation per mode, over the same seeds, reported side by side. */
+/**
+ * Instagram Endless: the open-ended tables, then how close its pairs get as a
+ * run goes on. Ratio gaps only — the pairs themselves go to the terminal
+ * (`closestPairsText`), never here.
+ */
+function instagramSection(r: SimResult, cap: number): string[] {
+  const lines = openSection(r, cap);
+  lines.push("### How close the pairs get");
+  lines.push("");
+  lines.push("Over the pairs dealt at each question (runs that reached it): the larger count");
+  lines.push("as a multiple of the smaller. The closeness floor is the round's `≥n× apart`.");
+  lines.push("Names and figures of the closest are printed by `pnpm simulate`, not kept here.");
+  lines.push("");
+  lines.push(
+    "| Question | Pairs dealt | Closest | 10th percentile | Median | Under 1.5× |",
+    "|---|---|---|---|---|---|",
+  );
+  for (const q of Object.keys(r.closeness)
+    .map(Number)
+    .sort((a, b) => a - b)) {
+    const { gaps } = r.closeness[q]!;
+    lines.push(
+      `| ${q} | ${gaps.length} | ${ratioText(gaps[0] ?? NaN)} | ` +
+        `${ratioText(quantile(gaps, 0.1))} | ${ratioText(quantile(gaps, 0.5))} | ` +
+        `${pct(gaps.filter((g) => g < 0.5).length, gaps.length)} |`,
+    );
+  }
+  lines.push("");
+  const total = RELAXATIONS.reduce((sum, k) => sum + r.relaxationCounts[k], 0);
+  lines.push(
+    `Relaxation: ${pct(total - r.relaxationCounts.none - r.relaxationCounts.iconic, total)} of ` +
+      `rounds widened the band or ignored the seen queue; the closeness floor never gives. ` +
+      `Runs the engine ran out on: ${pct(r.exhausted, r.runs)}.`,
+  );
+  lines.push("");
+  return lines;
+}
+
+/**
+ * One simulation per mode, over the same seeds, reported side by side; then
+ * Instagram Endless, when given, in a section of its own.
+ */
 export function simulationReport(
   results: readonly SimResult[],
   deckSize: number,
   now: Date,
+  instagram?: SimResult,
 ): string {
   const runs = results[0]?.runs ?? 0;
   const modes = results.map((r) => r.mode);
@@ -799,6 +980,7 @@ export function simulationReport(
   }
   const endless = results.find((r) => r.mode === "endless");
   if (endless !== undefined) lines.push(...openSection(endless, roundCap("endless")));
+  if (instagram !== undefined) lines.push(...instagramSection(instagram, roundCap("endless")));
 
   lines.push(...modelsSection(results));
 

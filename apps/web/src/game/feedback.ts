@@ -13,7 +13,7 @@
  */
 
 import { FEEDBACK_LIMITS, isSitePage, textLength } from "@bt/core";
-import type { FeedbackRequest, SitePage, StatKey } from "@bt/core";
+import type { FeedbackRequest, NamedVariant, SitePage, StatKey } from "@bt/core";
 import { t } from "../i18n";
 import { FRIENDLY_PATH } from "../lib/paths";
 import type { Fetch } from "./api";
@@ -76,6 +76,8 @@ export interface ShownFigure {
 export interface ReportedRound {
   /** Endless for an Endless run: its run ids are signed apart from Friendly's. */
   readonly mode: GameMode;
+  /** An Endless variant's run, when not general Endless: signed apart again. */
+  readonly variant?: NamedVariant;
   readonly runId: string;
   readonly round: number;
   readonly stat: StatKey;
@@ -94,6 +96,7 @@ export function reportedRound(state: GameState): ReportedRound | null {
   if (reveal.round !== round.index) return null;
   return {
     mode: state.mode,
+    ...(state.variant !== undefined ? { variant: state.variant } : {}),
     runId,
     round: round.index,
     stat: round.stat.key,
@@ -152,6 +155,9 @@ export function feedbackRequest(
   return {
     kind,
     ...(report.mode === "endless" ? { mode: "endless" as const } : {}),
+    ...(report.mode === "endless" && report.variant !== undefined
+      ? { variant: report.variant }
+      : {}),
     runId: report.runId,
     round: report.round,
     ...withNote,

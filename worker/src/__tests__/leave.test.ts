@@ -324,7 +324,7 @@ describe("POST /api/run/leave", () => {
     [
       "an extra field",
       (runId) => ({ ...leaveBody(runId), value: 108 }),
-      "expected { mode, runId, round, phase, trigger }",
+      "expected { mode, variant?, runId, round, phase, trigger }",
     ],
   ])("refuses %s with a 400, and records nothing", async (_name, make, detail) => {
     const h = harness();

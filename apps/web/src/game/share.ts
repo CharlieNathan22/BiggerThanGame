@@ -18,11 +18,12 @@
  */
 
 import { CHALLENGES, WIN_ROUNDS, challengeOutcome, streakTitle } from "@bt/core";
-import type { ChallengeLink, ChallengeOutcome, Mode, Tier } from "@bt/core";
+import type { ChallengeLink, ChallengeOutcome, Mode, NamedVariant, Tier } from "@bt/core";
 import { statLabel, t } from "../i18n";
 import { challengeUrl } from "./challenge";
 import type { EndReason, GameMode, GameState, RoundRecord } from "./machine";
 import { overCaption, scoreFigure } from "./view";
+import { playId } from "./variant";
 
 /** One square per answered round, in its tier's colour. */
 export const TIER_SQUARE: Readonly<Record<Tier, string>> = {
@@ -210,7 +211,8 @@ export function challengeResult(
  *
  * No values and no answers anywhere, and no player names in Friendly. The
  * challenge link, where the mode has one, is shared on its own
- * (`challengeText`).
+ * (`challengeText`). An Endless variant names itself in the heading
+ * ("Bigger Than — Instagram Endless").
  */
 export function shareText(
   score: number,
@@ -219,11 +221,12 @@ export function shareText(
   site: string,
   mode: Mode,
   names: EndingNames | null = null,
+  variant?: NamedVariant,
 ): string {
   const title = titleText(score, mode);
   const line = scoreText(score, mode, end);
   const lines = [
-    t("share.heading"),
+    shareHeading(variant),
     title === "" ? line : `${line} · ${title}`,
     shareGrid(history, mode),
     endedText(history, end, names),
@@ -232,21 +235,28 @@ export function shareText(
   return lines.filter((l) => l !== "").join("\n");
 }
 
+/** The share text's first line: the deck, or an Endless variant by name. */
+export function shareHeading(variant?: NamedVariant): string {
+  return variant === "endless-instagram" ? t("share.headingInstagram") : t("share.heading");
+}
+
 /**
  * The challenge to share, in a mode that has them: "Beat 12" and the link,
- * which starts the friend on a fresh run of their own against that score.
- * Null in a mode without challenges, or without a signed link (a run banked
- * after the connection dropped).
+ * which starts the friend on a fresh run of their own against that score —
+ * on the variant's own page in an Endless variant. Null in a mode without
+ * challenges, or without a signed link (a run banked after the connection
+ * dropped).
  */
 export function challengeText(
   link: ChallengeLink | null,
   site: string,
   mode: GameMode,
+  variant?: NamedVariant,
 ): string | null {
   if (!CHALLENGES[mode] || link === null) return null;
   return t("challenge.share", {
     heading: challengeHeading(link.score, mode),
-    url: challengeUrl(site, link, mode),
+    url: challengeUrl(site, link, playId(mode, variant)),
   });
 }
 

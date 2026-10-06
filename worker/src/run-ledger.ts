@@ -31,7 +31,7 @@
  * needs no change for it.
  */
 
-import type { RunEnd, TimedGuess } from "@bt/core";
+import type { NamedVariant, RunEnd, TimedGuess } from "@bt/core";
 import type { RunKind } from "./analytics.js";
 
 /** Past a question's deadline by this much, with no answer, a run is closed as `disconnected`. */
@@ -71,6 +71,8 @@ export interface RunRecord {
   /** The signed run id. Never logged. */
   readonly runId: string;
   readonly mode: "endless";
+  /** The run's Endless variant; absent for general Endless (and every run stored before variants). */
+  readonly variant?: NamedVariant;
   readonly runKind: RunKind;
   /** For the end event the ledger may write itself (a silent run's). */
   readonly country: string;
@@ -121,6 +123,8 @@ export interface LedgerStore {
 export interface NewRun {
   readonly key: string;
   readonly runId: string;
+  /** Absent for general Endless. */
+  readonly variant?: NamedVariant;
   readonly runKind: RunKind;
   readonly country: string;
   readonly deckVersion: string;

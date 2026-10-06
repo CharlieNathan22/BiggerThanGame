@@ -11,6 +11,7 @@
 import { isEligible } from "./eligibility.js";
 import { RELAXATION_LADDERS, bandFor, pairFits, percentiles, relaxations } from "./ramp.js";
 import { STATS } from "./stats.js";
+import type { BandRules } from "./ramp.js";
 import type { Band, Mode, Player, Relaxation, StatKey } from "./types.js";
 import type { Rng } from "./prng.js";
 
@@ -93,6 +94,8 @@ export function candidates(
  * preference is the first thing to give — it is never held at the cost of a
  * wider band or a repeated player. Returns undefined only when the deck
  * genuinely cannot produce a non-tied opponent.
+ *
+ * `variant` is an Endless variant's band rules (variants.ts), when it has its own.
  */
 export function selectChallenger(
   anchor: Player,
@@ -102,8 +105,9 @@ export function selectChallenger(
   ctx: MatchContext,
   rng: Rng,
   preferIconic = false,
+  variant?: BandRules,
 ): Match | undefined {
-  const target = bandFor(stat, round, mode);
+  const target = bandFor(stat, round, mode, variant);
   const ladder = relaxations(target, RELAXATION_LADDERS[mode]);
 
   if (preferIconic) {

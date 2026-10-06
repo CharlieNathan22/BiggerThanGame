@@ -16,8 +16,8 @@
  * spends each nonce once (run-ledger.ts).
  */
 
-import { STAT_KEYS } from "@bt/core";
-import type { RunEnd, StatKey } from "@bt/core";
+import { STAT_KEYS, isNamedVariant } from "@bt/core";
+import type { NamedVariant, RunEnd, StatKey } from "@bt/core";
 import { hmacSha256, timingSafeEqual, toBase64Url } from "./hmac.js";
 
 /** Far past a real token (about 450 characters); anything longer isn't one. */
@@ -29,6 +29,11 @@ export interface ProgressPayload {
   /** The signed Endless run id. */
   readonly runId: string;
   readonly mode: "endless";
+  /**
+   * The run's Endless variant, when not general Endless (variants.ts in
+   * @bt/core). Absent for general Endless, so its tokens are as they were.
+   */
+  readonly variant?: NamedVariant;
   /** The round this token answers, 1-based. */
   readonly round: number;
   /** Rounds answered correctly before this one. */
@@ -54,6 +59,8 @@ export interface ResultPayload {
   readonly v: 1;
   readonly runId: string;
   readonly mode: "endless";
+  /** As in a progress token: absent for general Endless. */
+  readonly variant?: NamedVariant;
   readonly score: number;
   readonly end: RunEnd;
   /** The run's start date, `YYYY-MM-DD` (UTC). */
@@ -99,6 +106,7 @@ function progressFields(p: ProgressPayload): ProgressPayload {
     v: 1,
     runId: p.runId,
     mode: p.mode,
+    ...(p.variant !== undefined ? { variant: p.variant } : {}),
     round: p.round,
     streak: p.streak,
     anchorId: p.anchorId,
@@ -116,6 +124,7 @@ function resultFields(p: ResultPayload): ResultPayload {
     v: 1,
     runId: p.runId,
     mode: p.mode,
+    ...(p.variant !== undefined ? { variant: p.variant } : {}),
     score: p.score,
     end: p.end,
     startedOn: p.startedOn,
@@ -171,12 +180,23 @@ const RESULT_KEYS = ["elapsedMs", "end", "endedAt", "mode", "runId", "score", "s
 
 const RUN_ENDS: readonly RunEnd[] = ["wrong", "deck-exhausted", "won", "timeout", "disconnected"];
 
+/**
+ * The payload's fields if they are exactly `keys`, or `keys` and a `variant`
+ * naming an Endless variant other than general Endless.
+ */
 function record(json: unknown, keys: readonly string[]): Record<string, unknown> | undefined {
   if (typeof json !== "object" || json === null || Array.isArray(json)) return undefined;
   const r = json as Record<string, unknown>;
+  const expected = "variant" in r ? [...keys, "variant"].sort() : keys;
   const own = Object.keys(r).sort();
-  if (own.length !== keys.length || own.some((k, i) => k !== keys[i])) return undefined;
+  if (own.length !== expected.length || own.some((k, i) => k !== expected[i])) return undefined;
+  if ("variant" in r && !isNamedVariant(r.variant)) return undefined;
   return r.v === 1 ? r : undefined;
+}
+
+/** The variant field, as parsed by `record`: present only when it names one. */
+function variantField(r: Record<string, unknown>): { variant?: NamedVariant } {
+  return isNamedVariant(r.variant) ? { variant: r.variant } : {};
 }
 
 const isString = (v: unknown, max = 128): v is string =>
@@ -203,6 +223,7 @@ function parseProgress(json: unknown): ProgressPayload | undefined {
     v: 1,
     runId,
     mode,
+    ...variantField(r),
     round,
     streak,
     anchorId,
@@ -223,5 +244,15 @@ function parseResult(json: unknown): ResultPayload | undefined {
   if (typeof end !== "string" || !(RUN_ENDS as readonly string[]).includes(end)) return undefined;
   if (typeof startedOn !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(startedOn)) return undefined;
   if (!isTime(elapsedMs) || !isTime(endedAt)) return undefined;
-  return { v: 1, runId, mode, score, end: end as RunEnd, startedOn, elapsedMs, endedAt };
+  return {
+    v: 1,
+    runId,
+    mode,
+    ...variantField(r),
+    score,
+    end: end as RunEnd,
+    startedOn,
+    elapsedMs,
+    endedAt,
+  };
 }

@@ -2,9 +2,11 @@
  * Run ids: `YYYYMMDD-<uuid>.<sig>`, the date in UTC.
  *
  * **Per mode.** Friendly signs `"run:" + body`, as it always has; Endless
- * signs `"run:endless:" + body`. An id is only ever verified against the mode
- * it is used in, so an Endless id can't be played as Friendly or the other way
- * round, and a Friendly id minted before Endless existed still verifies.
+ * signs `"run:endless:" + body`, and Instagram Endless
+ * `"run:endless:instagram:" + body`. An id is only ever verified against the
+ * mode it is used in, so an Endless id can't be played as Friendly or as
+ * another Endless variant, and a Friendly id minted before Endless existed
+ * still verifies.
  *
  * The body, `YYYYMMDD-<uuid>`, names the run. The date does two jobs. It fixes
  * `now` for the whole run — age is computed from it, so a run straddling
@@ -31,16 +33,39 @@
  * encoded or truncated.
  */
 
+import type { EndlessVariantId, NamedVariant } from "@bt/core";
 import { hmacSha256, timingSafeEqual, toBase64Url } from "./hmac.js";
 
-/** The modes with run ids. Ranked will number its games instead. */
-export type RunMode = "friendly" | "endless";
+/**
+ * The kinds of run with run ids: Friendly, and each Endless variant (variants.ts
+ * in @bt/core), general Endless being `endless`. Ranked will number its games
+ * instead.
+ */
+export type RunMode = "friendly" | EndlessVariantId;
 
-/** What each mode's run-id signature covers, before the body. */
+/**
+ * What each kind's run-id signature covers, before the body. Each Endless
+ * variant signs under its own, so a run id only ever verifies as the variant it
+ * was minted for.
+ */
 const RUN_PREFIX: Readonly<Record<RunMode, string>> = {
   friendly: "run:",
   endless: "run:endless:",
+  "endless-instagram": "run:endless:instagram:",
 };
+
+/** The kind of run a request names: its mode, and for Endless its variant if any. */
+export function runModeOf(mode: "friendly" | "endless", variant?: NamedVariant): RunMode {
+  return mode === "friendly" ? "friendly" : (variant ?? "endless");
+}
+
+/** What `buildRun` needs to deal a run of this kind: its mode, and its Endless variant. */
+export function dealOptions(
+  kind: RunMode,
+):
+  { readonly mode: "friendly" } | { readonly mode: "endless"; readonly variant: EndlessVariantId } {
+  return kind === "friendly" ? { mode: "friendly" } : { mode: "endless", variant: kind };
+}
 
 /** 128 bits of the HMAC: far beyond guessing, and 22 characters in a link. */
 export const SIGNATURE_BYTES = 16;

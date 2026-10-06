@@ -84,25 +84,31 @@ export const ANSWER_TIMINGS = {
  * the instant the guess goes, so the rest of the reveal to the verdict, the gap
  * to the next deal, and then the beat and spin on a stat change or the short
  * hold without one.
+ *
+ * `wheel` is false in an Endless variant that fixes the stat (variants.ts):
+ * the wheel never spins there, round one included, so every round takes the
+ * short hold instead.
  */
-export function answerAllowance(round: number, statChanged: boolean): number {
+export function answerAllowance(round: number, statChanged: boolean, wheel = true): number {
   const t = ANSWER_TIMINGS;
   const spun = t.beat + t.spin + t.land;
-  if (round === 1) return t.title + t.holdMin + t.holdExtra + t.introMin + spun;
-  return t.verdict + t.next + (statChanged ? spun : t.hold);
+  if (round === 1) return t.title + t.holdMin + t.holdExtra + t.introMin + (wheel ? spun : t.hold);
+  return t.verdict + t.next + (wheel && statChanged ? spun : t.hold);
 }
 
 /**
  * When the server stops accepting an answer to question `round`, for a token
  * issued at `issuedAt` (ms since the epoch). Null for a mode with no clock.
+ * `wheel`: false for a variant without one (`answerAllowance`).
  */
 export function deadlineFor(
   issuedAt: number,
   round: number,
   statChanged: boolean,
   mode: Mode,
+  wheel = true,
 ): number | null {
   const limit = questionLimit(mode, round);
   if (limit === null) return null;
-  return issuedAt + answerAllowance(round, statChanged) + limit + NETWORK_GRACE_MS;
+  return issuedAt + answerAllowance(round, statChanged, wheel) + limit + NETWORK_GRACE_MS;
 }

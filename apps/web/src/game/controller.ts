@@ -20,13 +20,14 @@
  * timer from an abandoned run is ignored.
  */
 
-import type { CardImage, Guess, RoundPayload } from "@bt/core";
+import type { CardImage, Guess, NamedVariant, RoundPayload } from "@bt/core";
 import { classifyFailure } from "./api";
 import type { GameApi } from "./api";
 import {
   advanceDelay,
   dealDelay,
   initialState,
+  wheelOf,
   newCards,
   offeredLink,
   reduce,
@@ -57,6 +58,8 @@ export interface ControllerDeps {
   readonly challenge?: Challenge | null;
   /** The mode being played: whether questions have a clock. Friendly by default. */
   readonly mode?: GameMode;
+  /** Endless only: the variant, when not general Endless (Instagram Endless). */
+  readonly variant?: NamedVariant;
   /**
    * Starts fetching a card's photo into the browser cache. The promise, if
    * any, settles when it has loaded or failed.
@@ -77,7 +80,12 @@ export class GameController {
 
   constructor(deps: ControllerDeps) {
     this.#deps = deps;
-    this.#state = initialState(deps.best ?? 0, deps.challenge ?? null, deps.mode ?? "friendly");
+    this.#state = initialState(
+      deps.best ?? 0,
+      deps.challenge ?? null,
+      deps.mode ?? "friendly",
+      deps.variant,
+    );
   }
 
   get state(): GameState {
@@ -203,7 +211,7 @@ export class GameController {
 
       case "dealing":
         if (after.round === null) return;
-        this.#after(dealDelay(after.round, timings), () => ({
+        this.#after(dealDelay(after.round, timings, wheelOf(after)), () => ({
           type: "dealt",
           at: this.#deps.now(),
         }));

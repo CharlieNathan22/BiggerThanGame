@@ -100,6 +100,13 @@ export const en = {
   "mode.endless.body":
     "Unlimited runs against a 10-second clock, with boards for the day, the week and the month.",
   "mode.endless.leaderboard": "See leaderboards",
+  "mode.instagram.name": "Instagram Endless",
+  "mode.instagram.body":
+    "Every question is Instagram followers. Unlimited runs against a 10-second clock.",
+  // The start panel's subtitle and the breadcrumb, under "Endless"
+  "mode.instagram.subtitle": "Instagram",
+  // On the Legends page's Instagram Endless card, from this device's best; {best} is filled in there
+  "mode.yourBest": "Your best: {best}",
   "mode.ranked.name": "Daily Ranked",
   "mode.ranked.body": "One run a day, the same for everyone, on a global leaderboard.",
   "mode.soon": "Coming soon",
@@ -108,6 +115,11 @@ export const en = {
   "endless.title": "Endless Football Legends Higher or Lower | Bigger Than Game",
   "endless.description":
     "How long a streak can you build? Endless higher or lower on football legends, ten seconds a question, and the stat keeps changing. Free in your browser, no sign-up.",
+
+  // The Instagram Endless game page (/football-higher-or-lower/legends/endless/instagram). Drafts.
+  "instagram.title": "Football Legends Instagram Higher or Lower | Bigger Than Game",
+  "instagram.description":
+    "Who has more Instagram followers? Endless higher or lower on football legends, every question a follower count, ten seconds each. Free in your browser, no sign-up.",
 
   // The Endless leaderboard page. Drafts.
   "leaderboard.title": "Endless Leaderboard: Football Legends | Bigger Than Game",
@@ -176,6 +188,8 @@ export const en = {
     "Football Legends features the greatest footballers of all time who no longer play professionally. Guess whether the hidden number is higher or lower. Watch the plaque, the stat changes as you play. Get all {target} right to win.",
   "start.introEndless":
     "Football Legends features the greatest footballers of all time who no longer play professionally. Guess whether the hidden number is higher or lower, and keep the streak going as long as you can. Watch the plaque, the stat changes as you play.",
+  "start.introInstagram":
+    "Football Legends features the greatest footballers of all time who no longer play professionally. Every question is Instagram followers: is the hidden count higher or lower? Counts are snapshots, dated on each card.",
   // Endless's start panel, under the intro: the clock, and where to play without one
   "start.clock": "Endless has a 10-second clock.",
   "start.noClock": "Rather play without one?",
@@ -377,6 +391,7 @@ export const en = {
 
   // What gets shared
   "share.heading": "Bigger Than — Football Legends",
+  "share.headingInstagram": "Bigger Than — Instagram Endless",
   "share.score.one": "{score} correct, then out",
   "share.score.other": "{score} in a row",
   "share.endedOn": "Ended on: {stat}",

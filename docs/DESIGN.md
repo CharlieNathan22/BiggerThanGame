@@ -109,6 +109,28 @@ storage. That is friction, not prevention, and the doc should stay honest about 
   run, presented as personal-best boards rather than a ranking. Publishing is opt-in, under a
   nickname.
 
+### Endless variants
+
+Endless is built as a set of **variants** (`ENDLESS_VARIANTS`, `variants.ts` in `@bt/core`), each
+the same game — the clock, one life, the round protocol and its tokens, the Durable Object, the
+resend rule and the alarm, timeouts and disconnects, challenge links, the streak titles — over its
+own **pool** (which players can appear), **stat** (fixed, or the wheel), **band schedule**,
+**format** (endless; the themed "Clear the squad" modes will add their own) and **boards** (or
+none). Each has its own seed domain, run-id and challenge signatures, so runs, tokens and links of
+one variant are never accepted as another's (ARCHITECTURE.md §7). Its id names it everywhere it
+shows: the local best, the analytics mode column, the log lines.
+
+- **Endless** (`endless`) is the first: the whole deck, the wheel, the boards. Naming it changes
+  nothing about a run.
+- **Instagram Endless** (`endless-instagram`) is the second: only the players with an Instagram
+  figure (about 115), **Instagram followers on every question**, no wheel and no stat change, so
+  no spin anywhere in the deadline maths, round one included (§9). The plaque says "Instagram
+  followers" from the first deal, and every card shows its snapshot date as usual. The first five
+  questions prefer iconic players, as in Endless. Its own ramp and closeness floor (§8). **No
+  boards**: the server refuses to publish its runs, and its game-over panel has no Publish and no
+  "beat it" line. Share, challenge links ("Beat n" on a fresh Instagram Endless run) and Play again
+  work as in Endless; the share text's heading reads "Bigger Than — Instagram Endless".
+
 ### Friendly Mode
 
 Same randomised sequence style as Endless and **the same full deck**, minus the clock, the
@@ -369,6 +391,8 @@ for colourblind players.
   never springs.
 - **No spin when the stat isn't changing.** A wheel that lands on the same stat twice reads as
   broken.
+- **No wheel at all in a variant that fixes the stat** (Instagram Endless, §3): not even on
+  question one. The plaque shows the stat from the first deal, after the short hold.
 - **The opening stat is a wheel draw too**, over basic and uncommon stats only, with the same tier
   weights. **Rare stats never open a run** — a newcomer's first question should read at a glance —
   but the wheel can switch to them from the first switch, at round 3.
@@ -474,6 +498,31 @@ the narrow stats' pairs (international trophies 1–2 apart sit a third of the d
 dense stats' closest 10%-apart pairs as easier than a real fan would find them, which holds rounds
 16–20 near 76% however tight the bands. `simulation.md` has the tables.
 
+**Instagram Endless** has its own ramp (`INSTAGRAM_SCHEDULE`), in rank distance among the players
+with a figure, and a **closeness floor** of its own on every row: the two counts must be at least
+that far apart as a ratio, never relaxed, with ties never dealt. It replaces the general 2×
+volatility floor, which exists because follower counts drift between refreshes; here the counts
+are refreshed monthly (§11) and every card shows its date, so the floor starts at 2× and tightens
+to 1.25× deep into a run, and late questions can be genuinely close. Like Endless's, it **never
+gets easier**:
+
+| Rounds | Band (rank distance) | Closeness floor |
+| ------ | -------------------- | --------------- |
+| 1–5    | ≥0.45, no ceiling    | 2×              |
+| 6–10   | 0.12–0.30            | 1.6×            |
+| 11–15  | 0.035–0.11           | 1.45×           |
+| 16–20  | 0.03–0.09            | 1.35×           |
+| 21–30  | 0.03–0.09            | 1.3×            |
+| 31+    | 0.02–0.06            | 1.25×           |
+
+Under the `fan` model (115 players with a figure, 20,000 runs): median streak 10, about 4% of
+runs reach 20 and about 0.2% reach 30. The target was about 1% at 30; as in Endless, that can't
+be had with 3–4% at 20 unless rounds 21–30 get easier (the model's player has no memory: going
+from 20 to 30 takes ten answers at the same odds that thinned 10 to 20). A ramp that eases after
+round 20 reaches 0.9% at 30, but its round-30 pairs sit a median 2.5× apart against 1.5× here.
+`simulation.md` has the tables, including how close the pairs dealt at questions 10, 20 and 30
+are.
+
 **Friendly's twenty questions**: It opens
 on the same uncapped band for the five rounds that prefer iconic names, stays uncapped a little
 lower for five more, then tightens quickly and **never gets easier**: from round 5 each band is at
@@ -538,7 +587,8 @@ When the candidate pool falls below a threshold, relax in this order:
 3. **Then the floor.**
 4. **Then shorten the recently-seen queue.**
 5. **Never relax tie exclusion**, nor Friendly's final-stretch ratio floor (below), nor Endless's
-   pair rules from round 16 (its 10% floor for wide stats, and the value rules for narrow ones).
+   pair rules from round 16 (its 10% floor for wide stats, and the value rules for narrow ones),
+   nor Instagram Endless's closeness floor.
 
 The recently-seen queue (the last ~12 players, excluded from selection) matters more here than it
 did with floors, because bands and the queue shrink the pool at the same time.
@@ -652,7 +702,8 @@ re-checking the figure against current sources rather than by consulting a store
 
 Two stats carry more than a number, because both display the extra field on the card:
 
-- **Instagram followers** carries `as_of`, the snapshot date.
+- **Instagram followers** carries `as_of`, the snapshot date. The owner refreshes the counts
+  monthly; the deck build warns (never fails) when any is more than 45 days old, listing them.
 - **Highest transfer fee** carries `year`.
 
 Each player also carries a **position flag** (goalkeeper, defender, midfielder, striker), assigned
@@ -768,8 +819,9 @@ a number.
   seen, in the game's type and colours; in Friendly the score out of twenty, the twenty-cell grid
   (unreached rounds as empty outlines) and a gold trophy for a win. **No player photos** — their
   CC licences require attribution that can't travel with a shared image.
-- **Challenge links, Endless only** (`CHALLENGES`): "Challenge a friend" on the game-over panel
-  shares "Beat <score>" and a link. The friend plays **a fresh run of their own** — new players,
+- **Challenge links, Endless only** (`CHALLENGES`), Instagram Endless included, each variant's
+  link opening its own page: "Challenge a friend" on the game-over panel shares "Beat <score>" and
+  a link. The friend plays **a fresh run of their own** — new players,
   new stats — framed as "Beat 23", and at the end sees whether they beat it, matched it or fell
   short. The link sets the score, never the sequence, so challenge runs are ordinary runs, published
   to the boards like any other. The score is signed with the run, so it can't be edited; a link that
@@ -791,6 +843,8 @@ Resets daily. Same sequence for all players, so ranking is meaningful. Time take
 This is the headline board.
 
 ### Endless boards
+
+General Endless only: Instagram Endless has no boards (§3).
 
 Three boards: **Today**, **This week** and **This month**. Each is the top 50 of each device's
 **best single published run** in the period — the highest streak, then the lower **thinking
@@ -1017,6 +1071,7 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
         │                          no JS. Where "Play" goes.
         ├── /friendly              the game: Friendly Mode. Fixed-height, no scroll.
         └── /endless               the game: Endless. The same screen, with a clock.
+            ├── /instagram         the game: Instagram Endless. The same screen as Endless.
             └── /leaderboard       Endless's boards: today, this week, this month, and this
                                    device's own best runs. A page that scrolls.
 
@@ -1059,15 +1114,23 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   The footer keeps Leaderboards, Credits, Privacy, GitHub, "Suggest a legend" and "Report a
   problem", on one row down to 320px: below 440px Leaderboards steps out (it is in the Menu and
   on the Endless card), and below 360px GitHub, so it still fits.
-- **The Legends page's modes**: Endless first, on a row of its own, with a "See leaderboards"
-  button on the right of its card from 900px wide (under its text below that, so the text stays
-  centred like the other cards') — a second link beside the card's own, never inside it; then Friendly, then Daily Ranked, each on a full row of its own.
-- **Local best** is kept per deck and mode — `bt:best:<deck>:<mode>`, `bt:best:legends:friendly`
-  today — and shown only on the game pages under `/legends`.
-- **Challenge links** point at the Endless page:
-  `/football-higher-or-lower/legends/endless?challenge=…`. That page is indexed like Friendly's,
-  with its own title, description, canonical, preview tags (the site's default image) and JSON-LD;
-  so is the leaderboard page under it, with a breadcrumb. The footer's "Suggest a legend" and
+- **The Legends page's modes**, each on a full row of its own: Endless first, with a "See
+  leaderboards" button on the right of its card from 900px wide (under its text below that, so the
+  text stays centred like the other cards') — a second link beside the card's own, never inside
+  it; then **Instagram Endless**, in the Endless card's style with its own rose accent and an
+  original heart glyph (the word "Instagram" only, never its logo or marks), "Your best: n" from
+  this device when there is one, and no leaderboard button; then Friendly; then the themed modes
+  (Clubs, Leagues, Eras) when they come; and Daily Ranked's "Coming soon" card last, until it
+  launches and moves to the top.
+- **Local best** is kept per deck and mode or Endless variant — `bt:best:<deck>:<mode>`:
+  `bt:best:legends:friendly`, `bt:best:legends:endless`, `bt:best:legends:endless-instagram` —
+  and shown on the game pages under `/legends`, and Instagram Endless's on its Legends card.
+- **Challenge links** point at their own game page:
+  `/football-higher-or-lower/legends/endless?challenge=…`, and Instagram Endless's at
+  `/football-higher-or-lower/legends/endless/instagram?challenge=…`. Both pages are indexed like
+  Friendly's, each with its own title, description, canonical, preview tags (the site's default
+  image), JSON-LD and a breadcrumb trail (Instagram Endless's under Endless's); so is the
+  leaderboard page under Endless. The footer's "Suggest a legend" and
   "Report a problem" open the form in place on the game page, and go to its `#suggest` and
   `#problem` from everywhere else.
 

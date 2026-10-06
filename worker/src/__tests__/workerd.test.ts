@@ -118,6 +118,24 @@ describe("under workerd", () => {
     expect(await res.text()).toBe(node);
   });
 
+  it("deals the same Instagram Endless run from the same seed as Node", async () => {
+    const node = buildRun({
+      deck: fixtureDeck,
+      seed: "endless:instagram:1",
+      mode: "endless",
+      now: NOW,
+      maxRounds: 25,
+      variant: "endless-instagram",
+    })
+      .map((r) => `${r.index}:${r.stat}:${r.anchor.id}>${r.challenger.id}`)
+      .join("|");
+    expect(node.split("|").every((r) => r.split(":")[1] === "ig")).toBe(true);
+    const res = await server.fetch(
+      "http://localhost/test/fingerprint?seed=endless:instagram:1&mode=endless&variant=endless-instagram",
+    );
+    expect(await res.text()).toBe(node);
+  });
+
   it("plays a whole run over HTTP: right answers, then a wrong one ends it", async () => {
     const started = await start();
     let token = started.token;

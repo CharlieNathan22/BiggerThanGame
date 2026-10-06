@@ -23,17 +23,62 @@ interface Props {
    * tab stop. Only on an open card.
    */
   extra?: { readonly href: string; readonly label: string };
+  /**
+   * A mode's own accent in place of the gold (Instagram Endless's rose): its
+   * edge, glow, chevron and title on hover, and an original glyph over the
+   * title — a heart, never a brand's mark.
+   */
+  accent?: "instagram";
+  /**
+   * The device's best for the mode (`bt:best:legends:endless-instagram`),
+   * shown as "Your best: n" by a few lines of script when storage has one.
+   * Without storage, or with no best yet, the line stays hidden.
+   */
+  bestKey?: string;
 }
 
-const { name, body, href, large = false, wide = false, extra } = Astro.props;
+const { name, body, href, large = false, wide = false, extra, accent, bestKey } = Astro.props;
 const soon = href === undefined;
 ---
 
-<li class:list={["card", { large, soon, wide, open: !soon, split: !soon && extra !== undefined }]}>
+<li
+  class:list={[
+    "card",
+    accent,
+    { large, soon, wide, open: !soon, split: !soon && extra !== undefined },
+  ]}
+>
   <div class="text">
+    {accent === "instagram" && (
+      <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 20.5s-7.5-4.6-7.5-10.4A4.1 4.1 0 0 1 12 7.6a4.1 4.1 0 0 1 7.5 2.5c0 5.8-7.5 10.4-7.5 10.4z" />
+      </svg>
+    )}
     <h2>{soon ? name : <a href={href}>{name}</a>}</h2>
     <p class="body">{body}</p>
+    {bestKey !== undefined && !soon && (
+      <p class="best" data-best-key={bestKey} data-template={t("mode.yourBest")} hidden />
+    )}
   </div>
+  {bestKey !== undefined && !soon && <script is:inline>
+    // "Your best: n" from this device's storage. Nothing at all when storage
+    // is blocked or holds no best: the line stays hidden. No digits here, so
+    // the dist leak scan has nothing to weigh.
+    (function () {
+      try {
+        document.querySelectorAll("[data-best-key]").forEach(function (line) {
+          const raw = localStorage.getItem(line.getAttribute("data-best-key"));
+          if (raw === null || !/^\d+$/.test(raw) || !Number(raw)) return;
+          line.textContent = line
+            .getAttribute("data-template")
+            .replace("{best}", String(Number(raw)));
+          line.hidden = false;
+        });
+      } catch {
+        // Storage blocked: no line.
+      }
+    })();
+  </script>}
   {!soon && extra !== undefined && (
     <a class="extra" href={extra.href}>
       {extra.label}
@@ -275,6 +320,43 @@ const soon = href === undefined;
     border-top: var(--card-chevron-stroke) solid var(--gold);
     border-right: var(--card-chevron-stroke) solid var(--gold);
     transform: translateY(-50%) rotate(45deg);
+  }
+
+  /* A mode with its own accent: the gold's places in rose (tokens.css). The
+       custom properties the card reads are resolved where they're declared,
+       so each is set again here rather than only the colour underneath. */
+  .card.instagram {
+    --gold: var(--instagram);
+    --glow-rgb: var(--instagram-rgb);
+    --card-edge: rgba(var(--instagram-rgb), 0.38);
+    --card-edge-hover: var(--instagram);
+    --glow: 0 0 var(--glow-blur) rgba(var(--instagram-rgb), var(--glow-opacity));
+    --glow-hover: 0 0 var(--glow-hover-blur) rgba(var(--instagram-rgb), var(--glow-hover-opacity));
+    --card-shadow-lifted:
+      var(--card-top-light), 0 2px 4px rgba(0, 0, 0, 0.45), 0 22px 48px rgba(0, 0, 0, 0.45),
+      0 0 26px rgba(var(--instagram-rgb), 0.32);
+    --card-shadow-pressed:
+      var(--card-top-light), 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 20px rgba(0, 0, 0, 0.4),
+      0 0 20px rgba(var(--instagram-rgb), 0.28);
+  }
+  .glyph {
+    width: var(--card-glyph);
+    height: var(--card-glyph);
+    fill: none;
+    stroke: var(--instagram);
+    stroke-width: 1.8;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 6px rgba(var(--instagram-rgb), 0.55));
+  }
+  .card .best {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-variation-settings: var(--fv-caps);
+    color: var(--card-best);
+  }
+  .card .best[hidden] {
+    display: none;
   }
 
   /* Not open yet: the same raised card, dimmed and dashed, and still. */

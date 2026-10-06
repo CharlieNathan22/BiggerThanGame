@@ -15,7 +15,14 @@ import {
   sitemapXml,
   websiteLd,
 } from "../seo";
-import { ENDLESS_PATH, FOOTBALL_PATH, FRIENDLY_PATH, HOME_PATH, LEGENDS_PATH } from "../paths";
+import {
+  ENDLESS_PATH,
+  FOOTBALL_PATH,
+  FRIENDLY_PATH,
+  HOME_PATH,
+  INSTAGRAM_PATH,
+  LEGENDS_PATH,
+} from "../paths";
 
 const ORIGIN = "https://biggerthangame.com";
 
@@ -33,6 +40,18 @@ describe("the pages in search", () => {
     expect(INDEXABLE_PAGES).toContain("/privacy");
     expect(INDEXABLE_PAGES).toContain(ENDLESS_PATH);
     expect(INDEXABLE_PAGES).not.toContain("/404");
+  });
+
+  it("include Instagram Endless, under the Endless page", () => {
+    expect(INDEXABLE_PAGES).toContain(INSTAGRAM_PATH);
+    expect(breadcrumbTrail(INSTAGRAM_PATH).map((c) => c.path)).toEqual([
+      HOME_PATH,
+      FOOTBALL_PATH,
+      LEGENDS_PATH,
+      ENDLESS_PATH,
+      INSTAGRAM_PATH,
+    ]);
+    expect(breadcrumbTrail(INSTAGRAM_PATH).at(-1)?.name).toBe("Instagram");
   });
 
   it("put the Endless page under the Legends page, like Friendly", () => {

@@ -42,12 +42,13 @@
  * own, to challenge a friend with. In Friendly an old link is only noted.
  */
 
-import { questionLimit } from "@bt/core";
+import { hasWheel, questionLimit, variantOf } from "@bt/core";
 import type {
   AnswerResponse,
   ChallengeLink,
   ChallengeStatus,
   Mode,
+  NamedVariant,
   PlayerCard,
   Reveal,
   RoundPayload,
@@ -174,6 +175,11 @@ export interface CountClock {
 export interface GameState {
   readonly phase: Phase;
   readonly mode: GameMode;
+  /**
+   * The Endless variant being played, when not general Endless (Instagram
+   * Endless). Absent in Friendly and general Endless.
+   */
+  readonly variant?: NamedVariant;
   readonly runId: string | null;
   /** The question on screen. */
   readonly round: RoundPayload | null;
@@ -266,10 +272,12 @@ export function initialState(
   best = 0,
   challenge: Challenge | null = null,
   mode: GameMode = "friendly",
+  variant?: NamedVariant,
 ): GameState {
   return {
     phase: "idle",
     mode,
+    ...(mode === "endless" && variant !== undefined ? { variant } : {}),
     runId: null,
     round: null,
     plaque: null,
@@ -294,9 +302,18 @@ export function initialState(
   };
 }
 
-/** The wheel spins on round one and whenever the stat changes (DESIGN.md §7). */
-export function shouldSpin(round: RoundPayload): boolean {
-  return round.index === 1 || round.stat.statChanged;
+/**
+ * The wheel spins on round one and whenever the stat changes (DESIGN.md §7) —
+ * except in a variant with no wheel (`wheel` false: Instagram Endless), where
+ * the stat never changes and the plaque shows it from the first deal.
+ */
+export function shouldSpin(round: RoundPayload, wheel = true): boolean {
+  return wheel && (round.index === 1 || round.stat.statChanged);
+}
+
+/** Whether the run on screen has a wheel: core's word on its variant (`hasWheel`). */
+export function wheelOf(state: Pick<GameState, "mode" | "variant">): boolean {
+  return state.mode === "friendly" || hasWheel(variantOf(state.variant));
 }
 
 /**
@@ -309,7 +326,12 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       if (state.phase !== "idle" && state.phase !== "over") return state;
       // A challenge belongs to the first run from the link. "Play again" is a fresh run.
       return {
-        ...initialState(state.best, state.phase === "idle" ? state.challenge : null, state.mode),
+        ...initialState(
+          state.best,
+          state.phase === "idle" ? state.challenge : null,
+          state.mode,
+          state.variant,
+        ),
         phase: "starting",
         repeat: state.phase === "over" || state.repeat,
       };
@@ -361,7 +383,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
 
     case "dealt":
       if (state.phase !== "dealing" || state.round === null) return state;
-      return shouldSpin(state.round)
+      return shouldSpin(state.round, wheelOf(state))
         ? { ...state, phase: "spinning" }
         : { ...state, phase: "awaiting", clock: clockFor(state, event.at), stopped: null };
 
@@ -529,7 +551,7 @@ function deal(state: GameState, round: RoundPayload): GameState {
     round,
     // Without a spin the plaque shows the stat straight away; with one it keeps
     // the previous stat until the wheel lands.
-    plaque: shouldSpin(round) ? state.plaque : round.stat,
+    plaque: shouldSpin(round, wheelOf(state)) ? state.plaque : round.stat,
   };
 }
 
@@ -561,8 +583,8 @@ export function newCards(round: RoundPayload): readonly PlayerCard[] {
 // ---------------------------------------------------------------- timings
 
 /** How long the players are on screen before the wheel, or before the value if there's no spin. */
-export function dealDelay(round: RoundPayload, timings: Timings): number {
-  return shouldSpin(round) ? timings.beat : timings.hold;
+export function dealDelay(round: RoundPayload, timings: Timings, wheel = true): number {
+  return shouldSpin(round, wheel) ? timings.beat : timings.hold;
 }
 
 /**

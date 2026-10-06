@@ -13,11 +13,12 @@
  * the page.
  */
 
-import { buildRun, roundCap } from "@bt/core";
+import { buildRun, isNamedVariant, roundCap } from "@bt/core";
 import type { ApiError, LeavePhase, LeaveRequest, LeaveTrigger, Player } from "@bt/core";
 import { shownRound } from "./analytics.js";
 import type { GameEvent, ShownRound } from "./analytics.js";
-import { isRunAnswerable, parseRunId, verifyRunId } from "./run-id.js";
+import { dealOptions, isRunAnswerable, parseRunId, runModeOf, verifyRunId } from "./run-id.js";
+import { named } from "./run.js";
 import { seedFor } from "./seed.js";
 import type { Parsed } from "./validate.js";
 
@@ -42,13 +43,19 @@ export function parseLeaveRequest(body: unknown): Parsed<LeaveRequest> {
     return fail("body must be a JSON object");
   }
   const record = body as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
+  // `variant` aside (an Endless variant's runs only), exactly these keys.
+  const keys = Object.keys(record)
+    .filter((k) => k !== "variant")
+    .sort();
   if (keys.length !== LEAVE_KEYS.length || keys.some((k, i) => k !== LEAVE_KEYS[i])) {
-    return fail("expected { mode, runId, round, phase, trigger }");
+    return fail("expected { mode, variant?, runId, round, phase, trigger }");
   }
-  const { mode, runId, round, phase, trigger } = record;
+  const { mode, runId, round, phase, trigger, variant } = record;
   if (mode !== "friendly" && mode !== "endless")
     return fail('mode must be "friendly" or "endless"');
+  if ("variant" in record && (mode !== "endless" || !isNamedVariant(variant))) {
+    return fail('variant must be "endless-instagram", in Endless only');
+  }
   const cap = roundCap(mode);
   if (typeof runId !== "string" || parseRunId(runId) === undefined) {
     return fail("runId is malformed");
@@ -70,6 +77,7 @@ export function parseLeaveRequest(body: unknown): Parsed<LeaveRequest> {
     ok: true,
     value: {
       mode,
+      ...(isNamedVariant(variant) ? { variant } : {}),
       runId,
       round,
       phase: phase as LeavePhase,
@@ -83,7 +91,8 @@ export async function handleLeave(body: unknown, ctx: LeaveContext): Promise<Lea
   if (!parsed.ok) return badRequest(parsed.detail);
   const req = parsed.value;
 
-  const run = await verifyRunId(req.runId, ctx.secret, req.mode);
+  const kind = runModeOf(req.mode, req.variant);
+  const run = await verifyRunId(req.runId, ctx.secret, kind);
   if (run === undefined) return badRequest("runId is not one this server issued");
   if (run.replay) return badRequest("replay ids are refused: challenge links are off in Friendly");
   if (!isRunAnswerable(run, ctx.clock())) return badRequest("runId is out of date");
@@ -91,8 +100,14 @@ export async function handleLeave(body: unknown, ctx: LeaveContext): Promise<Lea
   let shown: ShownRound | undefined;
   if (req.round > 0) {
     const now = run.date;
-    const seed = await seedFor(req.mode, ctx.secret, run.origin);
-    const rounds = buildRun({ deck: ctx.deck, seed, mode: req.mode, now, maxRounds: req.round });
+    const seed = await seedFor(kind, ctx.secret, run.origin);
+    const rounds = buildRun({
+      deck: ctx.deck,
+      seed,
+      ...dealOptions(kind),
+      now,
+      maxRounds: req.round,
+    });
     const round = rounds[req.round - 1];
     if (round === undefined) return badRequest(`this run has no round ${req.round}`);
     shown = shownRound(round, now, req.phase);
@@ -101,6 +116,7 @@ export async function handleLeave(body: unknown, ctx: LeaveContext): Promise<Lea
   ctx.record?.({
     type: "leave",
     mode: req.mode,
+    ...(kind === "friendly" ? {} : named(kind)),
     run: run.body,
     runKind: "fresh",
     round: req.round,

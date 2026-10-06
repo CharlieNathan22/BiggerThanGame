@@ -18,6 +18,9 @@ export const FRIENDLY_PATH = "/football-higher-or-lower/legends/friendly";
 /** Endless on the Legends deck: a streak against the clock. */
 export const ENDLESS_PATH = "/football-higher-or-lower/legends/endless";
 
+/** Instagram Endless: Endless with Instagram followers on every question, no boards. */
+export const INSTAGRAM_PATH = "/football-higher-or-lower/legends/endless/instagram";
+
 /** Endless's boards: today, this week and this month. */
 export const LEADERBOARD_PATH = "/football-higher-or-lower/legends/endless/leaderboard";
 

@@ -61,6 +61,22 @@ describe("golden fingerprints", () => {
     );
   });
 
+  it("an Instagram Endless run is stable", () => {
+    const run = buildRun({
+      deck: fixtureDeck,
+      seed: "endless:instagram:1",
+      mode: "endless",
+      now: NOW,
+      maxRounds: 25,
+      variant: "endless-instagram",
+    });
+    expect(
+      run.map((r) => `${r.index}:${r.stat}:${r.anchor.id}>${r.challenger.id}`).join("|"),
+    ).toMatchInlineSnapshot(
+      `"1:ig:hotel>foxtrot|2:ig:foxtrot>alpha|3:ig:alpha>juliet|4:ig:juliet>bravo|5:ig:bravo>lima|6:ig:lima>echo|7:ig:echo>delta|8:ig:delta>india|9:ig:india>charlie|10:ig:charlie>kilo|11:ig:kilo>bravo|12:ig:bravo>kilo|13:ig:kilo>echo|14:ig:echo>kilo|15:ig:kilo>echo|16:ig:echo>kilo|17:ig:kilo>bravo|18:ig:bravo>alpha|19:ig:alpha>hotel|20:ig:hotel>alpha|21:ig:alpha>bravo|22:ig:bravo>alpha|23:ig:alpha>hotel|24:ig:hotel>alpha|25:ig:alpha>hotel"`,
+    );
+  });
+
   it("a second ranked run is stable", () => {
     expect(fingerprint("ranked:2")).toMatchInlineSnapshot(
       `"1:club_goals:bravo>delta|2:club_goals:delta>alpha|3:ct:alpha>hotel|4:ct:hotel>echo|5:ct:echo>juliet|6:ct:juliet>charlie|7:ct:charlie>foxtrot|8:igoals:foxtrot>kilo|9:igoals:kilo>lima|10:apps:lima>golf|11:apps:golf>india|12:apps:india>golf|13:apps:golf>hotel|14:apps:hotel>india|15:apps:india>lima|16:apps:lima>bravo|17:apps:bravo>delta|18:apps:delta>foxtrot|19:apps:foxtrot>bravo|20:apps:bravo>delta|21:apps:delta>bravo|22:apps:bravo>india|23:apps:india>golf|24:apps:golf>alpha|25:apps:alpha>echo"`,

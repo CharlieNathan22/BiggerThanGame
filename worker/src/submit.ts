@@ -9,8 +9,9 @@
  *    nickname's form (`checkNickname`);
  * 2. **the token**: the run's signed result, or, for a run banked after a
  *    dropped connection, its latest progress token. Its run id must be an
- *    Endless one the server signed, never a retired replay id, and its score
- *    above 0;
+ *    Endless one the server signed, never a retired replay id, of a variant
+ *    with boards (Instagram Endless has none: `no_boards`, before anything
+ *    else is touched), and its score above 0;
  * 3. **the run's Durable Object** agrees (`claimForSubmit`): the run was
  *    started by `/api/run/start` — so it is a fresh random run, a challenge
  *    run included, never a sequence the player could have learned — it is
@@ -36,14 +37,23 @@
  */
 
 import {
+  ENDLESS_VARIANTS,
   buildRun,
   checkNickname,
   dayKey,
   flagCountry,
   normaliseNickname,
   periodsOf,
+  variantOf,
 } from "@bt/core";
-import type { ApiError, Player, PeriodRank, SubmitRequest, SubmitResponse } from "@bt/core";
+import type {
+  ApiError,
+  EndlessVariantId,
+  Player,
+  PeriodRank,
+  SubmitRequest,
+  SubmitResponse,
+} from "@bt/core";
 import type { GameEvent, RunKind } from "./analytics.js";
 import { hmacSha256, toBase64Url } from "./hmac.js";
 import type { Logger } from "./log.js";
@@ -51,7 +61,7 @@ import { moderate } from "./moderation.js";
 import type { RateDecision } from "./rate-limit.js";
 import type { ClaimRefusal, ClaimResult, SubmitClaim } from "./run-ledger.js";
 import { verifyRunId } from "./run-id.js";
-import { disconnectedEnd } from "./run.js";
+import { disconnectedEnd, named } from "./run.js";
 import { DuplicateRunError, insertScore, ownStanding } from "./scores.js";
 import type { D1Like, DayRange } from "./scores.js";
 import { endlessSeed } from "./seed.js";
@@ -111,6 +121,8 @@ const DEVICE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a
 /** A run's streak for the boards: a result's score, or a banked run's verified streak. */
 interface Claimed {
   readonly runId: string;
+  /** The variant the token was signed for: general Endless when it names none. */
+  readonly variant: EndlessVariantId;
   readonly score: number;
   readonly claim: Omit<SubmitClaim, "now">;
 }
@@ -135,8 +147,24 @@ export async function handleSubmit(body: unknown, ctx: SubmitContext): Promise<S
 
   const token = await readToken(ctx.secret, req.token);
   if (token === undefined) return badRequest("token is not one this server issued");
-  const run = await verifyRunId(token.runId, ctx.secret, "endless");
+  const run = await verifyRunId(token.runId, ctx.secret, token.variant);
   if (run === undefined || run.replay) return badRequest("token names no fresh Endless run");
+  // A variant without boards (Instagram Endless) never publishes: refused
+  // before its Durable Object, Turnstile or the database are touched.
+  if (!ENDLESS_VARIANTS[token.variant].boards) {
+    ctx.record?.({
+      type: "submit",
+      mode: "endless",
+      ...named(token.variant),
+      run: run.body,
+      runKind: "fresh",
+      score: token.score,
+      published: false,
+      shadowed: false,
+      refusal: "no_boards",
+    });
+    return badRequest("no_boards");
+  }
   if (token.score <= 0) return badRequest("zero");
 
   const now = ctx.clock().getTime();
@@ -298,6 +326,7 @@ async function readToken(secret: string, token: string): Promise<Claimed | undef
   if (result !== undefined) {
     return {
       runId: result.runId,
+      variant: variantOf(result.variant),
       score: result.score,
       claim: {
         runId: result.runId,
@@ -310,6 +339,7 @@ async function readToken(secret: string, token: string): Promise<Claimed | undef
   if (progress === undefined) return undefined;
   return {
     runId: progress.runId,
+    variant: variantOf(progress.variant),
     score: progress.streak,
     claim: {
       runId: progress.runId,

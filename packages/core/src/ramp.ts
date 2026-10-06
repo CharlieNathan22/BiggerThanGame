@@ -92,6 +92,36 @@ const ENDLESS_SCHEDULE: readonly BandRow[] = [
 ];
 
 /**
+ * Instagram Endless's schedule (variants.ts): every question is Instagram
+ * followers. Rank distance as in Endless, and every row also carries its own
+ * **closeness floor** as a `strictMinRatio`, never relaxed: the two counts must
+ * be at least that far apart as a ratio. It replaces the general volatility
+ * floor (`VOLATILE_FLOOR`, 2×), which exists because follower counts drift
+ * between refreshes; here the counts are refreshed monthly and every card shows
+ * its snapshot date, so the floor starts at 2× and tightens to 1.25× (25%
+ * apart) deep in a run, so late questions can get hard. DESIGN.md §8.
+ *
+ * Like Endless's, it is **never easier** from one row to the next — floor,
+ * ceiling and closeness floor alike — so it holds steady from round 16 rather
+ * than letting up.
+ *
+ * Tuned against simulation.md's Instagram Endless section with the `fan`
+ * model, 115 players with a figure: median streak 10, about 4% of runs reach
+ * 20, and about 0.2% reach 30. The owner's target was about 1% at 30, but as
+ * in Endless (DESIGN.md §8) that can't be had alongside 3–4% at 20 without
+ * rounds 21–30 getting easier: the model's player has no memory, so reaching
+ * 30 from 20 takes ten answers at the same odds that thinned 10 to 20.
+ */
+export const INSTAGRAM_SCHEDULE: readonly BandRow[] = [
+  { upTo: 5, band: { floor: 0.45, ceiling: null, strictMinRatio: 1.0 } },
+  { upTo: 10, band: { floor: 0.12, ceiling: 0.3, strictMinRatio: 0.6 } },
+  { upTo: 15, band: { floor: 0.035, ceiling: 0.11, strictMinRatio: 0.45 } },
+  { upTo: 20, band: { floor: 0.03, ceiling: 0.09, strictMinRatio: 0.35 } },
+  { upTo: 30, band: { floor: 0.03, ceiling: 0.09, strictMinRatio: 0.3 } },
+  { upTo: Infinity, band: { floor: 0.02, ceiling: 0.06, strictMinRatio: 0.25 } },
+];
+
+/**
  * The band schedule per mode. Changing one changes every run of that mode —
  * and every golden fingerprint for it.
  */
@@ -183,9 +213,20 @@ export const RELAXATION_LADDERS: Readonly<Record<Mode, RelaxationLadder>> = {
 /** Each step of the fine ladder lifts the ceiling to this many times the last. */
 export const FINE_CEILING_STEP = 1.5;
 
-/** 1-based round number and mode in, band out. */
-export function bandForRound(round: number, mode: Mode): Band {
-  const schedule = BAND_SCHEDULES[mode];
+/**
+ * What an Endless variant changes about the bands (variants.ts): its own
+ * schedule, its pair rules, and whether a volatile stat gets the general
+ * volatility floor. Without one, a mode's own settings apply.
+ */
+export interface BandRules {
+  readonly schedule: readonly BandRow[];
+  readonly pairRules: PairRules | null;
+  readonly volatileFloor: boolean;
+}
+
+/** 1-based round number and mode in, band out; a variant's own schedule when given. */
+export function bandForRound(round: number, mode: Mode, variant?: BandRules): Band {
+  const schedule = variant?.schedule ?? BAND_SCHEDULES[mode];
   const row = schedule.find((r) => round <= r.upTo);
   return row ? row.band : schedule[schedule.length - 1]!.band;
 }
@@ -197,15 +238,21 @@ export function bandForRound(round: number, mode: Mode): Band {
  * rule for a narrow stat, in place of the band, or a ratio floor for a wide
  * one. Everything that asks "is this pair dealable" — the engine and
  * viability.md alike — goes through this, so they can't disagree.
+ *
+ * An Endless variant (variants.ts) brings its own schedule and pair rules, and
+ * says whether the volatility floor applies; general Endless's settings are
+ * the mode's own, so passing it changes nothing.
  */
-export function bandFor(stat: StatKey, round: number, mode: Mode): Band {
-  const rules = PAIR_RULES[mode];
+export function bandFor(stat: StatKey, round: number, mode: Mode, variant?: BandRules): Band {
+  const rules = variant !== undefined ? variant.pairRules : PAIR_RULES[mode];
   if (rules !== null && round >= rules.from) {
     const rule = rules.narrow[stat];
     if (rule !== undefined) return { floor: 0, ceiling: null, valueRule: rule };
   }
-  let band = bandForRound(round, mode);
-  if (STATS[stat].volatile === true) band = { ...band, minRatio: VOLATILE_FLOOR };
+  let band = bandForRound(round, mode, variant);
+  if (STATS[stat].volatile === true && (variant?.volatileFloor ?? true)) {
+    band = { ...band, minRatio: VOLATILE_FLOOR };
+  }
   const stretch = FINAL_STRETCH[mode];
   if (stretch !== null && round >= stretch.from) {
     band = { ...band, strictMinRatio: stretch.minRatio };

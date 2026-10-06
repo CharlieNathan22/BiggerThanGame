@@ -8,6 +8,7 @@
 import type {
   ChallengeLink,
   GuessResponse,
+  NamedVariant,
   Player,
   RoundPayload,
   RunStartResponse,
@@ -82,16 +83,21 @@ export function harness(overrides: Partial<RunContext> = {}): Harness {
   return h;
 }
 
-export function startBody(challenge?: ChallengeLink): unknown {
+export function startBody(challenge?: ChallengeLink, variant?: NamedVariant): unknown {
   return {
     mode: "endless",
+    ...(variant !== undefined ? { variant } : {}),
     turnstileToken: "turnstile-token",
     ...(challenge !== undefined ? { challenge } : {}),
   };
 }
 
-export async function begin(h: Harness, challenge?: ChallengeLink): Promise<RunStartResponse> {
-  const result = await handleRunStart(startBody(challenge), h.ctx);
+export async function begin(
+  h: Harness,
+  challenge?: ChallengeLink,
+  variant?: NamedVariant,
+): Promise<RunStartResponse> {
+  const result = await handleRunStart(startBody(challenge, variant), h.ctx);
   if (result.status !== 200) throw new Error(`start failed: ${JSON.stringify(result.body)}`);
   return result.body as RunStartResponse;
 }
@@ -125,10 +131,16 @@ export type Ending = "wrong" | "timeout" | "late" | "none";
  */
 export async function walk(
   h: Harness,
-  opts: { deck?: readonly Player[]; stopAt?: number; ending?: Ending; think?: number } = {},
+  opts: {
+    deck?: readonly Player[];
+    stopAt?: number;
+    ending?: Ending;
+    think?: number;
+    variant?: NamedVariant;
+  } = {},
 ): Promise<{ started: RunStartResponse; answers: GuessResponse[] }> {
   const deck = opts.deck ?? h.ctx.deck;
-  const started = await begin(h);
+  const started = await begin(h, undefined, opts.variant);
   const answers: GuessResponse[] = [];
   let round: RoundPayload | undefined = started.round;
   let token: string | undefined = started.token;

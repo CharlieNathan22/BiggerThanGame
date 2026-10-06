@@ -18,6 +18,7 @@ import {
   FOOTBALL_PATH,
   FRIENDLY_PATH,
   HOME_PATH,
+  INSTAGRAM_PATH,
   LEADERBOARD_PATH,
   LEGENDS_PATH,
 } from "./paths";
@@ -157,6 +158,7 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
   const legends = { name: t("breadcrumb.legends"), path: LEGENDS_PATH };
   const friendly = { name: t("mode.friendly.name"), path: FRIENDLY_PATH };
   const endless = { name: t("mode.endless.name"), path: ENDLESS_PATH };
+  const instagram = { name: t("mode.instagram.subtitle"), path: INSTAGRAM_PATH };
   const leaderboard = { name: t("over.leaderboard"), path: LEADERBOARD_PATH };
   switch (path) {
     case FOOTBALL_PATH:
@@ -167,6 +169,8 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
       return [home, football, legends, friendly];
     case ENDLESS_PATH:
       return [home, football, legends, endless];
+    case INSTAGRAM_PATH:
+      return [home, football, legends, endless, instagram];
     case LEADERBOARD_PATH:
       return [home, football, legends, endless, leaderboard];
     default:

@@ -15,7 +15,8 @@
  *
  *   index1  the run key: the run id's body, before the "." (never the signature)
  *   blob1   event        "start" | "answer" | "end" | "leave"
- *   blob2   mode         "friendly" | "endless"
+ *   blob2   mode         "friendly" | "endless", or for an Endless variant its id
+ *                        ("endless-instagram"), so every per-mode query splits it out
  *   blob3   run kind     "fresh" | "challenge" (Endless, a fresh run against a link's
  *                        score) | "replay" (Friendly's retired challenge replays)
  *   blob4   deck version "legends-107-3f9c21e0"
@@ -48,12 +49,21 @@
  * timing never depend on it.
  */
 
-import { STATS, bandForRound, isFinalRound, percentiles, rankDistance, valueOf } from "@bt/core";
+import {
+  ENDLESS_VARIANTS,
+  STATS,
+  bandForRound,
+  isFinalRound,
+  percentiles,
+  rankDistance,
+  valueOf,
+} from "@bt/core";
 import type {
   Band,
   LeavePhase,
   LeaveTrigger,
   Mode,
+  NamedVariant,
   Player,
   Relaxation,
   Round,
@@ -84,6 +94,11 @@ export type RunKind = "fresh" | "challenge" | "replay";
 /** What every event knows about its run. */
 interface RunFacts {
   readonly mode: Mode;
+  /**
+   * An Endless run's variant, when not general Endless (variants.ts in
+   * @bt/core). Written as the mode column, and as `variant` on log lines.
+   */
+  readonly variant?: NamedVariant;
   /** The run key: the run id's body, `YYYYMMDD-<uuid>` or a replay's `…~<uuid>`. */
   readonly run: string;
   readonly runKind: RunKind;
@@ -232,8 +247,10 @@ export const RELAXATION_STEP: Readonly<Record<Relaxation, number>> = {
  * scheduled for, not the one relaxation settled on: `double4` says whether it
  * gave, and `double5` how far apart the pair actually was.
  */
-export function bandLabel(round: number, mode: Mode): string {
-  return formatBand(bandForRound(round, mode));
+export function bandLabel(round: number, mode: Mode, variant?: NamedVariant): string {
+  return formatBand(
+    bandForRound(round, mode, variant !== undefined ? ENDLESS_VARIANTS[variant] : undefined),
+  );
 }
 
 function formatBand(band: Band): string {
@@ -296,7 +313,13 @@ export function shownRound(round: Round, now: Date, phase: LeavePhase): ShownRou
 
 /** The event as one Analytics Engine data point, in the layout above. */
 export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
-  const common = [event.type, event.mode, event.runKind, ctx.deckVersion, ctx.country];
+  const common = [
+    event.type,
+    event.variant ?? event.mode,
+    event.runKind,
+    ctx.deckVersion,
+    ctx.country,
+  ];
   const indexes: [string] = [event.run];
   switch (event.type) {
     case "start":
@@ -309,7 +332,7 @@ export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
           ...common,
           event.stat,
           tier,
-          bandLabel(event.round, event.mode),
+          bandLabel(event.round, event.mode, event.variant),
           isFinalRound(event.round, event.mode) ? "1" : "0",
         ],
         doubles: [
@@ -356,6 +379,7 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
   const common = {
     route,
     mode: event.mode,
+    ...(event.variant !== undefined ? { variant: event.variant } : {}),
     run: event.run,
     runKind: event.runKind,
     deckVersion: ctx.deckVersion,

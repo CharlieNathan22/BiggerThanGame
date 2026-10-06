@@ -17,6 +17,8 @@ import { candidates, remember, selectChallenger } from "./engine.js";
 import type { MatchContext } from "./engine.js";
 import { RELAXATION_LADDERS, bandFor, relaxations } from "./ramp.js";
 import { STATS, STAT_KEYS } from "./stats.js";
+import { ENDLESS_VARIANTS, variantDeck } from "./variants.js";
+import type { EndlessVariant, EndlessVariantId } from "./variants.js";
 import { chooseStat, nextDwell, weightedPick } from "./wheel.js";
 import type { Mode, Player, Round, StatKey, Tier } from "./types.js";
 
@@ -29,6 +31,11 @@ export interface RunOptions {
   readonly now: Date;
   /** Hard cap on rounds generated. Defaults to the mode's `roundCap`. */
   readonly maxRounds?: number;
+  /**
+   * Endless only: the variant being played (variants.ts) — its pool, its fixed
+   * stat, its bands. General Endless when absent, and naming it changes nothing.
+   */
+  readonly variant?: EndlessVariantId;
 }
 
 /**
@@ -133,8 +140,9 @@ function openingAnchor(
   mode: Mode,
   now: Date,
   rng: Rng,
+  variant?: EndlessVariant,
 ): Player | undefined {
-  const band = bandFor(stat, 1, mode);
+  const band = bandFor(stat, 1, mode, variant);
   const dealable = deck.filter(
     (p) =>
       isEligible(p, stat, now) && candidates(p, stat, band, { deck, now, seen: [] }).length > 0,
@@ -144,7 +152,12 @@ function openingAnchor(
 }
 
 export function buildRun(opts: RunOptions): Round[] {
-  const { deck, seed, mode, now } = opts;
+  const { seed, mode, now } = opts;
+  const variant = runVariant(opts);
+  // A variant's pool is the deck its runs see: rank distance is measured within it too.
+  const deck = variant === undefined ? opts.deck : variantDeck(opts.deck, variant);
+  // A variant that fixes the stat has no wheel: no opening draw, no switch.
+  const fixed = variant?.stat ?? null;
   const maxRounds = Math.min(opts.maxRounds ?? Infinity, roundCap(mode));
   const iconicRounds = ICONIC_ROUNDS[mode];
   const rng = createRng(seed);
@@ -152,12 +165,20 @@ export function buildRun(opts: RunOptions): Round[] {
   let stat: StatKey | undefined;
   let anchor: Player | undefined;
 
+  if (fixed !== null) {
+    const pick = openingAnchor(deck, fixed, mode, now, rng, variant);
+    if (pick !== undefined) {
+      stat = fixed;
+      anchor = pick;
+    }
+  }
+
   // Opening round: a weighted draw over the opening tiers, then a curated
   // anchor. A stat no player can open on is dropped and the draw repeated.
-  let openers = STAT_KEYS.filter((key) => OPENING_TIERS.has(STATS[key].tier));
+  let openers = fixed !== null ? [] : STAT_KEYS.filter((key) => OPENING_TIERS.has(STATS[key].tier));
   while (openers.length > 0) {
     const candidateStat = weightedPick(openers, rng)!;
-    const pick = openingAnchor(deck, candidateStat, mode, now, rng);
+    const pick = openingAnchor(deck, candidateStat, mode, now, rng, variant);
     if (pick !== undefined) {
       stat = candidateStat;
       anchor = pick;
@@ -176,10 +197,10 @@ export function buildRun(opts: RunOptions): Round[] {
   for (let index = 1; index <= maxRounds; index++) {
     const previousStat = stat;
 
-    if (heldFor >= dwell && index > 1) {
+    if (fixed === null && heldFor >= dwell && index > 1) {
       const current = anchor;
       const viable = STAT_KEYS.filter((key) =>
-        isViable(current, key, index, mode, { deck, now, seen }),
+        isViable(current, key, index, mode, { deck, now, seen }, variant),
       );
       const next = chooseStat({ current: stat, viable, rng });
       if (next !== undefined) {
@@ -191,20 +212,21 @@ export function buildRun(opts: RunOptions): Round[] {
 
     const preferIconic = index <= iconicRounds;
     const ctx = { deck, now, seen };
-    let match = selectChallenger(anchor, stat, index, mode, ctx, rng, preferIconic);
+    let match = selectChallenger(anchor, stat, index, mode, ctx, rng, preferIconic, variant);
     // The held stat can't be dealt to this anchor at all. Where the wheel
     // counts any dealable stat (Endless), switch rather than end the run: a
     // value rule never relaxes, so an anchor at the edge of a narrow stat's
     // values may have no partner on it.
-    if (match === undefined && WHEEL_VIABILITY[mode] === "any") {
+    // A fixed stat never switches: with no partner left, the run ends.
+    if (match === undefined && fixed === null && WHEEL_VIABILITY[mode] === "any") {
       const current = anchor;
-      const viable = STAT_KEYS.filter((key) => isViable(current, key, index, mode, ctx));
+      const viable = STAT_KEYS.filter((key) => isViable(current, key, index, mode, ctx, variant));
       const next = chooseStat({ current: stat, viable, rng });
       if (next !== undefined) {
         stat = next;
         dwell = nextDwell(rng);
         heldFor = 0;
-        match = selectChallenger(anchor, stat, index, mode, ctx, rng, preferIconic);
+        match = selectChallenger(anchor, stat, index, mode, ctx, rng, preferIconic, variant);
       }
     }
     if (match === undefined) break;
@@ -227,6 +249,13 @@ export function buildRun(opts: RunOptions): Round[] {
   return rounds;
 }
 
+/** The run's Endless variant, if it names one. Only Endless has variants. */
+function runVariant(opts: RunOptions): EndlessVariant | undefined {
+  if (opts.variant === undefined) return undefined;
+  if (opts.mode !== "endless") throw new Error(`variant ${opts.variant} outside Endless`);
+  return ENDLESS_VARIANTS[opts.variant];
+}
+
 /**
  * Whether the wheel may switch to `stat` for this anchor at this round, by the
  * mode's `WHEEL_VIABILITY`: a challenger within the unrelaxed band, or a
@@ -239,9 +268,10 @@ export function isViable(
   round: number,
   mode: Mode,
   ctx: MatchContext,
+  variant?: EndlessVariant,
 ): boolean {
   if (!isEligible(anchor, stat, ctx.now)) return false;
-  const band = bandFor(stat, round, mode);
+  const band = bandFor(stat, round, mode, variant);
   if (WHEEL_VIABILITY[mode] === "band") return candidates(anchor, stat, band, ctx).length > 0;
   const loosest = relaxations(band, RELAXATION_LADDERS[mode]).at(-1) ?? band;
   return candidates(anchor, stat, loosest, ctx, true).length > 0;

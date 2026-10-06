@@ -14,6 +14,7 @@ import { STATS, WIN_ROUNDS, valueOf } from "@bt/core";
 import type {
   AnswerResponse,
   GuessResponse,
+  NamedVariant,
   Player,
   RoundPayload,
   RunStartResponse,
@@ -313,9 +314,13 @@ const ENDLESS_NUMERIC_PATHS = [...NUMERIC_PATHS, /^challenge\.score$/];
  * A progress token carries exactly its declared fields, and only what is on
  * screen: the anchor's figure, never the challenger's.
  */
-function checkToken(token: string, round: RoundPayload): void {
+function checkToken(token: string, round: RoundPayload, variant?: NamedVariant): void {
   const payload = readToken(token);
-  expect(Object.keys(payload).sort()).toEqual(TOKEN_KEYS);
+  // A variant's token names it; general Endless's has exactly the fields it always had.
+  expect(Object.keys(payload).sort()).toEqual(
+    variant === undefined ? TOKEN_KEYS : [...TOKEN_KEYS, "variant"].sort(),
+  );
+  expect(payload.variant).toBe(variant);
   expect(payload.round).toBe(round.index);
   expect(payload.streak).toBe(round.index - 1);
   expect(payload.stat).toBe(round.stat.key);
@@ -333,6 +338,7 @@ function checkEndless(
   response: RunStartResponse | GuessResponse,
   deck: readonly Player[],
   now: Date,
+  variant?: NamedVariant,
 ): void {
   const keys = allKeys(response);
   for (const forbidden of ["stats", "dob", "deceased", "iconic", "era", "leagues", "mainClubs"]) {
@@ -355,7 +361,7 @@ function checkEndless(
   if ("round" in response) {
     expectKeysWithin(response, ENDLESS_START_KEYS);
     checkRound(response.round, deck, now);
-    checkToken(response.token, response.round);
+    checkToken(response.token, response.round, variant);
     return;
   }
   expectKeysWithin(response.reveal, REVEAL_KEYS);
@@ -363,7 +369,7 @@ function checkEndless(
     expect(Object.keys(response).sort()).toEqual(ENDLESS_CONTINUE_KEYS);
     expect(response.reveal.correct).toBe(true);
     checkRound(response.next, deck, now);
-    checkToken(response.token, response.next);
+    checkToken(response.token, response.next, variant);
   } else {
     expect(Object.keys(response).sort()).toEqual(ENDLESS_END_KEYS);
     expect(["wrong", "timeout", "deck-exhausted"]).toContain(response.end);
@@ -379,11 +385,17 @@ describe("Endless responses", () => {
   const endings: Ending[] = ["wrong", "timeout", "late"];
 
   it.each([
-    { name: "sample deck", deck: SAMPLE_DECK, runs: 30 },
-    { name: "fixture deck", deck: FIXTURE_DECK, runs: 15 },
+    { name: "sample deck", deck: SAMPLE_DECK, runs: 30, variant: undefined },
+    { name: "fixture deck", deck: FIXTURE_DECK, runs: 15, variant: undefined },
+    {
+      name: "sample deck in Instagram Endless",
+      deck: SAMPLE_DECK,
+      runs: 20,
+      variant: "endless-instagram" as const,
+    },
   ])(
     "never carry a hidden value across $runs complete runs on the $name",
-    async ({ deck, runs }) => {
+    async ({ deck, runs, variant }) => {
       let responses = 0;
       for (let i = 0; i < runs; i++) {
         const h = harness({ deck, images: fakeImages(deck) });
@@ -391,10 +403,11 @@ describe("Endless responses", () => {
           deck,
           stopAt: 1 + ((i * 7) % 25),
           ending: endings[i % endings.length]!,
+          ...(variant !== undefined ? { variant } : {}),
         });
         const now = runDay(started.runId);
         for (const response of [started, ...answers]) {
-          checkEndless(response, deck, now);
+          checkEndless(response, deck, now, variant);
           responses += 1;
         }
         expect("end" in answers.at(-1)!).toBe(true);

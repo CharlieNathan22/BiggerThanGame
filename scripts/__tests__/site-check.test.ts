@@ -360,6 +360,12 @@ describe("siteExpectations", () => {
     expect(expect_.previewImage).toBe("/og-image.png");
   });
 
+  it("indexes Instagram Endless as a game page under Endless, with the default preview", () => {
+    const expect_ = siteExpectations(["/og-image.png"]);
+    expect(expect_.structuredData[`${ENDLESS}/instagram`]).toEqual(["BreadcrumbList", "VideoGame"]);
+    expect(expect_.previewImages?.[`${ENDLESS}/instagram`]).toBeUndefined();
+  });
+
   it("indexes the leaderboard with a breadcrumb and the default preview", () => {
     const expect_ = siteExpectations(["/og-image.png"]);
     expect(expect_.structuredData[LEADERBOARD]).toEqual(["BreadcrumbList"]);

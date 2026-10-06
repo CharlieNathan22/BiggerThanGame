@@ -12,24 +12,22 @@
  *
  * Friendly used to have challenge links too. One arriving there now is
  * `retired`: never sent, with a note that it has expired.
+ *
+ * Each Endless variant's links open its own page (`PLAY_PATHS`): Instagram
+ * Endless's "Beat n" is played on Instagram Endless.
  */
 
 import { CHALLENGES, roundCap } from "@bt/core";
 import type { ChallengeLink } from "@bt/core";
-import { ENDLESS_PATH, FRIENDLY_PATH } from "../lib/paths";
 import type { GameMode } from "./machine";
+import { PLAY_PATHS } from "./variant";
+import type { PlayId } from "./variant";
 
 export const CHALLENGE_PARAMS = ["challenge", "score", "sig"] as const;
 
 /** Generous bounds on the parts, so a truncated or padded link is caught here. */
 const RUN_ID = /^\d{8}-[0-9a-f-]{36}\.[A-Za-z0-9_-]{22}$/;
 const SIG = /^[A-Za-z0-9_-]{22}$/;
-
-/** Each mode's game page: where its challenge links point. */
-export const GAME_PATHS: Readonly<Record<GameMode, string>> = {
-  friendly: FRIENDLY_PATH,
-  endless: ENDLESS_PATH,
-};
 
 /**
  * What the URL says: no challenge, a well-formed one to try, one too broken to
@@ -56,18 +54,14 @@ export function readChallenge(search: string, mode: GameMode): ChallengeParam {
   return { kind: "link", link: { runId, score, sig } };
 }
 
-/** The shareable URL for `link`: `mode`'s game page on `site` (an origin, no trailing slash). */
-export function challengeUrl(
-  site: string,
-  link: ChallengeLink,
-  mode: GameMode = "endless",
-): string {
+/** The shareable URL for `link`: `play`'s game page on `site` (an origin, no trailing slash). */
+export function challengeUrl(site: string, link: ChallengeLink, play: PlayId = "endless"): string {
   const params = new URLSearchParams({
     challenge: link.runId,
     score: String(link.score),
     sig: link.sig,
   });
-  return `${site}${GAME_PATHS[mode]}?${params.toString()}`;
+  return `${site}${PLAY_PATHS[play]}?${params.toString()}`;
 }
 
 /** `search` without the challenge parameters, for `history.replaceState` once a link is used. */

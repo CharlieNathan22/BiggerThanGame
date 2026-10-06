@@ -628,6 +628,12 @@
   --card-chevron-inset: 24px;
   /* A card with a second link (Endless's leaderboards): text and button apart. */
   --card-split-gap: 24px;
+  /* Instagram Endless's accent, in the gold's places on its card: a warm rose,
+     never a brand's colours. Its "Your best" line in it, at AA on the card. */
+  --instagram: #ff7aa2;
+  --instagram-rgb: 255, 122, 162;
+  --card-best: var(--instagram);
+  --card-glyph: 26px;
 
   /* The Endless leaderboard page (Leaderboard.svelte): the boards in the
      cards' glass, tabs as the secondary button's outlined pills, the player's
@@ -702,7 +708,12 @@
   --fs-start-brand: clamp(22px, 7.4vw, 44px);
   --fs-deckname: clamp(18px, 5.6vw, 32px);
   --deckname-top: 20px;
-  --fs-modename: 14px;
+  /* The mode under the deck ("ENDLESS", "INSTAGRAM", "FRIENDLY"), the same on
+     every start panel: 20px, and never bigger than the deck's name above it,
+     which is smaller on a phone (18px at 320 wide and on landscape phones).
+     Every panel still fits at that size with room to spare. */
+  --fs-modename-max: 20px;
+  --fs-modename: min(var(--fs-modename-max), var(--fs-deckname));
   --modename-top: 22px;
   --tracking-modename: 0.16em;
   --modename-glow: var(--glow);
@@ -1015,7 +1026,6 @@ body:not(.game) {
        text its room, and a Start that fits the short screen. */
     --fs-start-brand: 24px;
     --fs-deckname: 18px;
-    --fs-modename: 12px;
     --deckname-top: 6px;
     --modename-top: 4px;
     --start-cta-top: 0px;

@@ -8,8 +8,8 @@
  * runs the Durable Object's alarm as at a chosen moment.
  */
 
-import { buildRun } from "@bt/core";
-import type { Mode } from "@bt/core";
+import { buildRun, isEndlessVariantId } from "@bt/core";
+import type { EndlessVariantId, Mode } from "@bt/core";
 import { NOW, fixtureDeck } from "../../packages/core/src/__fixtures__/deck.js";
 import { RunDO as BaseRunDO } from "../run-do.js";
 import { createApp } from "../src/app.js";
@@ -32,8 +32,15 @@ const app = createApp({
 const allow = { limit: async () => ({ success: true }) };
 
 /** Dealt as the core determinism test deals it: the fixture deck at its NOW, 25 rounds. */
-export function fingerprint(seed: string, mode: Mode): string {
-  return buildRun({ deck: fixtureDeck, seed, mode, now: NOW, maxRounds: 25 })
+export function fingerprint(seed: string, mode: Mode, variant?: EndlessVariantId): string {
+  return buildRun({
+    deck: fixtureDeck,
+    seed,
+    mode,
+    now: NOW,
+    maxRounds: 25,
+    ...(variant !== undefined ? { variant } : {}),
+  })
     .map((r) => `${r.index}:${r.stat}:${r.anchor.id}>${r.challenger.id}`)
     .join("|");
 }
@@ -44,7 +51,10 @@ export default {
     if (url.pathname === "/test/fingerprint") {
       const seed = url.searchParams.get("seed") ?? "";
       const mode = (url.searchParams.get("mode") ?? "endless") as Mode;
-      return new Response(fingerprint(seed, mode));
+      const variant = url.searchParams.get("variant");
+      return new Response(
+        fingerprint(seed, mode, isEndlessVariantId(variant) ? variant : undefined),
+      );
     }
     return app.fetch(request, {
       ...env,

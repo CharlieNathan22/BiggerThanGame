@@ -420,8 +420,19 @@ stat, how many anchors have any iconic challenger in the opening band.
 ```
 seed(ranked,   gameNo) = HMAC-SHA256(RUN_SECRET, "ranked:"   + gameNo)
 seed(endless,  runId)  = HMAC-SHA256(RUN_SECRET, "endless:"  + runBody)
+seed(endless-instagram, runId)
+                       = HMAC-SHA256(RUN_SECRET, "endless:instagram:" + runBody)
 seed(friendly, runId)  = HMAC-SHA256(RUN_SECRET, "friendly:" + runBody)
 ```
+
+**Endless variants** (DESIGN.md §3, `ENDLESS_VARIANTS` in `@bt/core`) each derive their seed under
+their own domain (`seedDomain`): general Endless keeps `"endless:"`, Instagram Endless is
+`"endless:instagram:"`, so two variants' runs can never share a sequence. A variant is part of the
+sequence's input (`RunOptions.variant`): its pool filters the deck before anything is dealt (rank
+distance is then measured within it), a fixed stat replaces the opening draw and the wheel, and its
+band schedule and closeness floor replace Endless's. General Endless's settings are the mode's
+own, so naming it deals exactly the runs Endless always dealt (a test holds it, and the golden
+fingerprint).
 
 Ranked's seed depends only on the game number, so **every player gets the same sequence** — that is what
 makes the board comparable. Endless and Friendly are per-run.
@@ -429,7 +440,9 @@ makes the board comparable. Endless and Friendly are per-run.
 **Run ids** are `YYYYMMDD-<uuid>.<sig>`, minted by the server with the UTC date, in Friendly and
 Endless alike. **They are signed per mode**: Friendly's signature covers `"run:" + runBody`, as it
 always has, and Endless's `"run:endless:" + runBody`, so an id only verifies in the mode it was
-minted for and can't be played as the other (a Friendly id from before Endless still verifies). The body,
+minted for and can't be played as the other (a Friendly id from before Endless still verifies).
+Each Endless variant signs under its own prefix too — Instagram Endless's is
+`"run:endless:instagram:" + runBody` — so a run id verifies only as the variant it was minted for. The body,
 `YYYYMMDD-<uuid>` (`runBody` above), names the run; `sig` is the first 16 bytes of
 `HMAC-SHA256(RUN_SECRET, "run:" + runBody)` as unpadded base64url (22 characters). The server
 answers only run ids it signed: unsigned, tampered and malformed ids are `400`. The signature is
@@ -448,7 +461,10 @@ or chooses a seed.
 issues the three signed parts with every Endless run's end (§8), for the score that run reached,
 and the client builds the URL. `sig` signs the run and the score together — the first 16 bytes of
 `HMAC-SHA256(RUN_SECRET, "challenge:endless:" + runBody + ":" + score)`, unpadded base64url — so
-neither the run nor the "Beat n" number can be edited.
+neither the run nor the "Beat n" number can be edited. Instagram Endless signs under
+`"challenge:endless:instagram:"`, and its links open `/legends/endless/instagram?challenge=…`; a
+link checks out only in the variant it was set in, so one opened on the other page starts a plain
+run with the usual note.
 
 - **A link sets the score to beat, never the sequence.** A start carrying one mints an ordinary
   fresh run — its own run id, its own seed — framed as "Beat n". There are no replay ids in
@@ -528,6 +544,7 @@ type ProgressPayload = {
   v: 1;
   runId: string; // the signed Endless run id
   mode: "endless"; // Ranked will add gameNo
+  variant?: "endless-instagram"; // an Endless variant; absent for general Endless
   // Friendly issues no token — it uses /api/round/next and carries no state.
   round: number;
   streak: number; // round - 1: the answers so far were all right
@@ -537,6 +554,7 @@ type ProgressPayload = {
   anchorValue: number; // already shown — safe
   issuedAt: number; // the server's clock, ms: the timer's start
   deadline: number; // issuedAt + the animation allowance + the limit + 3 s
+  // (a variant with no wheel, Instagram Endless, has no spin in its allowance on any round)
   nonce: string; // spent once, by the run's Durable Object
 };
 ```
@@ -545,12 +563,15 @@ The token is signed, **not encrypted** — assume the client reads it. That is f
 what is already on screen. The challenger's value is never in it. The HMAC is over the encoded
 payload under its own prefix (`"token:"`), so no other use of `RUN_SECRET` makes a valid token;
 verification compares in constant time and parses strictly — a missing, extra or mistyped field,
-or a `streak` that isn't `round - 1`, is no token. The fields are copied in a fixed order, so the
+or a `streak` that isn't `round - 1`, is no token. `variant` is written only for a variant other
+than general Endless, so general Endless's tokens are byte-for-byte what they were; one naming
+anything else is no token, and the guess handler verifies the run id, deals the sequence and works
+out the deadline under the token's variant. The fields are copied in a fixed order, so the
 same payload always makes the same bytes. The web app keeps the latest token **in memory only**:
 a page reload ends the run.
 
 A finished run also gets a **result token**, the same shape under `"result:"`: `{ v, runId, mode,
-score, end, startedOn, elapsedMs, endedAt }`, `elapsedMs` being the sum of the server-measured
+variant?, score, end, startedOn, elapsedMs, endedAt }`, `elapsedMs` being the sum of the server-measured
 answer times. `POST /api/run/submit` takes it to publish the run.
 
 ### The run's Durable Object
@@ -588,7 +609,9 @@ with its server-measured time. **Single job: spend each nonce once.**
 
 ### Endpoints
 
-**`POST /api/run/start`** (Endless) → `{ mode: "endless", turnstileToken, challenge? }`
+**`POST /api/run/start`** (Endless) → `{ mode: "endless", variant?, turnstileToken, challenge? }`
+— `variant` is `"endless-instagram"` for Instagram Endless, absent for general Endless. The run's
+Durable Object records it, so its alarm can rebuild a silent run's open round.
 
 ```jsonc
 ← { "runId": "20260929-<uuid>.<sig>", "round": RoundPayload, "token": "…",
@@ -719,7 +742,9 @@ presses Publish.
    another script is a `422`, like a blocked one.
 3. **The token**: the run's signed result, or, for a run banked after a dropped connection, its
    latest progress token. The run id in it must be an Endless one this server signed, never a
-   retired replay id (`400`); the streak it proves must be above 0 (`400 zero`).
+   retired replay id (`400`); a variant without boards (Instagram Endless) is `400 no_boards`,
+   recorded as a refused `submit` and refused before its Durable Object, Turnstile or D1 are
+   touched; the streak it proves must be above 0 (`400 zero`).
 4. **The run's Durable Object agrees** (`claimForSubmit`, above): only `/api/run/start` creates
    one, so a run it holds was dealt fresh from a random seed — challenge runs included, since a
    link only sets the score to beat. A run the server never dealt, however well signed, is
@@ -752,7 +777,7 @@ what was sent (§19), and stores nothing else.
 
 ```jsonc
 → { "kind": "suggest", "name": "…", "note"?: "…", "turnstileToken": "…" }
-→ { "kind": "correction", "mode"?: "endless", "runId": "…", "round": 7, "note"?: "…", "turnstileToken": "…" }
+→ { "kind": "correction", "mode"?: "endless", "variant"?: "endless-instagram", "runId": "…", "round": 7, "note"?: "…", "turnstileToken": "…" }
 → { "kind": "problem", "note": "…", "page": "/about", "turnstileToken": "…" }
 ← 200 { "ok": true }
 ← 400 { "error": "bad_request", "detail": "<short code>" }   // e.g. unexpected_key, invalid_run
@@ -794,7 +819,7 @@ never mid-game.
 (`navigator.sendBeacon`, `game/leave.ts`). Telemetry only: handler in `worker/src/leave.ts`.
 
 ```jsonc
-→ { "mode": "friendly" | "endless", "runId": "…", "round": 7, "phase": "question", "trigger": "hidden" }
+→ { "mode": "friendly" | "endless", "variant"?: "endless-instagram", "runId": "…", "round": 7, "phase": "question", "trigger": "hidden" }
 ← 204 (no body)
 ← 400 { "error": "bad_request", "detail": "…" }
 ```
@@ -1340,14 +1365,18 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
     `--chip-*`; at the top right on a landscape phone), and the score badge, which shows "n" and
     each new title, takes the clock's spot for its two seconds.
   - **Start panel**: subtitle "ENDLESS", the clock, a link to Friendly and one to the
-    leaderboard.
+    leaderboard. The subtitle ("ENDLESS", "INSTAGRAM", "FRIENDLY") is one size on every start
+    panel, `--fs-modename`: 20px, never bigger than the deck's name above it (18px at 320 wide and
+    on landscape phones).
   - **Game-over panel**: the score, the title, the stat and the two players that ended the run
-    (with "Out of time." for a timeout), the best, Share and Save/Share image, **Challenge a
-    friend** ("Beat n" and the link, `challengeText`), **Publish to leaderboard**, and Play again.
+    (with "Out of time." for a timeout), the best, then Play again, **Publish to leaderboard**
+    directly under it (or, when the run can't improve the day's board, "Your best today is n —
+    beat it…" in its place), Share and Save/Share image, and **Challenge a friend** ("Beat n" and
+    the link, `challengeText`). Instagram Endless has no boards, so neither row.
     A dropped connection reads "Connection lost — your streak of n is saved". The local best is
     `bt:best:legends:endless`, saved as the streak grows.
   - **Publishing** (`PublishModal.svelte`, `game/publish.ts`): a run that scored offers "Publish to
-    leaderboard", a row of its own under the shares. It opens a dialog (the feedback form's
+    leaderboard", a row of its own straight under Play again. It opens a dialog (the feedback form's
     pattern and focus handling): the nickname, prefilled with the last name published from this
     device (`bt:nickname`), or a generated one the first time, with storage blocked, or when the
     stored name no longer passes the rules, and a button for a generated one; the line "We store your nickname and your score, and nothing else about you. There's
@@ -1895,7 +1924,8 @@ dataset has those), and no 404 under `/api/`, which scanners probe all day.
 ```
 
 `run` is the run key, so a start and its end can be paired. Endless's lines carry `"mode":
-"endless"` and come from `/api/run/start` and `/api/round/guess`. `run_end` adds the round that
+"endless"` and come from `/api/run/start` and `/api/round/guess`; an Endless variant's add
+`"variant": "endless-instagram"` (filter on `variant` to watch one). `run_end` adds the round that
 ended the run: the miss on `wrong`, the timed-out question on `timeout` (`guess` is then
 `timeout`), the final question on `won`, the last answer on `deck-exhausted`. That's `endStat`
 (the stat's id and label), `guess` and `players`, each with the figure its card showed
@@ -2003,7 +2033,10 @@ happening, sample the `rate_limited` lines rather than dropping them.
 ### Event schema
 
 One layout for every event, so a column means the same thing everywhere. Blobs are strings,
-doubles numbers; unused columns are empty.
+doubles numbers; unused columns are empty. **`blob2` is the mode, or an Endless variant's id**:
+`friendly`, `endless`, `endless-instagram`. Every query below groups or filters on it, so Instagram
+Endless shows as a mode of its own and never mixes into general Endless's figures (`pnpm stats
+endless` stays general Endless's).
 
 | Column    | `start`      | `answer`                          | `end`              | `leave`                                       | `submit`                 |
 | --------- | ------------ | --------------------------------- | ------------------ | --------------------------------------------- | ------------------------ |

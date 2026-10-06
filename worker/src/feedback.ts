@@ -37,7 +37,7 @@ import type { FeedbackRejection } from "./feedback-validate.js";
 import type { LogLine, LogValue } from "./log.js";
 import type { PlainTextMail } from "./mail.js";
 import { figureFor } from "./payload.js";
-import { isRunAnswerable, verifyRunId } from "./run-id.js";
+import { dealOptions, isRunAnswerable, runModeOf, verifyRunId } from "./run-id.js";
 import type { RunId, RunMode } from "./run-id.js";
 import { seedFor } from "./seed.js";
 import type { TurnstileOutcome } from "./turnstile.js";
@@ -188,14 +188,20 @@ export async function correctionReport(
   req: CorrectionRequest,
   ctx: Pick<FeedbackContext, "deck" | "secret" | "clock">,
 ): Promise<CorrectionReport> {
-  const mode = req.mode ?? "friendly";
+  const mode = runModeOf(req.mode ?? "friendly", req.variant);
   const run = await verifyRunId(req.runId, ctx.secret, mode);
   if (run === undefined || run.replay) return { ok: false, code: "invalid_run" };
   if (!isRunAnswerable(run, ctx.clock())) return { ok: false, code: "run_expired" };
 
   const now = run.date;
   const seed = await seedFor(mode, ctx.secret, run.origin);
-  const rounds = buildRun({ deck: ctx.deck, seed, mode, now, maxRounds: req.round });
+  const rounds = buildRun({
+    deck: ctx.deck,
+    seed,
+    ...dealOptions(mode),
+    now,
+    maxRounds: req.round,
+  });
   const round = rounds[req.round - 1];
   if (round === undefined) return { ok: false, code: "invalid_round" };
 
@@ -271,7 +277,12 @@ function figureLine(player: Player, stat: StatKey, now: Date): string {
 
 function describeRun(run: RunId, mode: RunMode): string {
   const day = run.date.toISOString().slice(0, 10);
-  return `${mode === "endless" ? "Endless run" : "run"} ${run.body} (dealt as of ${day})`;
+  const name = {
+    friendly: "run",
+    endless: "Endless run",
+    "endless-instagram": "Instagram Endless run",
+  };
+  return `${name[mode]} ${run.body} (dealt as of ${day})`;
 }
 
 function errorCode(err: unknown): string {

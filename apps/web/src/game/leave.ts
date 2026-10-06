@@ -23,18 +23,24 @@ type Mode = LeaveRequest["mode"];
  * Start, while the start is on its way, and once the run has ended.
  */
 export function leaveRequest(
-  state: Pick<GameState, "phase" | "runId" | "round" | "reveal" | "end">,
+  state: Pick<GameState, "phase" | "runId" | "round" | "reveal" | "end" | "variant">,
   mode: Mode,
   trigger: LeaveTrigger,
 ): LeaveRequest | null {
   const { phase, runId, round } = state;
   if (runId === null || state.end !== null) return null;
   if (phase === "idle" || phase === "starting" || phase === "over") return null;
+  // An Endless variant's run ids are signed apart: the server needs to know which.
+  const run = {
+    mode,
+    ...(mode === "endless" && state.variant !== undefined ? { variant: state.variant } : {}),
+    runId,
+  };
   const where = leavePhase(state);
   if (where === "intro" || round === null) {
-    return { mode, runId, round: 0, phase: "intro", trigger };
+    return { ...run, round: 0, phase: "intro", trigger };
   }
-  return { mode, runId, round: round.index, phase: where, trigger };
+  return { ...run, round: round.index, phase: where, trigger };
 }
 
 /** What the player was looking at, by the machine's phase. */
@@ -64,7 +70,7 @@ function leavePhase(state: Pick<GameState, "phase" | "round" | "reveal">): Leave
  */
 export function createLeaveReporter(send: (body: string) => void): {
   report(
-    state: Pick<GameState, "phase" | "runId" | "round" | "reveal" | "end">,
+    state: Pick<GameState, "phase" | "runId" | "round" | "reveal" | "end" | "variant">,
     mode: Mode,
     trigger: LeaveTrigger,
   ): void;

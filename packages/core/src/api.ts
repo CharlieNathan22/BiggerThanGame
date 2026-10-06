@@ -18,6 +18,7 @@
 
 import type { PlayerImage } from "./images.js";
 import type { Position, StatKey, Tier } from "./types.js";
+import type { NamedVariant } from "./variants.js";
 
 export type Guess = "higher" | "lower";
 
@@ -76,6 +77,8 @@ export type LeaveTrigger = "hidden" | "pagehide";
  */
 export interface LeaveRequest {
   readonly mode: "friendly" | "endless";
+  /** An Endless run's variant, when not general Endless. */
+  readonly variant?: NamedVariant;
   readonly runId: string;
   /** The round on screen, 1-based; 0 during the title card and the intro. */
   readonly round: number;
@@ -212,6 +215,8 @@ export type AnswerResponse = ContinueResponse | EndResponse;
  */
 export interface RunStartRequest {
   readonly mode: "endless";
+  /** An Endless variant other than general Endless (variants.ts); absent for general. */
+  readonly variant?: NamedVariant;
   readonly turnstileToken: string;
   readonly challenge?: ChallengeLink;
 }
@@ -452,6 +457,8 @@ export interface CorrectionRequest {
   readonly kind: "correction";
   /** Endless for an Endless run's report; absent for Friendly's, as before. */
   readonly mode?: "endless";
+  /** An Endless run's variant, when not general Endless. */
+  readonly variant?: NamedVariant;
   readonly runId: string;
   /** 1-based. */
   readonly round: number;
