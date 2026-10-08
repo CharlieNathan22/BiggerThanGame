@@ -329,6 +329,8 @@ export const en = {
 
   // The progress track, in a mode with a win target
   "progress.label": "Progress",
+  // The landmark round the progress track
+  "progress.region": "Your run",
   "progress.question": "Question {round} of {target}",
   "progress.final": "Final question — question {round} of {target}",
   // On the plaque while round one's cards slide in, before the wheel spins

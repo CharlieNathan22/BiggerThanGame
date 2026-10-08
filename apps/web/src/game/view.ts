@@ -522,8 +522,10 @@ export interface TopClock extends ClockState {
  * The big clock for the game as it stands at `now`. Running while a question
  * can be answered; frozen on the second the player answered at, through the
  * reveal and the next deal, until the next question becomes answerable; at
- * the full limit, waiting, while round one is dealt. Null in a mode without a
- * clock, and before the cards are in or once the run is over.
+ * the full limit, waiting, while round one is dealt — except a Daily question
+ * picked up after a refresh (`cap`), which counts down what is really left
+ * from its first frame. Null in a mode without a clock, and before the cards
+ * are in or once the run is over.
  */
 export function topClock(state: GameState, now: number): TopClock | null {
   const { phase, round } = state;
@@ -539,6 +541,15 @@ export function topClock(state: GameState, now: number): TopClock | null {
     return { ...clockState(state.stopped.remainingMs), running: false, frozen: true };
   }
   const limit = questionLimit(state.mode, round.index) ?? 0;
+  // A Daily question picked up after a refresh: its clock never stopped, so
+  // it counts down from what the server said was left, from the first frame.
+  if (state.cap !== null) {
+    return {
+      ...clockState(Math.max(0, Math.min(limit, state.cap - now))),
+      running: true,
+      frozen: false,
+    };
+  }
   return { ...clockState(limit), running: false, frozen: false };
 }
 

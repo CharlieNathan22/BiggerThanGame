@@ -27,6 +27,7 @@ import {
 import { dailyBoardView, dailyOwnPosition, dailyWinnerLine } from "../leaderboard";
 import { initialState, reduce } from "../machine";
 import type { GameEvent, GameState } from "../machine";
+import { topClock } from "../view";
 import { round } from "./fixtures";
 
 const LINK = "https://biggerthangame.com/football-higher-or-lower/legends/daily";
@@ -164,6 +165,62 @@ describe("the machine in Daily Ranked", () => {
     expect(s.phase).toBe("idle");
     expect(s.refused).toBe("nameTaken");
     expect(s.startFailed).toBe(false);
+  });
+});
+
+describe("the clock of a question picked up after a refresh", () => {
+  /** Resumed at `at` with `left` ms on the clock, the cards still being dealt. */
+  const resumed = (left: number | null, at = 10_000): GameState =>
+    reduce(daily(), {
+      type: "resumed",
+      runId: "20261008-x",
+      round: round(6),
+      results: [true, true, false, true, true],
+      remainingMs: left,
+      at,
+    });
+
+  it("shows the time really left from its first frame, never the full limit", () => {
+    const s = resumed(7400);
+    expect(s.phase).toBe("dealing");
+    expect(s.clock).toBeNull();
+    expect(topClock(s, 10_000)).toEqual({
+      seconds: 8,
+      level: "calm",
+      running: true,
+      frozen: false,
+    });
+    // It keeps counting down while the cards come in.
+    expect(topClock(s, 11_000)?.seconds).toBe(7);
+  });
+
+  it("is orange or red straight away when that's due", () => {
+    expect(topClock(resumed(4000), 10_000)).toMatchObject({ seconds: 4, level: "warning" });
+    expect(topClock(resumed(2000), 10_000)).toMatchObject({ seconds: 2, level: "urgent" });
+  });
+
+  it("reads 0 once the time has gone, and never more than the limit", () => {
+    expect(topClock(resumed(1000), 12_000)?.seconds).toBe(0);
+    expect(topClock(resumed(60_000), 10_000)?.seconds).toBe(10);
+  });
+
+  it("starts the question's own clock from what was left, so the two agree", () => {
+    let s = resumed(6500);
+    s = reduce(s, { type: "dealt", at: 10_800 });
+    if (s.phase === "spinning") s = reduce(s, { type: "spun", at: 10_800 });
+    expect(s.phase).toBe("awaiting");
+    expect(s.clock?.limitMs).toBe(5700);
+    expect(topClock(s, 10_800)?.seconds).toBe(6);
+  });
+
+  it("leaves a question dealt fresh after a refresh, and every other run, at the full limit while dealt", () => {
+    expect(topClock(resumed(null), 10_000)).toMatchObject({ seconds: 10, running: false });
+    const endless = reduce(reduce(initialState(0, null, "endless"), { type: "start" }), {
+      type: "started",
+      runId: "20261008-x",
+      round: round(1),
+    });
+    expect(endless.cap).toBeNull();
   });
 });
 

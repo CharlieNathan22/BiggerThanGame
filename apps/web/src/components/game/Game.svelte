@@ -594,7 +594,9 @@
    */
   let now = $state(0);
   $effect(() => {
-    if (game.clock === null) return;
+    // A question picked up after a refresh counts down from the first frame,
+    // before its clock formally starts (view.ts `topClock`).
+    if (game.clock === null && game.cap === null) return;
     now = performance.now();
     let raf = 0;
     const frame = () => {
@@ -738,6 +740,8 @@
     try {
       const res = await dailyApi.resume(rememberedRun(browserStorage, gameNo));
       if (res.state === "playing") {
+        // The clock's first frame reads the time left against this, never a stale one.
+        now = performance.now();
         controller?.resume({
           runId: res.runId,
           round: res.round,
@@ -951,12 +955,15 @@
     current={path}
   />
   {#if target !== null}
-    <Track
-      {steps}
-      answered={shownResult?.results.length ?? game.history.length}
-      label={progressText(game, rules)}
-      final={finalQuestion}
-    />
+    <!-- In a landmark of its own, so nothing on the page sits outside one. -->
+    <section class="progress" aria-label={t("progress.region")}>
+      <Track
+        {steps}
+        answered={shownResult?.results.length ?? game.history.length}
+        label={progressText(game, rules)}
+        final={finalQuestion}
+      />
+    </section>
   {/if}
 
   <main class="pitch" class:intro class:quick={game.repeat} aria-label={t("pitch.label")}>
@@ -1585,6 +1592,12 @@
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The track's landmark: a row of the column like the track it holds. No
+     position or z-index, so the "Final question" tag stacks as before. */
+  .progress {
+    flex: none;
   }
 
   /* The site background, static here (tokens.css): it shows through the
@@ -2727,9 +2740,25 @@
   }
 
   /* Daily Ranked's own panel: today's result (the game-over panel's score,
-     caption and grid), the run to carry on, or the wait for Game 1. */
-  .panel.daily {
+     caption and grid), the run to carry on, or the wait for Game 1. Not the
+     start panel, which also carries .daily: it keeps --start-w like
+     Endless's, so "Bigger Than Game" (one line, never wrapped) has the room
+     to centre. */
+  .panel.daily:not(.start) {
     max-width: var(--over-w);
+  }
+  /* Play and Carry on: the gold glow on hover and focus, as every .cta, and
+     a stronger one on press. With reduced motion, no press scale: the glow
+     alone, at once (base.css drops the transition). */
+  .start.daily .cta:active,
+  .panel.daily .cta:active {
+    box-shadow: var(--glow-strong);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .start.daily .cta:active,
+    .panel.daily .cta:active {
+      transform: none;
+    }
   }
   .panel .dailyhead {
     margin-top: var(--over-cap-top);

@@ -120,7 +120,11 @@
     font-variation-settings: var(--fv-caps);
     color: var(--gold);
   }
-  /* Looks like the game's gold button; the whole card is the link. */
+  /* Looks like the game's gold button; the whole card is the link. It glows
+     as the other cards' buttons do on hover and focus, here when the card is
+     hovered or its link focused, and stronger when the card is pressed. With
+     reduced motion, no press scale: the glow alone, at once (base.css drops
+     the transition). */
   .play {
     display: inline-flex;
     align-items: center;
@@ -133,5 +137,21 @@
     font-size: var(--fs-cta);
     font-variation-settings: var(--fv-cta);
     box-shadow: var(--glow);
+    transition:
+      box-shadow var(--dur-hover),
+      transform var(--dur-press);
+  }
+  :global(.card.open:hover) .play,
+  :global(.card.open:has(a:focus-visible)) .play {
+    box-shadow: var(--glow-hover);
+  }
+  :global(.card.open:active) .play {
+    box-shadow: var(--glow-strong);
+    transform: scale(var(--press-scale));
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.card.open:active) .play {
+      transform: none;
+    }
   }
 </style>
