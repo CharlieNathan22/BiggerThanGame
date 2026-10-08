@@ -23,7 +23,7 @@ import { DAY_MS } from "./periods.js";
  * `DEV_DAILY_EPOCH`, and a production build refuses to run
  * (`assertDailyEpoch`).
  */
-export const DAILY_EPOCH: string | null = null;
+export const DAILY_EPOCH: string | null = "2026-10-08";
 
 /** The epoch dev and tests use while `DAILY_EPOCH` is unset. */
 export const DEV_DAILY_EPOCH = "2026-10-01";
