@@ -45,7 +45,7 @@ describe("golden fingerprints", () => {
 
   it("a ranked run is stable", () => {
     expect(fingerprint("ranked:1")).toMatchInlineSnapshot(
-      `"1:apps:alpha>hotel|2:apps:hotel>charlie|3:ct:charlie>juliet|4:ct:juliet>lima|5:ct:lima>bravo|6:ct:bravo>echo|7:ct:echo>foxtrot|8:ig:foxtrot>kilo|9:ig:kilo>india|10:ig:india>delta|11:ct:delta>golf|12:ct:golf>charlie|13:ct:charlie>bravo|14:ct:bravo>hotel|15:ct:hotel>charlie|16:ct:charlie>juliet|17:ct:juliet>echo|18:ct:echo>delta|19:ct:delta>echo|20:ct:echo>delta|21:ct:delta>hotel|22:ct:hotel>kilo|23:ct:kilo>india|24:ct:india>echo|25:ct:echo>bravo"`,
+      `"1:apps:alpha>hotel|2:apps:hotel>charlie|3:ct:charlie>juliet|4:ct:juliet>lima|5:ct:lima>golf|6:ct:golf>bravo|7:ct:bravo>delta|8:ig:delta>echo|9:ig:echo>india|10:ig:india>foxtrot|11:it:foxtrot>kilo|12:it:kilo>alpha|13:it:alpha>echo|14:it:echo>india|15:it:india>echo|16:ig:echo>kilo|17:ig:kilo>echo|18:ig:echo>kilo|19:ig:kilo>echo|20:clubs:echo>charlie|21:clubs:charlie>alpha|22:clubs:alpha>charlie|23:clubs:charlie>lima|24:clubs:lima>charlie|25:club_goals:charlie>india"`,
     );
   });
 
@@ -79,7 +79,7 @@ describe("golden fingerprints", () => {
 
   it("a second ranked run is stable", () => {
     expect(fingerprint("ranked:2")).toMatchInlineSnapshot(
-      `"1:club_goals:bravo>delta|2:club_goals:delta>alpha|3:ct:alpha>hotel|4:ct:hotel>echo|5:ct:echo>juliet|6:ct:juliet>charlie|7:ct:charlie>foxtrot|8:igoals:foxtrot>kilo|9:igoals:kilo>lima|10:apps:lima>golf|11:apps:golf>india|12:apps:india>golf|13:apps:golf>hotel|14:apps:hotel>india|15:apps:india>lima|16:apps:lima>bravo|17:apps:bravo>delta|18:apps:delta>foxtrot|19:apps:foxtrot>bravo|20:apps:bravo>delta|21:apps:delta>bravo|22:apps:bravo>india|23:apps:india>golf|24:apps:golf>alpha|25:apps:alpha>echo"`,
+      `"1:club_goals:bravo>delta|2:club_goals:delta>alpha|3:ct:alpha>hotel|4:ct:hotel>echo|5:ct:echo>juliet|6:ct:juliet>kilo|7:ct:kilo>india|8:igoals:india>lima|9:igoals:lima>golf|10:apps:golf>foxtrot|11:apps:foxtrot>charlie|12:fee:charlie>juliet|13:fee:juliet>delta|14:fee:delta>juliet|15:fee:juliet>charlie|16:igoals:charlie>hotel|17:igoals:hotel>bravo|18:igoals:bravo>kilo|19:ct:kilo>bravo|20:ct:bravo>kilo|21:club_goals:kilo>bravo|22:club_goals:bravo>kilo|23:caps:kilo>bravo|24:caps:bravo>india|25:caps:india>bravo"`,
     );
   });
 });

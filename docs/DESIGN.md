@@ -77,20 +77,53 @@ attempts and what the leaderboard claims.
 
 ### Daily Ranked
 
-- **One fixed sequence per day**, identical for every player worldwide.
-- **One attempt.** Once the run ends, that's the day's score.
-- Rollover is **00:00 UTC**. Puzzles are labelled **"Game 123", never by date** — a date label
-  disagrees with the local calendar for anyone west of UTC, where rollover lands the previous
-  evening. Show a countdown to the next game rather than a clock time.
-- A run belongs to the game it was minted against, so a run started at 23:58 UTC finishes on
-  that game's board. The sequence never changes mid-game.
+A **20-question daily game**, the same for everyone, with sudden-death bonus rounds for a perfect
+run.
+
+- **One fixed game per day**, identical for every player worldwide: twenty questions, then bonus
+  rounds up to Endless's cap. It is **frozen at midnight** (ARCHITECTURE.md §7): the game is built
+  once from its seed and stored, so a deploy or a deck update during the day never changes it.
+- **Game numbers.** Game 1 is launch day, `DAILY_EPOCH` in `packages/core/src/daily.ts`, set once
+  and never moved: `gameNo = floor((now − epoch) / 1 day) + 1`. Rollover is **00:00 UTC**. Games
+  are labelled **"Game 12", never by date** — a date label disagrees with the local calendar for
+  anyone west of UTC, where rollover lands the previous evening. Show a countdown to the next game
+  rather than a clock time. Before launch day the pages say "Game 1 starts in …" and starts are
+  refused. While `DAILY_EPOCH` is unset, dev and tests run on a fixed dev epoch, and a production
+  build refuses to run.
+- **A run belongs to the game it started in**, so a run started at 23:58 UTC finishes on that
+  game's board.
+- **The rules.** Endless's clock (§9): 15 seconds for question 1, 10 for every question after.
+  Every stat can come up, with Endless's ramp and pair rules (§8), and the first three questions
+  prefer iconic players (§10).
+  - **A wrong answer or a timeout doesn't end the run.** It is marked red on the track and the run
+    goes on to question 20.
+  - **Bonus rounds only after 20/20**, and they are sudden death: the first miss ends the run.
+  - **Score = right answers + bonus rounds.** It reads "14/20", or past a perfect twenty the plain
+    total, "25", with "20/20 +5 bonus" under it.
+- **One attempt per device per game.** Pressing Play is the commitment: the start carries the
+  player's name (prefilled from the last one used, or a generated one; editable), the "Show my
+  country flag" choice and Turnstile, and the start panel says "Your name and score will appear on
+  today's leaderboard." The server checks the name (the blocklist, §13), that it is free in today's
+  game, Turnstile, and that the device hasn't played. A name refused or taken, or a failed check,
+  starts no run and uses no attempt; the reason shows under the field ("That name is taken today —
+  try another"). A device that has played sees its result, its place on the board, the share and
+  the countdown instead of Play.
+- **Resume.** A refresh or a lost connection doesn't lose the run: the server finds the device's
+  unfinished run for the current or previous game and picks it up. **The clock doesn't stop**: the
+  question on screen keeps its original deadline, and if that has passed it counts as a timeout and
+  the next question is dealt fresh. A run left alone for five minutes is finished by the server —
+  every question not answered counts as wrong — and posted.
+- **Scores post themselves** when the run ends: there is no Publish. Ranked by score, then total
+  thinking time, then the earlier finish (§9, §13).
 - Server-authoritative: the hidden value is never sent to the client before the guess.
-- This is the competitive board. Because everyone faces the same cards, the score is a fair
+- This is the competitive board. Because everyone faces the same questions, the score is a fair
   comparison — which is the whole point of ranking it.
 
 **One attempt is not fully enforceable without accounts.** Until accounts exist, it rests on a
-signed device-day token plus Turnstile, which stops the casual retry but not someone clearing
-storage. That is friction, not prevention, and the doc should stay honest about it.
+device id plus Turnstile, which stops the casual retry but not someone clearing storage. That is
+friction, not prevention, and the doc should stay honest about it. The server counts how many
+games start from the same connection (a per-game salted hash, kept 48 hours, ARCHITECTURE.md §12),
+for the stats only: it never changes or hides a score.
 
 ### Endless Casual
 
@@ -200,8 +233,10 @@ It is never the only signal: the live region starts each question with "Question
 title bar carries the score in text. Round 20 is the **final question**: its segment is gold, and
 while it is asked the plaque and the track carry a gold "Final question" tag, announced as "Final
 question — question 20 of 20". Friendly has its own, compressed difficulty ramp (§8), its
-own streak titles (§13) and holds the iconic preference for five rounds (§10). Endless and Ranked
-keep the plain streak and no track; Endless has its own ramp and pair rules, Ranked the long ramp.
+own streak titles (§13) and holds the iconic preference for five rounds (§10). Endless keeps the
+plain streak and no track. Daily Ranked has Friendly's twenty-segment track, with Endless's clock,
+ramp and pair rules (§3); its misses turn red and the run goes on, and in the bonus rounds a gold
+"+3 bonus" chip counts them.
 All of it is driven from per-mode settings in `@bt/core` (`WIN_ROUNDS`, `MAX_ROUNDS`,
 `BAND_SCHEDULES`, `PAIR_RULES`, `WHEEL_VIABILITY`, `QUESTION_LIMITS`, `CHALLENGES`,
 `STREAK_TITLES`, `ICONIC_ROUNDS`).
@@ -238,7 +273,7 @@ Because it plays the full deck, Friendly now _does_ give a usable read on the di
 unlike the small-pool version it replaces. `simulation.md` remains the primary instrument, but
 real play against a real deck is the check on it.
 
-Endless follows, with its boards, once enforcement is complete; Daily Ranked after it. Target deck at full launch
+Endless followed, with its boards, once enforcement was complete; Daily Ranked after it. Target deck at full launch
 is around 300 legends, with a couple of hundred entered early so simulation has something real to
 work with.
 
@@ -448,9 +483,10 @@ for colourblind players.
 - **The opening stat is a wheel draw too**, over basic and uncommon stats only, with the same tier
   weights. **Rare stats never open a run** — a newcomer's first question should read at a glance —
   but the wheel can switch to them from the first switch, at round 3.
-- **Which stats are viable, per mode** (`WHEEL_VIABILITY`). In Friendly and Ranked the wheel only
+- **Which stats are viable, per mode** (`WHEEL_VIABILITY`). In Friendly the wheel only
   switches to a stat that has a pair within the round's own band, so a stat with nothing in the
-  band is skipped for that switch. **In Endless every stat can come up on every question**: the
+  band is skipped for that switch. **In Endless and Daily Ranked every stat can come up on every
+  question**: the
   wheel may switch to any stat the anchor can be dealt at all, at any step of relaxation, and the
   late-round pair rules (§8) keep what it then deals hard rather than relaxing to an easy pair. If
   a held stat can't be dealt to the new anchor at all (a narrow stat at the edge of its values), the
@@ -514,7 +550,9 @@ The first band keeps no ceiling deliberately — early rounds should actively fa
 available pair (a squad player against someone with sixty million followers), not merely any pair
 clearing the floor.
 
-That table is Ranked's. **Endless** and **Friendly's twenty questions** have their own ramps.
+That table was Ranked's long ramp, kept for reference: no mode uses it now. **Endless** and
+**Friendly's twenty questions** have their own ramps, and **Daily Ranked** plays Endless's — its
+twenty questions are rounds 1–20 below, and the bonus rounds carry on down the table.
 
 **Endless** is a bit harder than Friendly, reaching its hard zone at round 16 (Friendly's is 18)
 and still tightening past round 20 rather than levelling off. Rounds 1–5 are Friendly's exactly —
@@ -676,6 +714,13 @@ most of it from rounds 1–10, which it gets right 98–99% of the time. The wea
 Both are assumptions: re-tune once observed accuracy from real play replaces the fan's points
 (`pnpm simulate --calibration`).
 
+**Daily Ranked** plays Endless's ramp over a fixed twenty (`BAND_SCHEDULES.ranked`), with three
+iconic rounds. On the 131-player deck, over 20,000 games of the fan model (`simulation.md`, "Daily
+Ranked"), the median is **17/20** (mean 17.0; 10th percentile 15, 90th 19), and **3.7%** of games
+are a perfect twenty. Questions 1–5 go right 99% of the time, 6–10 89%, and 11–20 about 75–77%.
+A perfect game's bonus streak has a median of 2 (22.9% get none; 90th percentile 8; the best 29).
+Reported, not tuned: the board spreads mostly across 15–19, and the bonus separates the top.
+
 ### Every stat is banded
 
 Small-integer stats — clubs played for, international trophies, age — used to be matched on tie
@@ -705,10 +750,10 @@ did with floors, because bands and the queue shrink the pool at the same time.
 
 ### Run length
 
-In Ranked, a 0.45 floor through round 10 pushes the knife-edge band out to roughly
-round 43, so a strong run is 40-plus questions at 10 seconds each — six to eight minutes. Endless
-reaches its hard zone at round 16, so a good run there is 15–25 questions and a very good one 30. Acceptable for a once-a-day puzzle,
-long by the genre's norms. Sustaining it also needs the full 300-player deck; a 50-player test deck
+The old long ramp's 0.45 floor through round 10 pushed the knife-edge band out to roughly
+round 43, so a strong run was 40-plus questions at 10 seconds each — six to eight minutes; Daily
+Ranked dropped it for Endless's ramp and a fixed twenty. Endless reaches its hard zone at round 16,
+so a good run there is 15–25 questions and a very good one 30. Sustaining it also needs the full 300-player deck; a 50-player test deck
 will exhaust the pool long before then and sit permanently in relaxation. Friendly is capped at
 twenty questions, so it never gets there.
 
@@ -718,7 +763,8 @@ twenty questions, so it never gets there.
 
 With one life and a timer, a good player eventually meets a pair they genuinely cannot know, and
 the run ends on luck rather than skill. That's inherent to the genre. Don't over-tune the ramp
-trying to design it away. Daily Ranked mitigates it socially: everyone hits the same coin flip.
+trying to design it away. Daily Ranked mitigates it twice: a miss costs one point rather than the
+run, and everyone hits the same coin flip.
 
 ---
 
@@ -740,14 +786,19 @@ trying to design it away. Daily Ranked mitigates it socially: everyone hits the 
   second at a time. Screen readers hear "5 seconds left" and "3 seconds left" once each, never a
   count. It never runs while the answer is in flight.
 - **When it runs out**, the client sends a `timeout` so the player still sees the reveal; the run
-  ends as `timeout`.
+  ends as `timeout` — except in Daily Ranked's twenty questions, where it is marked wrong and the
+  run goes on (§3).
 - **Start button before question one**, so the first timer doesn't run while the player is still
   orienting.
-- **Timeout ends the run.** With one life this is the clean answer, and it's what stops people
-  looking the answer up.
+- **Timeout ends the run** in Endless. With one life this is the clean answer, and it's what stops
+  people looking the answer up. In Daily Ranked it costs the question.
 - **One point per question.** Points and streak are therefore the same number.
 - **Time is a tiebreaker only**, never a headline metric — rewarding speed on near-ties rewards
-  lucky guessing.
+  lucky guessing. In Daily Ranked a timeout, and every question an abandoned run never answered,
+  counts the **full time limit**, so letting the clock run out or leaving can never improve a
+  time.
+- **Daily Ranked's clock doesn't stop for a refresh** (§3): a question picked up again keeps its
+  deadline.
 - **The server owns the clock.** Timing is measured from when the round token was issued, with a
   short network grace allowance: each token's deadline is its issue time plus the animation before
   the question is answerable (the longest an honest client plays), the limit, and 3 seconds. An
@@ -802,7 +853,7 @@ Rules the pair-selection logic must enforce:
   drawn from iconic players whenever one is valid: eligible, not tied, within the round's band and
   not in the recently-seen queue. When none is, the whole deck is used at the same band — the
   preference is the first thing to give and never costs a wider band or a repeated player (§8).
-  N is set per mode in `ICONIC_ROUNDS` in `packages/core`: **Friendly 5, Endless 5, Ranked 5.**
+  N is set per mode in `ICONIC_ROUNDS` in `packages/core`: **Friendly 5, Endless 5, Daily Ranked 3.**
   Friendly held it for eight rounds until its difficulty retune; five is its opening band's length
   (§8), so the preference and the widest band end together. The run is a pure function of seed and
   mode; `simulation.md` reports how often each mode fell back.
@@ -924,7 +975,8 @@ a number.
   - Endless: 5 Squad player, 10 Starter, 15 Fan favourite, 20 Captain, 30 Club legend, 40 World
     class, 50 Immortal. Shown mid-run too: the title the streak holds sits in a chip at the top of
     the pitch, and the score badge names each new one.
-  - Ranked: 5 Squad player, 10 Starter, 20 Captain, 30 Legend, 45+ GOAT.
+  - Ranked: 5 Squad player, 10 Starter, 20 Captain, 30 Legend, 45+ GOAT — kept in the table, but
+    Daily Ranked shows no titles: its score is out of twenty.
   - Friendly: 5 Squad player, 10 Starter, 15 Captain, 20 Legend — the win.
 
   Below 5 there is none. Shown on the game-over panel and in both shares.
@@ -942,6 +994,21 @@ a number.
   seen, in the game's type and colours; in Friendly the score out of twenty, the twenty-cell grid
   (unreached rounds as empty outlines) and a gold trophy for a win. **No player photos** — their
   CC licences require attribution that can't travel with a shared image.
+- **Daily Ranked's share is spoiler-free**: no player, no stat, no figure, so it can be posted
+  while the day's game is still being played. Text:
+
+  ```
+  Bigger Than #12 — 15/20 🔥
+  🟩🟩🟥🟩🟩🟩🟩🟥🟩🟩
+  🟩🟩🟩🟥🟩🟩🟩🟩🟥🟩
+  https://biggerthangame.com/football-higher-or-lower/legends/daily
+  ```
+
+  Two rows of ten, 🟩 right and 🟥 wrong (a timeout, or a question an abandoned run never answered,
+  is wrong). A perfect run reads "20/20 🔥" and adds "⭐ +5 bonus" under the grid. The image draws
+  the same: "Bigger Than #12", the score, the twenty squares and the bonus line, with no players.
+  No challenge links.
+
 - **Challenge links, Endless only** (`CHALLENGES`), Instagram Endless included, each variant's
   link opening its own page: "Challenge a friend" on the game-over panel shares "Beat <score>" and
   a link. The friend plays **a fresh run of their own** — new players,
@@ -962,8 +1029,26 @@ a number.
 
 ### Daily Ranked board
 
-Resets daily. Same sequence for all players, so ranking is meaningful. Time taken breaks ties.
-This is the headline board.
+The headline board, and the one the title bar's and footer's Leaderboards link opens. Same game
+for all players, so ranking is meaningful.
+
+- **One board per game**: "Game 12", its top 50, ten to a page, with the countdown to the next game
+  and the previous game's winner — "BraveFreekick35 got 23 in Game 11" — from the snapshot the
+  midnight cron keeps.
+- **Ranked by score**, then the lower **thinking time**, then the earlier finish. Thinking time is
+  Endless's (§13 below), from question 2, except that a timeout and every question an abandoned run
+  never answered count the full limit (§9). As in Endless, a time shows only on a tied score.
+- **Scores read "14", or "25" with a ⭐** for a perfect twenty plus bonus; the star has words for a
+  screen reader ("25: twenty out of twenty and 5 bonus").
+- **Flags, retired names, shadow-flagging and the pinned own row** as Endless's boards. The own
+  row comes from this device's entry for the game, so it is there whether or not the device is in
+  the top 50.
+- **Every finished run is on it**: the score posts itself when the run ends, or when the server
+  finishes an abandoned run (§3). The name is the one chosen at the start.
+- **Retention.** Entries are deleted 100 days after their game, like Endless's scores; each game's
+  top 50 snapshot is kept.
+- **A switch** at the top of both board pages goes between Daily Ranked and Endless: two links,
+  each board a page of its own.
 
 ### Endless boards
 
@@ -1026,7 +1111,10 @@ expect a meaningful number of legends to have no usable free image at all.
 ### Identity and submission
 
 - **Anonymous nicknames** in v1; accounts later.
-- The nickname is entered **after the run ends**, and publishing to the global board is **opt-in**.
+- **In Daily Ranked the name is chosen before the run**, on the start panel, and every finished run
+  is on the board: playing is the opt-in (§3). The rest of this section is Endless's.
+- In Endless the nickname is entered **after the run ends**, and publishing to the global board is
+  **opt-in**.
   Anyone who wants to appear publicly provides a name — not only those reaching the top 50 — so
   that ranks and shares stay coherent. In Endless, "Publish to leaderboard" on the game-over panel
   opens a small dialog: the nickname (prefilled with the last name published from this device,
@@ -1039,9 +1127,9 @@ expect a meaningful number of legends to have no usable free image at all.
 - **Nicknames** are 3 to 20 characters: Latin letters (accented ones included), digits, spaces
   and `_ - .`. Latin only because moderation can only read what its blocklist can; a name in
   another script gets the same calm "try another name" as a blocked one.
-- **Daily Ranked nicknames are unique within that game only.** If a name is taken, the UI says so
-  and asks for another. Uniqueness resets at rollover, so no name is ever owned and no account
-  system is implied.
+- **Daily Ranked nicknames are unique within that game only.** The name is reserved when the run
+  starts; if it is taken, the start panel says so and asks for another, and no attempt is used.
+  Uniqueness resets at rollover, so no name is ever owned and no account system is implied.
 - **The local device board always records a finished run**, published or not. It works with no
   network and is the player's own history.
 - Default to a **generated nickname** the player can change — an adjective, a football noun and
@@ -1054,7 +1142,9 @@ expect a meaningful number of legends to have no usable free image at all.
   without deleting the score: the board shows "Retired name".
 - **Shadow-flagging, not blocking.** A run whose answer times look automated is still published,
   and its player sees their entry and rank as normal; it is left out of everyone else's view of
-  the boards and of the totals.
+  the boards and of the totals. Daily Ranked adds one check of its own: a near-perfect run
+  answered implausibly fast on the early questions, the shape of a replayed answer sheet. The
+  thresholds live in code, not in the docs.
 
 ### What the player sees
 
@@ -1141,6 +1231,15 @@ boards stay what they always were — personal bests, each device's best run in 
 plainly as luck plus knowledge. They are still not a fair ranking, and the page says so. An
 all-time Endless board is still out: over months, whoever plays most wins.
 
+### Daily Ranked is twenty questions, not one life
+
+The first design gave Daily Ranked Endless's one life on a long ramp. One wrong answer in round
+three made the day's only attempt worthless, and a board of short runs ranked luck on the opening
+pairs more than knowledge. Twenty fixed questions where a miss costs one point make every player's
+score a mark out of twenty on the same test, which is what a daily board should compare, and the
+sudden-death bonus keeps the top of the board apart. The game is frozen at midnight, so the test
+can't change under anyone mid-day.
+
 ---
 
 ## 15. Open questions
@@ -1175,7 +1274,8 @@ error-report routing (email), and the Endless submission rate limit (set with th
 - **Current players** — they reintroduce the refresh burden that legends-only removes.
 - **Club badges, crests and kit marks** — trademarks, and not covered by any photo licence.
 - **Agency photography** (Getty, PA, Reuters) — aggressively enforced and not worth the exposure.
-- **Weekly and all-time boards for Daily Ranked** — after it proves out. Endless has today, this
+- **Weekly and all-time boards for Daily Ranked** — after it proves out. **Challenge links for
+  Daily Ranked** — a link would spoil a game still being played. Endless has today, this
   week and this month (§13, §14) and no all-time board.
 
 ---
@@ -1190,8 +1290,11 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
 │                                  Managers as a "Coming soon" card). Static, no JS.
 └── /football-higher-or-lower      football hub: football higher or lower in general, and a
     │                              card per deck (Legends today). Static, no JS.
-    └── /legends                   the Legends deck: its intro and the three modes. Static,
-        │                          no JS. Where "Play" goes.
+    └── /legends                   the Legends deck: its intro and its modes. Static, but for
+        │                          the cards' live lines. Where "Play" goes.
+        ├── /daily                 the game: Daily Ranked. The same screen, with Friendly's
+        │   │                      track and Endless's clock.
+        │   └── /leaderboard       Daily Ranked's board: today's game. A page that scrolls.
         ├── /friendly              the game: Friendly Mode. Fixed-height, no scroll.
         ├── /clubs/<slug>          "Clear the squad", one page per theme the deck has
         ├── /leagues/<slug>        (generated from themes.json): the Endless screen, with
@@ -1217,11 +1320,18 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   is visible text below the cards, which stay the first thing on screen. No player stat pages,
   records articles or "coming soon" pages, and no player's figure anywhere on the site.
 - **Modes on a deck's page.** Every open card is one link, clickable anywhere on the card, not
-  just on its name. Friendly and Endless link to their game pages; the Endless card
-  also links to its leaderboard, as does the Endless start panel. Daily Ranked is shown as a
-  "Coming soon" card: not a link, not focusable, visibly dimmed, with "Coming soon" written out
-  rather than carried by tint alone, and every piece of text still at WCAG AA. It is a card on the
-  Legends page, not a page of its own.
+  just on its name. Each links to its game page; the Endless card also links to its leaderboard,
+  as does the Endless start panel, and the Daily Ranked card to today's board. A mode that isn't
+  open yet is a "Coming soon" card: not a link, not focusable, visibly dimmed, with "Coming soon"
+  written out rather than carried by tint alone, and every piece of text still at WCAG AA. No mode
+  on the Legends page is coming soon today.
+- **Daily Ranked's page** has its own title ("Daily Football Legends Quiz — Bigger Than"),
+  description, canonical, preview tags, JSON-LD and breadcrumb, and a sitemap entry; so does its
+  board. Its start panel shows "Game 12" and the countdown in gold, the rules in two lines, the
+  name field (with a button for a new generated name), "Show my country flag", "Your name and score
+  will appear on today's leaderboard." and Play. A device that has played sees today's result
+  instead: the score, "312th of 2,400", the twenty squares, the shares, the countdown and the
+  board; one with a run still going sees "Carry on".
 - **Canonical rule.** Every page is canonical to itself, with its own title and meta description;
   the 404 has none and is `noindex`. The sitemap lists exactly the canonical pages.
 - **Breadcrumb.** The Legends page shows "Football › Legends" above its heading, in a `nav`
@@ -1234,14 +1344,20 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   very short landscape screens (500px tall or less) the game page's bar drops "— Football Legends"
   too, so it stays one row and the game fits.
 - **Navigation** is in the title bar on every page: the brand to `/`, then Play (the Legends
-  page), Leaderboards (Endless's), How to play and About, with the current page marked. Play is
-  marked current on the football hub and every page under it but the leaderboard, where
-  Leaderboards is. Inline on desktop (from 860px); a "Menu" on phones, tablets and short
+  page), Leaderboards (Daily Ranked's; Endless's is a switch away), How to play and About, with the
+  current page marked. Play is marked current on the football hub and every page under it but the
+  two leaderboards, where Leaderboards is. Inline on desktop (from 860px); a "Menu" on phones, tablets and short
   landscape screens, which opens over the page rather than pushing it down.
   The footer keeps Leaderboards, Credits, Privacy, GitHub, "Suggest a legend" and "Report a
   problem", on one row down to 320px: below 440px Leaderboards steps out (it is in the Menu and
-  on the Endless card), and below 360px GitHub, so it still fits.
-- **The Legends page's modes**, each on a full row of its own: Endless first, with a "See
+  on the Legends page's cards), and below 360px GitHub, so it still fits.
+- **The Legends page's modes**, each on a full row of its own: **Daily Ranked** first, the premium
+  card — a gold edge, a gold-leaf band along its top and across its name, and a warm glow behind
+  it — showing "Game 12", the countdown to the next game, and either this device's result today
+  ("15/20 · 312th of 2,400") or a gold "Play today's game" pill ("Carry on" for a run still going;
+  before launch day only "Game 1 starts in …"), with a "See today's leaderboard" button beside it as
+  Endless's has. Its lines are drawn in the browser, never at build time, so the static page is never
+  a day stale. Then Endless, with a "See
   leaderboards" button on the right of its card from 900px wide (under its text below that, so the
   text stays centred like the other cards') — a second link beside the card's own, never inside
   it; then **Instagram Endless**, in the Endless card's style with its own deep-pink accent (the
@@ -1250,7 +1366,7 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   in on hover (the word "Instagram" only, never its logo or marks), and no leaderboard button; then
   Friendly; then **Clubs**, **Leagues** and **Eras**, "Clear the squad"'s themes in a section
   each under a heading in gold Cinzel with its glow, centred (a type with no theme has no
-  section); and Daily Ranked's "Coming soon" card last, until it launches and moves to the top.
+  section).
   Every open mode's card shows this device's best when there is one — "Your best: 23", Friendly's
   out of twenty ("Your best: 12/20") — in the card's accent, gold or pink; with storage blocked or
   no best yet, nothing.

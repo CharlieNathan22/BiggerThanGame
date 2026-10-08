@@ -152,7 +152,27 @@ export {
   answerAllowance,
   deadlineFor,
   questionLimit,
+  resumeAllowance,
 } from "./clock.js";
+
+export {
+  DAILY_EPOCH,
+  DAILY_QUESTIONS,
+  DEV_DAILY_EPOCH,
+  IDLE_FINISH_MS,
+  assertDailyEpoch,
+  dailyContinues,
+  dailyEpochMs,
+  dailyScore,
+  epochMs,
+  gameDate,
+  gameNoAt,
+  gameStartsAt,
+  isBonusRound,
+  isGame,
+  isPerfect,
+  nextGameAt,
+} from "./daily.js";
 export type { QuestionLimit } from "./clock.js";
 
 export { CHALLENGES } from "./modes.js";
@@ -204,6 +224,17 @@ export type {
   ChallengeStatus,
   ContinueResponse,
   CorrectionRequest,
+  DailyBoardEntry,
+  DailyBoardResponse,
+  DailyGuessEndResponse,
+  DailyGuessResponse,
+  DailyMineRequest,
+  DailyMineResponse,
+  DailyResult,
+  DailyResumeRequest,
+  DailyResumeResponse,
+  DailyStartRequest,
+  DailyStartResponse,
   EndResponse,
   FeedbackRequest,
   FeedbackResponse,
