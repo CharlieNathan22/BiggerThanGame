@@ -386,6 +386,7 @@ export const en = {
   "over.timeout": "Out of time.",
   "over.challenge": "Challenge a friend",
   "over.again": "Play again",
+  "over.otherModes": "Try other modes",
   "over.report": "Something wrong with that card?",
   "over.suggest": "Suggest a legend",
   "over.share": "Share result",
