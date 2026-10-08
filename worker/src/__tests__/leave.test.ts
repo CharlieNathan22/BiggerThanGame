@@ -120,7 +120,7 @@ describe("parseLeaveRequest", () => {
     ["an array", [leaveBody(runId)]],
     ["an extra key", { ...leaveBody(runId), value: 108 }],
     ["a missing key", { mode: "friendly", runId, round: 1, phase: "question" }],
-    ["another mode", leaveBody(runId, { mode: "ranked" })],
+    ["another mode", leaveBody(runId, { mode: "squad" })],
     ["a malformed run id", leaveBody(runId, { runId: "not-a-run" })],
     ["a negative round", leaveBody(runId, { round: -1 })],
     ["a round past the last", leaveBody(runId, { round: 21 })],

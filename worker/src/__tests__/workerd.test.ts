@@ -1,9 +1,10 @@
 /**
- * Endless under workerd: the real app and the real, SQLite-backed Durable
- * Object, through wrangler's test harness (worker/test/entry.ts). What the
- * Node tests can only fake: a nonce spent once in real storage, the resend
- * rule, the alarm closing a silent run, a whole run over HTTP, and the same
- * seed dealing the same run here as in Node.
+ * Endless and Daily Ranked under workerd: the real app and the real,
+ * SQLite-backed Durable Object, through wrangler's test harness
+ * (worker/test/entry.ts). What the Node tests can only fake: a nonce spent
+ * once in real storage, the resend rule, the alarm closing a silent run (and
+ * finishing and posting a quiet Daily one into D1), whole runs over HTTP, and
+ * the same seed dealing the same run here as in Node.
  *
  * Slower than the rest (the Worker is bundled and workerd started once).
  */
@@ -12,9 +13,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildRun, valueOf } from "@bt/core";
+import { DAILY_QUESTIONS, IDLE_FINISH_MS, buildRun, valueOf } from "@bt/core";
 import type {
   BoardResponse,
+  DailyGuessResponse,
+  DailyResumeResponse,
+  DailyStartResponse,
   Guess,
   GuessResponse,
   RoundPayload,
@@ -23,6 +27,7 @@ import type {
 } from "@bt/core";
 import { createTestHarness, unstable_splitSqlQuery } from "wrangler";
 import { NOW, fixtureDeck } from "../../../packages/core/src/__fixtures__/deck.js";
+import type { StoredRound } from "../daily-game.js";
 import { parseRunId } from "../run-id.js";
 import { readToken } from "./endless-helpers.js";
 import { SECRET } from "./helpers.js";
@@ -296,5 +301,88 @@ describe("publishing under workerd", () => {
       period_key: runDay.toISOString().slice(0, 10),
       total: expect.any(Number),
     });
+  }, 60_000);
+});
+
+describe("Daily Ranked under workerd", () => {
+  const device = (n: number) => `${String(n).padStart(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
+
+  async function dailyStart(n: number): Promise<DailyStartResponse> {
+    const res = await post<DailyStartResponse>("/api/run/start", {
+      mode: "ranked",
+      nickname: `Workerd Daily ${n}`,
+      showCountry: false,
+      deviceId: device(n),
+      turnstileToken: "test",
+    });
+    expect(res.status).toBe(200);
+    return res.body;
+  }
+
+  async function stored(gameNo: number): Promise<StoredRound[]> {
+    const env = (await server.getWorker().getEnv()) as unknown as { DB: DbBinding };
+    const row = await env.DB.prepare(
+      `SELECT rounds FROM daily_games WHERE game_no = ${gameNo}`,
+    ).all<{
+      rounds: string;
+    }>();
+    return JSON.parse(row.results[0]!.rounds) as StoredRound[];
+  }
+
+  const rightOf = (r: StoredRound): Guess =>
+    r.challenger.value > r.anchor.value ? "higher" : "lower";
+
+  it("deals the same Daily game from the same seed as Node", async () => {
+    const node = buildRun({
+      deck: fixtureDeck,
+      seed: "ranked:1",
+      mode: "ranked",
+      now: NOW,
+      maxRounds: 25,
+    })
+      .map((r) => `${r.index}:${r.stat}:${r.anchor.id}>${r.challenger.id}`)
+      .join("|");
+    const res = await server.fetch("http://localhost/test/fingerprint?seed=ranked:1&mode=ranked");
+    expect(await res.text()).toBe(node);
+  });
+
+  it("plays a whole Daily run over HTTP, mistakes and all, and posts it", async () => {
+    const started = await dailyStart(1);
+    const rounds = await stored(started.gameNo);
+    let token = started.token;
+    let last: DailyGuessResponse | undefined;
+    for (let r = 1; r <= DAILY_QUESTIONS; r++) {
+      const round = rounds[r - 1]!;
+      const res = await post<DailyGuessResponse>("/api/round/guess", {
+        token,
+        guess: r % 4 === 0 ? other(rightOf(round)) : rightOf(round),
+      });
+      expect(res.status).toBe(200);
+      last = res.body;
+      if ("token" in res.body) token = res.body.token;
+    }
+    expect(last).toMatchObject({ end: "finished", result: { correct: 15, score: 15, rank: 1 } });
+  }, 60_000);
+
+  it("resumes on the same device, and finishes and posts a run left quiet", async () => {
+    const started = await dailyStart(2);
+    const resumed = await post<DailyResumeResponse>("/api/run/resume", { deviceId: device(2) });
+    expect(resumed.body).toMatchObject({ state: "playing", runId: started.runId });
+    const elsewhere = await post<DailyResumeResponse>("/api/run/resume", { deviceId: device(9) });
+    expect(elsewhere.body).toEqual({ state: "none" });
+
+    const key = parseRunId(started.runId)!.body;
+    const worker = server.getWorker();
+    const env = (await worker.getEnv()) as unknown as { RUNS: RunsBinding; DB: DbBinding };
+    const stub = env.RUNS.get(env.RUNS.idFromName(key));
+    await stub.alarmAt(Date.now() + IDLE_FINISH_MS + 1000);
+
+    const row = await env.DB.prepare(
+      `SELECT end_reason, score, finished_at FROM daily_entries WHERE run_key = '${key}'`,
+    ).all<{ end_reason: string; score: number; finished_at: number | null }>();
+    expect(row.results[0]).toMatchObject({ end_reason: "abandoned", score: 0 });
+    expect(row.results[0]!.finished_at).not.toBeNull();
+    const after = await post<DailyResumeResponse>("/api/run/resume", { deviceId: device(2) });
+    expect(after.body).toMatchObject({ state: "finished", result: { end: "abandoned" } });
   }, 60_000);
 });

@@ -71,7 +71,34 @@ export interface ResultPayload {
   readonly endedAt: number;
 }
 
+/**
+ * One question of a Daily Ranked run (daily.ts), under its own prefix: an
+ * Endless token can't pass for one, nor one for an Endless token. Like the
+ * Endless token it carries only what is on screen, the game number, and the
+ * right answers so far (mistakes don't end a Daily run, so it isn't
+ * `round - 1`).
+ */
+export interface DailyPayload {
+  readonly v: 1;
+  /** The signed Daily run id. */
+  readonly runId: string;
+  readonly mode: "ranked";
+  readonly gameNo: number;
+  /** The round this token answers, 1-based: questions 1–20, then the bonus rounds. */
+  readonly round: number;
+  /** Right answers before this round. */
+  readonly correct: number;
+  readonly anchorId: string;
+  readonly challengerId: string;
+  readonly stat: StatKey;
+  readonly anchorValue: number;
+  readonly issuedAt: number;
+  readonly deadline: number;
+  readonly nonce: string;
+}
+
 const PROGRESS_PREFIX = "token:";
+const DAILY_PREFIX = "daily:";
 const RESULT_PREFIX = "result:";
 
 export function signToken(secret: string, payload: ProgressPayload): Promise<string> {
@@ -84,6 +111,18 @@ export async function verifyToken(
 ): Promise<ProgressPayload | undefined> {
   const json = await verify(secret, PROGRESS_PREFIX, token);
   return json === undefined ? undefined : parseProgress(json);
+}
+
+export function signDailyToken(secret: string, payload: DailyPayload): Promise<string> {
+  return sign(secret, DAILY_PREFIX, dailyFields(payload));
+}
+
+export async function verifyDailyToken(
+  secret: string,
+  token: string,
+): Promise<DailyPayload | undefined> {
+  const json = await verify(secret, DAILY_PREFIX, token);
+  return json === undefined ? undefined : parseDaily(json);
 }
 
 export function signResult(secret: string, payload: ResultPayload): Promise<string> {
@@ -109,6 +148,24 @@ function progressFields(p: ProgressPayload): ProgressPayload {
     ...(p.variant !== undefined ? { variant: p.variant } : {}),
     round: p.round,
     streak: p.streak,
+    anchorId: p.anchorId,
+    challengerId: p.challengerId,
+    stat: p.stat,
+    anchorValue: p.anchorValue,
+    issuedAt: p.issuedAt,
+    deadline: p.deadline,
+    nonce: p.nonce,
+  };
+}
+
+function dailyFields(p: DailyPayload): DailyPayload {
+  return {
+    v: 1,
+    runId: p.runId,
+    mode: p.mode,
+    gameNo: p.gameNo,
+    round: p.round,
+    correct: p.correct,
     anchorId: p.anchorId,
     challengerId: p.challengerId,
     stat: p.stat,
@@ -176,6 +233,22 @@ const PROGRESS_KEYS = [
   "v",
 ];
 
+const DAILY_KEYS = [
+  "anchorId",
+  "anchorValue",
+  "challengerId",
+  "correct",
+  "deadline",
+  "gameNo",
+  "issuedAt",
+  "mode",
+  "nonce",
+  "round",
+  "runId",
+  "stat",
+  "v",
+];
+
 const RESULT_KEYS = ["elapsedMs", "end", "endedAt", "mode", "runId", "score", "startedOn", "v"];
 
 const RUN_ENDS: readonly RunEnd[] = ["wrong", "deck-exhausted", "won", "timeout", "disconnected"];
@@ -226,6 +299,39 @@ function parseProgress(json: unknown): ProgressPayload | undefined {
     ...variantField(r),
     round,
     streak,
+    anchorId,
+    challengerId,
+    stat: stat as StatKey,
+    anchorValue,
+    issuedAt,
+    deadline,
+    nonce,
+  };
+}
+
+function parseDaily(json: unknown): DailyPayload | undefined {
+  if (typeof json !== "object" || json === null || "variant" in json) return undefined;
+  const r = record(json, DAILY_KEYS);
+  if (r === undefined) return undefined;
+  const { runId, mode, gameNo, round, correct, anchorId, challengerId, stat, anchorValue } = r;
+  const { issuedAt, deadline, nonce } = r;
+  if (!isString(runId) || mode !== "ranked" || !isCount(gameNo) || gameNo < 1) return undefined;
+  if (!isCount(round) || round < 1 || !isCount(correct) || correct >= round) return undefined;
+  if (!isString(anchorId) || !isString(challengerId)) return undefined;
+  if (typeof stat !== "string" || !(STAT_KEYS as readonly string[]).includes(stat)) {
+    return undefined;
+  }
+  if (typeof anchorValue !== "number" || !Number.isFinite(anchorValue)) return undefined;
+  if (!isTime(issuedAt) || !isTime(deadline) || deadline < issuedAt || !isString(nonce)) {
+    return undefined;
+  }
+  return {
+    v: 1,
+    runId,
+    mode,
+    gameNo,
+    round,
+    correct,
     anchorId,
     challengerId,
     stat: stat as StatKey,

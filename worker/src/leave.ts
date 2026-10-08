@@ -13,18 +13,22 @@
  * the page.
  */
 
-import { buildRun, isNamedVariant, roundCap } from "@bt/core";
+import { buildRun, gameNoAt, isNamedVariant, roundCap } from "@bt/core";
 import type { ApiError, LeavePhase, LeaveRequest, LeaveTrigger, Player } from "@bt/core";
-import { shownRound } from "./analytics.js";
+import { shownRound, shownStored } from "./analytics.js";
 import type { GameEvent, ShownRound } from "./analytics.js";
+import { readDailyGame } from "./daily-game.js";
 import {
   canDeal,
   dealOptions,
   isRunAnswerable,
+  isRunDateCurrent,
   parseRunId,
   runModeOf,
+  verifyRankedRunId,
   verifyRunId,
 } from "./run-id.js";
+import type { D1Like } from "./scores.js";
 import { named } from "./run.js";
 import { seedFor } from "./seed.js";
 import type { Parsed } from "./validate.js";
@@ -40,6 +44,8 @@ export interface LeaveContext {
   readonly clock: () => Date;
   /** Told about the leave; app.ts logs it and writes the data point. Must not throw. */
   readonly record?: (event: GameEvent) => void;
+  /** Daily Ranked's games, where its rounds are looked up: D1, and the epoch in force. */
+  readonly daily?: { readonly db: D1Like; readonly epoch: number };
 }
 
 export type LeaveResult =
@@ -58,8 +64,9 @@ export function parseLeaveRequest(body: unknown): Parsed<LeaveRequest> {
     return fail("expected { mode, variant?, runId, round, phase, trigger }");
   }
   const { mode, runId, round, phase, trigger, variant } = record;
-  if (mode !== "friendly" && mode !== "endless")
-    return fail('mode must be "friendly" or "endless"');
+  if (mode !== "friendly" && mode !== "endless" && mode !== "ranked") {
+    return fail('mode must be "friendly", "endless" or "ranked"');
+  }
   if ("variant" in record && (mode !== "endless" || !isNamedVariant(variant))) {
     return fail('variant must be "endless-instagram" or "squad:<theme>", in Endless only');
   }
@@ -97,6 +104,7 @@ export async function handleLeave(body: unknown, ctx: LeaveContext): Promise<Lea
   const parsed = parseLeaveRequest(body);
   if (!parsed.ok) return badRequest(parsed.detail);
   const req = parsed.value;
+  if (req.mode === "ranked") return dailyLeave(req, ctx);
 
   const kind = runModeOf(req.mode, req.variant);
   const run = await verifyRunId(req.runId, ctx.secret, kind);
@@ -127,6 +135,34 @@ export async function handleLeave(body: unknown, ctx: LeaveContext): Promise<Lea
     ...(kind === "friendly" ? {} : named(kind)),
     run: run.body,
     runKind: "fresh",
+    round: req.round,
+    phase: req.phase,
+    trigger: req.trigger,
+    ...(shown !== undefined ? { shown } : {}),
+  });
+  return { status: 204 };
+}
+
+/** A Daily run's leave: the round as the player saw it, from the stored game. */
+async function dailyLeave(req: LeaveRequest, ctx: LeaveContext): Promise<LeaveResult> {
+  const run = await verifyRankedRunId(req.runId, ctx.secret);
+  if (run === undefined) return badRequest("runId is not one this server issued");
+  if (!isRunDateCurrent(run.date, ctx.clock())) return badRequest("runId is out of date");
+  if (ctx.daily === undefined) return badRequest("Daily Ranked is not available");
+  const gameNo = gameNoAt(run.date.getTime(), ctx.daily.epoch);
+  let shown: ShownRound | undefined;
+  if (req.round > 0) {
+    const game = await readDailyGame(ctx.daily.db, gameNo, ctx.daily.epoch);
+    const round = game?.rounds[req.round - 1];
+    if (round === undefined) return badRequest(`this run has no round ${req.round}`);
+    shown = shownStored(round, req.phase);
+  }
+  ctx.record?.({
+    type: "leave",
+    mode: "ranked",
+    run: run.body,
+    runKind: "fresh",
+    gameNo,
     round: req.round,
     phase: req.phase,
     trigger: req.trigger,

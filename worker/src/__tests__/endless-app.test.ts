@@ -18,7 +18,7 @@ import { disconnectedEnd } from "../run.js";
 import { RunLedger, memoryStore } from "../run-ledger.js";
 import { parseRunId } from "../run-id.js";
 import { endlessSeed } from "../seed.js";
-import { begin, harness } from "./endless-helpers.js";
+import { begin, harness, noDaily } from "./endless-helpers.js";
 import { SAMPLE_DECK, SECRET, TODAY, correctGuess, uuidFrom } from "./helpers.js";
 
 function fakeRuns(): RunNamespace {
@@ -35,6 +35,7 @@ function fakeRuns(): RunNamespace {
       advance: async (step) => ledger(id as string).advance(step),
       claimForSubmit: async (claim) => ledger(id as string).claimForSubmit(claim),
       markSubmitted: async () => ledger(id as string).markSubmitted(),
+      ...noDaily(),
     }),
   };
 }
@@ -128,6 +129,7 @@ describe("the Endless endpoints", () => {
         markSubmitted: async () => {
           throw new Error("storage unavailable");
         },
+        ...noDaily(),
       }),
     };
     const res = await app().fetch(post(RUN_START_PATH, START), env({ RUNS: broken }));
