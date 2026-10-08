@@ -15,8 +15,13 @@ import type { PlayLike } from "./variant";
  * (`7/20` in Friendly, `21/34` through a squad), else the plain number.
  */
 export function scoreFigure(score: number, play: PlayLike): string {
-  const { target } = asPlay(play);
-  return target === null ? String(score) : t("score.of", { score, target });
+  const { mode, target } = asPlay(play);
+  if (target === null) return String(score);
+  // Daily Ranked past a perfect twenty: "20/20 +3".
+  if (mode === "ranked" && score > target) {
+    return t("daily.titleBonus", { target, bonus: score - target });
+  }
+  return t("score.of", { score, target });
 }
 
 /** Whether `round` is the play's final question: the last of its win target. */
@@ -146,6 +151,14 @@ export function announcement(state: GameState, play: PlayLike): string {
   if (best !== null) return best === "new" ? t("live.newHighScore") : t("live.matchedBest");
   if ((state.phase === "verdict" || state.phase === "over") && reveal !== null) {
     const params = { challenger: round.challenger.name, value: reveal.display };
+    // Daily Ranked: a miss among the twenty goes on to the next question.
+    if (state.mode === "ranked") {
+      if (state.end !== null) {
+        return t("live.dailyDone", { ...params, score: scoreFigure(state.streak, play) });
+      }
+      if (state.guess === "timeout" && !reveal.correct) return t("live.timeoutOn", params);
+      if (!reveal.correct) return t("live.wrongOn", params);
+    }
     if (state.end === "timeout") return t("live.timeout", params);
     if (!reveal.correct) return t("live.wrong", params);
     if (state.end === "won") {
@@ -374,9 +387,13 @@ export function scoreBadge(state: GameState, play: PlayLike): ScoreBadge | null 
   const last = state.history.at(-1);
   if (last === undefined || !last.correct) return null;
   const score = scoreFigure(state.streak, play);
-  const title = STREAK_TITLES[mode].find(
-    (t) => t.min === state.streak && (target === null || t.min < target),
-  );
+  // Daily Ranked has no streak titles: its score is right answers, not a streak.
+  const title =
+    mode === "ranked"
+      ? undefined
+      : STREAK_TITLES[mode].find(
+          (t) => t.min === state.streak && (target === null || t.min < target),
+        );
   return title === undefined
     ? { key: state.streak, text: score, milestone: false }
     : {

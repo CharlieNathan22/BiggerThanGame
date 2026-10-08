@@ -29,7 +29,14 @@
      * `rising`: the run is past the previous best, so Best is counting with
      * the streak, and glows gold.
      */
-    scores?: { streak: number; best: number; target: number | null; rising?: boolean };
+    scores?: {
+      streak: number;
+      best: number;
+      target: number | null;
+      rising?: boolean;
+      /** Daily Ranked: the score as it reads ("14/20", "20/20 +3"), and no Best. */
+      daily?: string;
+    };
     /** Add "— Football Legends": /football-higher-or-lower/legends and the pages under it. */
     legends?: boolean;
     /** The page being shown, as served (`/about`), for `aria-current`. */
@@ -77,7 +84,11 @@
   <div class="end">
     {#if scores}
       <div class="scores">
-        {#if scores.target === null}
+        {#if scores.daily !== undefined}
+          <div class="score">
+            <span class="sr">{t("scores.score")}</span><strong class="num">{scores.daily}</strong>
+          </div>
+        {:else if scores.target === null}
           <div class="score">
             <span>{t("scores.streak")}</span><strong class="num">{scores.streak}</strong>
           </div>

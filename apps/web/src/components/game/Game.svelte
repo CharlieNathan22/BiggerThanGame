@@ -10,18 +10,45 @@
   own questions, its own local best, no wheel and no boards. "Clear the squad"
   is one per theme: Endless over a squad, each player once, with Friendly's
   progress track and win panel ("Squad cleared") and its own local best.
+  Daily Ranked is twenty questions a day with Endless's clock and Friendly's
+  track, a name on its start panel, mistakes that don't end the run, a
+  resume after a refresh, and its result (already played today) in place of
+  Play again.
 -->
 <script lang="ts">
-  import { CHALLENGES, generateNickname } from "@bt/core";
-  import type { Guess, NamedVariant, SitePage } from "@bt/core";
+  import { CHALLENGES, NICKNAME_LIMITS, generateNickname } from "@bt/core";
+  import type { DailyResult, Guess, NamedVariant, SitePage } from "@bt/core";
   import type { PitchCard } from "../../game/view";
   import { onMount, tick } from "svelte";
   import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
   import { statLabel, t } from "../../i18n";
-  import { FRIENDLY_PATH, LEADERBOARD_PATH, isLegendsPath } from "../../lib/paths";
+  import {
+    DAILY_LEADERBOARD_PATH,
+    DAILY_PATH,
+    ENDLESS_LEADERBOARD_PATH,
+    FRIENDLY_PATH,
+    isLegendsPath,
+  } from "../../lib/paths";
   import { TIER_COLOUR } from "../../lib/tiers";
   import { createApi, createEndlessApi } from "../../game/api";
   import type { EndlessApi, Fetch, GameApi } from "../../game/api";
+  import {
+    bonusChip,
+    bonusLine,
+    createDailyApi,
+    dailyGridLabel,
+    dailyScoreText,
+    dailyShareCard,
+    dailyShareText,
+    gameLabel,
+    nextGameText,
+    rankLine,
+    resultTrack,
+    rememberedRun,
+    tally,
+    titleScore,
+  } from "../../game/daily";
+  import type { DailyApi } from "../../game/daily";
   import {
     bestKey,
     browserStorage,
@@ -38,12 +65,15 @@
     readStandings,
     recordRun,
     runsKey,
+    saveNickname,
+    saveShowCountry,
     saveStandings,
     standingsOf,
   } from "../../game/device";
   import {
     beatText,
     cryptoRandom,
+    nicknameText,
     panelText,
     publishOffer,
     publishRun,
@@ -137,6 +167,7 @@
     verdictLabel,
   } from "../../game/view";
   import TitleBar from "../TitleBar.svelte";
+  import Flag from "../Flag.svelte";
   import Clock from "./Clock.svelte";
   import Counter from "./Counter.svelte";
   import FeedbackModal from "./FeedbackModal.svelte";
@@ -186,7 +217,8 @@
   let reducedMotion = $state(false);
 
   let higherButton: HTMLButtonElement | undefined = $state();
-  let againButton: HTMLButtonElement | undefined = $state();
+  /** Play again; in Daily Ranked, the link to today's board in its place. */
+  let againButton: HTMLElement | undefined = $state();
   let startButton: HTMLButtonElement | undefined = $state();
   /** Where Endless's Turnstile check renders, if it ever needs the player. */
   let turnstileBox: HTMLElement | undefined = $state();
@@ -234,6 +266,46 @@
   let copyByHand: string | null = $state(null);
   let drawing = $state(false);
 
+  // ------------------------------------------------------------ Daily Ranked
+
+  /**
+   * Daily Ranked: what the page knows of today's game and this device in it,
+   * from `POST /api/board/daily/me` as it loads. `open` shows the start
+   * panel; the rest show a panel of their own in its place.
+   */
+  type DailyStatus =
+    | { readonly kind: "loading" }
+    | { readonly kind: "failed" }
+    | { readonly kind: "prelaunch"; readonly nextGameAt: number }
+    | { readonly kind: "open"; readonly gameNo: number; readonly nextGameAt: number }
+    | { readonly kind: "playing"; readonly gameNo: number; readonly nextGameAt: number }
+    | {
+        readonly kind: "played";
+        readonly gameNo: number;
+        readonly nextGameAt: number;
+        readonly result: DailyResult;
+      };
+  let daily = $state<DailyStatus>({ kind: "loading" });
+  let dailyApi: DailyApi | null = null;
+  /** The name field on the start panel, and the flag choice under it. */
+  let dailyName = $state("");
+  let dailyFlag = $state(true);
+  /** The flag's country code for this connection, from the lookup: the flag the board shows. */
+  let dailyCountry = $state<string | null>(null);
+  /** Play has been pressed with the name as it is: its problem, if any, shows. */
+  let dailyTried = $state(false);
+  let dailyResuming = $state(false);
+  let dailyResumeFailed = $state(false);
+  /** The wall clock, for the countdown to the next game: every half minute. */
+  let wallNow = $state(Date.now());
+  const ranked = $derived(mode === "ranked");
+  const dailyNameProblem = $derived(nicknameText(dailyName));
+  /** Today's marks: the run's as it goes, or on the already-played panel its result's. */
+  const shownResult = $derived(
+    ranked && game.history.length === 0 && daily.kind === "played" ? daily.result : null,
+  );
+  const dailyResults = $derived(shownResult?.results ?? game.history.map((r) => r.correct));
+
   onMount(() => {
     const motion = matchMedia("(prefers-reduced-motion: reduce)");
     reducedMotion = motion.matches;
@@ -253,7 +325,7 @@
     // Endless checks on Start, so its script loads once this page is idle (or
     // on the first press, if that comes sooner). Friendly only ever loads it
     // for a feedback form.
-    if (mode === "endless") loadWhenIdle(window as unknown as IdleHost, loader);
+    if (mode !== "friendly") loadWhenIdle(window as unknown as IdleHost, loader);
 
     // The footer's feedback links. Static pages have no island, so there they
     // go to this page's #suggest and #problem, which open the form here on
@@ -342,7 +414,37 @@
         variant !== undefined ? { variant } : {},
       );
     }
-    const api: GameApi = endlessApi ?? createApi(fetchFn);
+    if (mode === "ranked") {
+      // The name, the flag choice and the device travel with the start. They
+      // are remembered once a start goes through, never for a refused name.
+      dailyName = startingNickname(undefined, readNickname(browserStorage), () =>
+        generateNickname(cryptoRandom),
+      );
+      dailyFlag = readShowCountry(browserStorage);
+      dailyApi = createDailyApi(
+        fetchFn,
+        (humanCheck = createHumanCheck(
+          loader,
+          () => turnstileBox ?? null,
+          TURNSTILE_SITE_KEY,
+          schedule,
+        )),
+        () => ({
+          nickname: dailyName,
+          showCountry: dailyFlag,
+          deviceId: deviceId(browserStorage, () => crypto.randomUUID()),
+        }),
+        browserStorage,
+        (started, who) => {
+          saveNickname(browserStorage, started.nickname);
+          saveShowCountry(browserStorage, who.showCountry);
+          if (daily.kind === "open" || daily.kind === "loading") {
+            daily = { kind: "open", gameNo: started.gameNo, nextGameAt: nextAt() };
+          }
+        },
+      );
+    }
+    const api: GameApi = endlessApi ?? dailyApi ?? createApi(fetchFn);
 
     const key = bestKey(deck, play);
     // A squad keeps how far it got and whether it was ever cleared (best.ts).
@@ -356,16 +458,33 @@
       now: () => performance.now(),
       schedule,
       reducedMotion: () => reducedMotion,
-      best: squad ? readSquadBest(browserStorage, key).best : readBest(browserStorage, key),
-      saveBest: (best) =>
+      // Daily Ranked keeps no best: its score is the day's, on the board.
+      best: ranked
+        ? 0
+        : squad
+          ? readSquadBest(browserStorage, key).best
+          : readBest(browserStorage, key),
+      saveBest: (best) => {
+        if (ranked) return;
         void (squad
           ? saveSquadBest(browserStorage, key, { best, cleared: false })
-          : saveBest(browserStorage, key, best)),
+          : saveBest(browserStorage, key, best));
+      },
       challenge,
       // Endless: every run goes on this device's board, published or not, and
       // one that scored can be published if it beats the day's published best.
       // A variant without boards (Instagram Endless, a squad) keeps neither.
       onOver: (over) => {
+        // Daily Ranked: the result, on the board, in Play again's place; or,
+        // when the connection went, the run to carry on.
+        if (ranked) {
+          const gameNo = over.result?.gameNo ?? dailyApi?.started()?.gameNo ?? 0;
+          daily =
+            over.result !== null
+              ? { kind: "played", gameNo, nextGameAt: nextAt(), result: over.result }
+              : { kind: "playing", gameNo, nextGameAt: nextAt() };
+          return;
+        }
         if (squad && over.end === "won") {
           saveSquadBest(browserStorage, key, { best: over.streak, cleared: true });
         }
@@ -391,12 +510,19 @@
     const unsubscribe = c.subscribe((s) => (game = s));
     controller = c;
 
+    let tick30: ReturnType<typeof setInterval> | undefined;
+    if (ranked) {
+      void lookupDaily();
+      tick30 = setInterval(() => (wallNow = Date.now()), 30_000);
+    }
+
     return () => {
       document.removeEventListener("click", onLinkClick);
       window.removeEventListener("hashchange", onHashChange);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", onPageHide);
       removeDevPanel?.();
+      if (tick30 !== undefined) clearInterval(tick30);
       unsubscribe();
       c.destroy();
       shareNotes.destroy();
@@ -446,7 +572,9 @@
   const title = $derived(titleText(game.streak, rules));
   const result = $derived(challengeResult(game));
   const cells = $derived(gridCells(game.history, rules));
-  const steps = $derived(trackSteps(game, rules));
+  const steps = $derived(
+    shownResult !== null ? resultTrack(shownResult.results) : trackSteps(game, rules),
+  );
   const finalQuestion = $derived(isFinalQuestion(game, rules));
   const verdictText = $derived(verdictLabel(game));
   /** "3/20" at the top of the pitch after a right answer, Friendly only. */
@@ -573,7 +701,85 @@
   /** The nickname typed into the publish dialog and left unpublished. */
   let publishDraft = $state<string | undefined>(undefined);
 
+  /** When the next game starts, as the lookup said; a day on from now until it has. */
+  function nextAt(): number {
+    return "nextGameAt" in daily ? daily.nextGameAt : Date.now() + 86_400_000;
+  }
+
+  /** Today's game and this device in it: the start panel, the run to carry on, or the result. */
+  async function lookupDaily(): Promise<void> {
+    if (dailyApi === null) return;
+    daily = { kind: "loading" };
+    try {
+      const me = await dailyApi.lookup();
+      dailyCountry = me.country;
+      wallNow = Date.now();
+      daily =
+        me.gameNo < 1
+          ? { kind: "prelaunch", nextGameAt: me.nextGameAt }
+          : me.state === "finished"
+            ? { kind: "played", gameNo: me.gameNo, nextGameAt: me.nextGameAt, result: me.result }
+            : me.state === "playing"
+              ? { kind: "playing", gameNo: me.gameNo, nextGameAt: me.nextGameAt }
+              : { kind: "open", gameNo: me.gameNo, nextGameAt: me.nextGameAt };
+    } catch {
+      daily = { kind: "failed" };
+    }
+  }
+
+  /** Carries on this device's run after a refresh: the question on screen, its clock still running. */
+  async function resumeDaily(): Promise<void> {
+    if (dailyApi === null || daily.kind !== "playing" || dailyResuming) return;
+    const { gameNo, nextGameAt } = daily;
+    dailyResuming = true;
+    dailyResumeFailed = false;
+    shareNotes.clear();
+    copyByHand = null;
+    try {
+      const res = await dailyApi.resume(rememberedRun(browserStorage, gameNo));
+      if (res.state === "playing") {
+        controller?.resume({
+          runId: res.runId,
+          round: res.round,
+          results: res.results,
+          remainingMs: res.remainingMs,
+        });
+      } else if (res.state === "finished") {
+        daily = { kind: "played", gameNo: res.result.gameNo, nextGameAt, result: res.result };
+      } else {
+        await lookupDaily();
+      }
+    } catch {
+      dailyResumeFailed = true;
+    } finally {
+      dailyResuming = false;
+    }
+  }
+
+  /** A fresh generated name in the field. */
+  function shuffleName(): void {
+    dailyName = generateNickname(cryptoRandom);
+    dailyTried = false;
+  }
+
+  // A start refused because this device has played today, or before launch:
+  // the lookup says which panel to show instead.
+  $effect(() => {
+    if (
+      ranked &&
+      phase === "idle" &&
+      (game.refused === "played" || game.refused === "notStarted")
+    ) {
+      void lookupDaily();
+    }
+  });
+
   function start(): void {
+    if (ranked) {
+      // The name's form is checked here first; the server checks the rest.
+      dailyTried = true;
+      if (dailyNameProblem !== null) return;
+    }
     publishable = null;
     boardLine = null;
     publishOpen = false;
@@ -592,8 +798,16 @@
     return import.meta.env.DEV ? location.origin : SITE_URL;
   }
 
+  /** The finished Daily run on show: this visit's, or the result the lookup found. */
+  const dailyResult = $derived(daily.kind === "played" ? daily.result : game.result);
+
   async function onShareText(): Promise<void> {
     if (platform === null) return;
+    if (ranked) {
+      if (dailyResult !== null)
+        await shareOut(dailyShareText(dailyResult, `${site()}${DAILY_PATH}`));
+      return;
+    }
     const text = shareText(
       game.streak,
       game.history,
@@ -627,8 +841,15 @@
     drawing = true;
     const show = shareNotes.begin();
     try {
-      const blob = await renderShareImage(shareCard(game, SITE_LABEL, rules));
-      const name = t("share.fileName", { score: game.streak });
+      const card =
+        ranked && dailyResult !== null
+          ? dailyShareCard(dailyResult, SITE_LABEL)
+          : shareCard(game, SITE_LABEL, rules);
+      const blob = await renderShareImage(card);
+      const name =
+        ranked && dailyResult !== null
+          ? t("daily.fileName", { game: dailyResult.gameNo })
+          : t("share.fileName", { score: game.streak });
       const outcome = await shareResultImage(blob, name, platform);
       show(
         outcome === "saved"
@@ -719,14 +940,20 @@
 
 <div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null || publishOpen}>
   <TitleBar
-    scores={{ streak: game.streak, best: game.best, target, rising: onNewBest(game) }}
+    scores={{
+      streak: game.streak,
+      best: game.best,
+      target,
+      rising: onNewBest(game),
+      ...(ranked ? { daily: titleScore(dailyResults) } : {}),
+    }}
     legends={isLegendsPath(path)}
     current={path}
   />
   {#if target !== null}
     <Track
       {steps}
-      answered={game.history.length}
+      answered={shownResult?.results.length ?? game.history.length}
       label={progressText(game, rules)}
       final={finalQuestion}
     />
@@ -846,7 +1073,7 @@
       />
     {/if}
 
-    {#if mode === "endless"}
+    {#if mode !== "friendly"}
       <!-- The question's clock, big, at the top; it steps aside for the score badge. -->
       <Clock clock={clockTop} {reducedMotion} aside={badgeShowing} />
     {/if}
@@ -854,6 +1081,11 @@
     {#if chip !== "" && phase !== "idle" && phase !== "starting" && phase !== "over"}
       <!-- Endless: the title the streak has earned so far. -->
       <p class="chip"><span class="sr">{t("chip.label")}: </span>{chip}</p>
+    {:else if ranked && bonusChip(dailyResults) !== "" && phase !== "idle" && phase !== "over"}
+      <!-- Daily Ranked's bonus rounds: the bonus so far, in the chip's place. -->
+      <p class="chip bonus">
+        <span class="sr">{t("daily.bonusLabel")}: </span>{bonusChip(dailyResults)}
+      </p>
     {/if}
 
     {#if titleCardText !== null}
@@ -889,19 +1121,25 @@
 
     <p
       class="notice"
-      class:underclock={mode === "endless"}
+      class:underclock={mode !== "friendly"}
       role="status"
       class:empty={notice === "" || phase === "idle" || badge !== null}
     >
       {phase === "idle" ? "" : notice}
     </p>
 
-    {#if phase === "idle" || phase === "starting"}
+    {#if ranked && (phase === "idle" || phase === "over") && daily.kind !== "open"}
+      <!-- Daily Ranked: today's game as this device stands in it, in the start
+           panel's place, and after the run in the game-over panel's. -->
+      <div class="veil">
+        {@render dailyPanel()}
+      </div>
+    {:else if phase === "idle" || phase === "starting"}
       <div class="veil">
         <!-- The brand, the deck and the mode, then what to do; side by side on
              a landscape phone, so it fits. The deck is the page's heading; the
              brand above it is a line of its own. -->
-        <div class="panel start" class:clocked={mode === "endless"}>
+        <div class="panel start" class:clocked={mode !== "friendly"} class:daily={ranked}>
           <div class="head">
             <div class="brand">
               {t("brand.bigger")} <em>{t("brand.than")}</em>
@@ -922,6 +1160,13 @@
                   <p class="squadcount">
                     {themeText("squad.count", theme)}
                   </p>
+                {:else if ranked && daily.kind === "open"}
+                  <p class="gameline">
+                    <span class="gamename">{gameLabel(daily.gameNo)}</span>
+                    <span aria-hidden="true">{t("over.separator")}</span>
+                    {nextGameText(daily.gameNo, daily.nextGameAt, wallNow)}
+                  </p>
+                  <p>{startIntro(mode, variant)}</p>
                 {:else if target !== null}
                   <p>{t("start.introTarget", { target })}</p>
                 {:else}
@@ -931,13 +1176,63 @@
               {#if theme !== undefined}
                 <!-- A squad's rules in one line, the clock among them. -->
                 <p class="clockline">{t("squad.rules")}</p>
+              {:else if ranked}
+                <p class="clockline">{t("daily.clock")}</p>
+                <!-- The name the board will show, the flag beside it, and what's kept. -->
+                <form
+                  class="dailyform"
+                  novalidate
+                  onsubmit={(event) => {
+                    event.preventDefault();
+                    start();
+                  }}
+                >
+                  <label for="daily-name">{t("daily.nameLabel")}</label>
+                  <div class="namerow">
+                    <input
+                      id="daily-name"
+                      type="text"
+                      bind:value={dailyName}
+                      oninput={() => (dailyTried = false)}
+                      maxlength={NICKNAME_LIMITS.max + 10}
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      required
+                      aria-invalid={(dailyTried && dailyNameProblem !== null) ||
+                        game.refused === "nameTaken" ||
+                        game.refused === "nameRejected"}
+                      aria-describedby="daily-name-problem daily-line"
+                    />
+                    <button type="button" class="ghost shuffle" onclick={shuffleName}>
+                      {t("publish.shuffle")}
+                    </button>
+                  </div>
+                  <p class="nameproblem" id="daily-name-problem" role="alert">
+                    {dailyTried && dailyNameProblem !== null
+                      ? dailyNameProblem
+                      : game.refused === "nameTaken"
+                        ? t("daily.nameTaken")
+                        : game.refused === "nameRejected"
+                          ? t("publish.rejected")
+                          : ""}
+                  </p>
+                  {#if dailyCountry !== null}
+                    <label class="flagopt">
+                      <input type="checkbox" bind:checked={dailyFlag} />
+                      <Flag country={dailyCountry} />
+                      <span>{t("publish.showCountry")}</span>
+                    </label>
+                  {/if}
+                  <p class="dailyline" id="daily-line">{t("daily.leaderboardLine")}</p>
+                </form>
               {:else if mode === "endless"}
                 <p class="clockline">
                   {t("start.clock")}
                   {t("start.noClock")} <a href={FRIENDLY_PATH}>{t("start.playFriendly")}</a>
                   {#if boards}
                     <span aria-hidden="true">{t("over.separator")}</span>
-                    <a href={LEADERBOARD_PATH}>{t("start.leaderboard")}</a>
+                    <a href={ENDLESS_LEADERBOARD_PATH}>{t("start.leaderboard")}</a>
                   {/if}
                 </p>
               {/if}
@@ -952,11 +1247,13 @@
             >
               {phase === "starting"
                 ? t("start.starting")
-                : offered
-                  ? t("challenge.cta")
-                  : t("start.cta")}
+                : ranked
+                  ? t("daily.play")
+                  : offered
+                    ? t("challenge.cta")
+                    : t("start.cta")}
             </button>
-            {#if mode === "endless"}
+            {#if mode !== "friendly"}
               <!-- Turnstile's widget, shown only when it needs the player. -->
               <div class="turnstile" bind:this={turnstileBox} {@attach releaseCheck}></div>
             {/if}
@@ -972,7 +1269,7 @@
           </div>
         </div>
       </div>
-    {:else if phase === "over"}
+    {:else if phase === "over" && !ranked}
       <div class="veil">
         <!-- Stacked; on a short landscape screen, the score beside the actions. -->
         <div class="panel over">
@@ -1048,7 +1345,7 @@
               <p class="published" class:stacked={boardLine.beat}>
                 {boardLine.text}
                 {#if !boardLine.beat}<span aria-hidden="true">{t("over.separator")}</span>{/if}
-                <a href={LEADERBOARD_PATH}>{t("over.leaderboard")}</a>
+                <a href={ENDLESS_LEADERBOARD_PATH}>{t("over.leaderboard")}</a>
               </p>
             {:else if publishable !== null}
               <!-- Endless: opt-in. The dialog takes the nickname and sends it. -->
@@ -1134,7 +1431,7 @@
     country={publishCountry}
     showCountry={readShowCountry(browserStorage)}
     {publish}
-    boardHref={LEADERBOARD_PATH}
+    boardHref={ENDLESS_LEADERBOARD_PATH}
     onpublished={(response) => {
       boardLine = { text: panelText(response), beat: !response.periods.day.improved };
       saveStandings(browserStorage, publishedKey(deck, mode), standingsOf(response), Date.now());
@@ -1159,6 +1456,122 @@
     onclose={closeFeedback}
   />
 {/if}
+
+<!--
+  Daily Ranked's panel, in the start panel's place before a run and the
+  game-over panel's after it: checking today's game, Game 1 still to come,
+  a run to carry on after a refresh, or today's result — the score, its
+  place on the board, the twenty squares, the shares and the countdown to the
+  next game. There is no Play again: one go a day.
+-->
+{#snippet dailyPanel()}
+  <div class="panel daily" class:result={daily.kind === "played"}>
+    <div class="head">
+      <div class="brand">
+        {t("brand.bigger")} <em>{t("brand.than")}</em>
+        {t("brand.game")}
+      </div>
+      {#if phase === "idle"}
+        <h1 class="deckname">{t("brand.footballLegends")}</h1>
+      {:else}
+        <p class="deckname">{t("brand.footballLegends")}</p>
+      {/if}
+      <div class="modename"><span>{t("daily.subtitle")}</span></div>
+    </div>
+    {#if daily.kind === "loading"}
+      <p role="status">{t("daily.loading")}</p>
+    {:else if daily.kind === "failed"}
+      <p role="alert">{t("daily.lookupFailed")}</p>
+      <button class="cta" onclick={lookupDaily}>{t("daily.retry")}</button>
+    {:else if daily.kind === "prelaunch"}
+      <p class="gameline big">{nextGameText(0, daily.nextGameAt, wallNow)}</p>
+    {:else if daily.kind === "playing"}
+      <p class="gameline"><span class="gamename">{gameLabel(daily.gameNo)}</span></p>
+      <h2 class="dailyhead">{t("daily.resumeHeading")}</h2>
+      <p>{t("daily.resumeBody")}</p>
+      <button class="cta" bind:this={startButton} onclick={resumeDaily} disabled={dailyResuming}>
+        {dailyResuming ? t("daily.resuming") : t("daily.resume")}
+      </button>
+      {#if dailyResumeFailed}
+        <p class="problem" role="alert">{t("daily.resumeFailed")}</p>
+      {/if}
+    {:else if daily.kind === "played"}
+      {@const result = daily.result}
+      {@const score = tally(result.results)}
+      {@const perfect = score.correct === 20}
+      <div class="scoreboard" class:won={perfect}>
+        <p class="gameline"><span class="gamename">{gameLabel(result.gameNo)}</span></p>
+        {#if phase === "idle"}
+          <h2 class="dailyhead">{t("daily.playedHeading")}</h2>
+        {/if}
+        <div class="final num">{dailyScoreText(score.correct, score.bonus)}</div>
+        <div class="finalcap">
+          {bonusLine(score.correct, score.bonus) !== ""
+            ? bonusLine(score.correct, score.bonus)
+            : perfect
+              ? t("daily.captionPerfect")
+              : t("daily.caption", { target: 20 })}
+        </div>
+        <p class="dailyrank">{rankLine(result) !== "" ? rankLine(result) : t("daily.unranked")}</p>
+        <div class="grid" role="img" aria-label={dailyGridLabel(result.results)}>
+          {#each Array.from({ length: 20 }, (_, i) => result.results[i] === true) as right, i (i)}
+            <span class="cell" class:miss={!right} class:hit={right} aria-hidden="true"></span>
+          {/each}
+        </div>
+      </div>
+      <div class="actions">
+        {#if phase === "over" && round && reveal}
+          <div class="reason">
+            <span class="lab">{statLabel(round.stat.key, variant)}</span>
+            <b>{round.anchor.name}</b>
+            {round.anchor.display}
+            <span aria-hidden="true">{t("over.separator")}</span>
+            <b>{round.challenger.name}</b>
+            {reveal.display}
+          </div>
+        {/if}
+        <a class="cta" bind:this={againButton} href={DAILY_LEADERBOARD_PATH}>
+          {t("daily.leaderboard")}
+        </a>
+        <div class="shares">
+          <button class="secondary" onclick={onShareText}>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 15V3M7.5 7.5 12 3l4.5 4.5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+            </svg>
+            {t("over.share")}
+          </button>
+          <button class="secondary" onclick={onShareImage} disabled={drawing} aria-busy={drawing}>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              {#if platform?.touch}
+                <path d="M12 15V3M7.5 7.5 12 3l4.5 4.5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+              {:else}
+                <path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M5 20h14" />
+              {/if}
+            </svg>
+            {platform?.touch ? t("over.shareImage") : t("over.saveImage")}
+          </button>
+        </div>
+        <p class="status" class:fading={shareNote.fading} role="status">{shareNote.text}</p>
+        {#if copyByHand !== null}
+          <textarea class="copy" readonly rows="6" aria-label={t("over.shareText")}
+            >{copyByHand}</textarea
+          >
+        {/if}
+        <p class="nextgame">{nextGameText(result.gameNo, daily.nextGameAt, wallNow)}</p>
+      </div>
+      <div class="feedback">
+        {#if phase === "over" && report}
+          <button class="ghost" onclick={() => openFeedback("correction")}>
+            {t("over.report")}
+          </button>
+        {/if}
+        <button class="ghost" onclick={() => openFeedback("suggest")}>
+          {t("over.suggest")}
+        </button>
+      </div>
+    {/if}
+  </div>
+{/snippet}
 
 <style>
   .game {
@@ -2202,6 +2615,169 @@
     .over .reason .lab {
       display: inline;
       margin: 0 6px 0 0;
+    }
+  }
+  /* Daily Ranked's start panel: the game and the countdown in gold, then the
+     name the board will show, its flag, and what's kept. The field is the
+     publish dialog's. */
+  .gameline {
+    color: var(--chalk);
+  }
+  .gamename {
+    color: var(--gold);
+    font-variation-settings: var(--fv-strong);
+  }
+  .gameline.big {
+    font-size: var(--fs-reason);
+    color: var(--gold);
+  }
+  .dailyform {
+    margin-top: var(--daily-form-top);
+    text-align: left;
+  }
+  .dailyform label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: var(--fs-lab);
+    color: var(--dim);
+    font-variation-settings: var(--fv-caps);
+  }
+  .namerow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .namerow input {
+    flex: 1 1 12em;
+    min-width: 0;
+    min-height: var(--target-min);
+    padding: var(--field-pad);
+    border: var(--border) solid var(--field-edge);
+    border-radius: var(--field-radius);
+    background: var(--field-bg);
+    color: var(--chalk);
+    font: inherit;
+    font-size: var(--fs-field);
+    user-select: text;
+  }
+  .namerow input:focus-visible {
+    outline: var(--focus-ring-thin) solid var(--gold);
+    outline-offset: var(--focus-offset);
+  }
+  .namerow input[aria-invalid="true"] {
+    border-color: var(--flare);
+  }
+  .namerow .ghost {
+    width: auto;
+    margin-top: 0;
+    min-height: var(--target-min);
+    padding: 0 6px;
+  }
+  .panel .nameproblem {
+    margin-top: 6px;
+    min-height: 1.4em;
+    font-size: var(--fs-caption);
+    color: var(--chalk);
+    font-variation-settings: var(--fv-caption);
+  }
+  .panel .nameproblem:empty {
+    min-height: 0;
+    margin-top: 0;
+  }
+  .dailyform .flagopt {
+    display: flex;
+    align-items: center;
+    gap: var(--flag-gap);
+    min-height: var(--target-min);
+    margin: 4px 0 0;
+    font-size: var(--fs-caption);
+    color: var(--chalk);
+    font-variation-settings: var(--fv-caption);
+    text-transform: none;
+    cursor: pointer;
+  }
+  .flagopt input {
+    flex: none;
+    width: var(--check-size);
+    height: var(--check-size);
+    margin: 0 4px 0 0;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+  .flagopt input:focus-visible {
+    outline: var(--focus-ring-thin) solid var(--gold);
+    outline-offset: var(--focus-offset);
+  }
+  .panel .dailyline {
+    margin-top: 6px;
+    font-size: var(--fs-caption);
+    color: var(--dim);
+    font-variation-settings: var(--fv-caption);
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .start.daily .intro {
+      grid-row: 1;
+    }
+    .start.daily .dailyform {
+      grid-column: 2;
+      grid-row: 2 / span 2;
+      margin-top: 0;
+    }
+  }
+
+  /* Daily Ranked's own panel: today's result (the game-over panel's score,
+     caption and grid), the run to carry on, or the wait for Game 1. */
+  .panel.daily {
+    max-width: var(--over-w);
+  }
+  .panel .dailyhead {
+    margin-top: var(--over-cap-top);
+    font-size: var(--fs-reason);
+    color: var(--chalk);
+  }
+  .panel .dailyrank {
+    margin-top: var(--over-cap-top);
+    color: var(--chalk);
+    font-variation-settings: var(--fv-strong);
+  }
+  .panel .nextgame {
+    margin-top: var(--over-cap-top);
+    font-size: var(--fs-caption);
+  }
+  .daily .actions > .cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+  }
+  /* A right answer: gold, as on the progress track. A wrong one keeps the cross. */
+  .cell.hit {
+    background: var(--track-hit);
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .panel.daily.result {
+      max-width: var(--over-w-wide);
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: var(--over-col-gap);
+      align-items: center;
+    }
+    .daily.result .head,
+    .daily.result .scoreboard {
+      grid-column: 1;
+    }
+    .daily.result .actions {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+    .daily.result .feedback {
+      grid-column: 1 / -1;
+    }
+    .daily.result .reason {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
     }
   }
 </style>

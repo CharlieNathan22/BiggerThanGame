@@ -3,7 +3,7 @@ import { STATS, STAT_KEYS } from "@bt/core";
 import type { StatKey } from "@bt/core";
 import Page from "../layouts/Page.astro";
 import { CORRECTIONS_EMAIL } from "../config";
-import { FRIENDLY_PATH } from "../lib/paths";
+import { DAILY_LEADERBOARD_PATH, DAILY_PATH, FRIENDLY_PATH } from "../lib/paths";
 import { TIER_COLOUR, TIER_LABEL } from "../lib/tiers";
 
 // One line per stat. Typed against StatKey, so adding a stat to @bt/core
@@ -82,6 +82,21 @@ const reportHref = `mailto:${CORRECTIONS_EMAIL}?subject=${encodeURIComponent("Co
   <p>
     You need a connection to play. The hidden number isn't sent to your browser until you've
     answered, so each answer is checked as you give it.
+  </p>
+
+  <h2>Daily Ranked</h2>
+  <p>
+    <a href={DAILY_PATH}>Daily Ranked</a> is <strong>one game a day, the same for everyone</strong>:
+    twenty questions against the clock, fifteen seconds for the first and ten for each after it. A
+    wrong answer or running out of time doesn't end it; you carry on to question twenty, and your
+    score is how many you got right. Get all twenty and the bonus rounds begin, which go on until
+    your first miss, each one adding a point.
+  </p>
+  <p>
+    You choose the name you play under before you start, and you get one go a day. Every score goes
+    on that day's <a href={DAILY_LEADERBOARD_PATH}>leaderboard</a>; when two players have the same
+    score, the one who answered faster overall is placed higher. A new game starts at midnight UTC.
+    If your page reloads mid-game, you can carry on where you were, but the clock keeps running.
   </p>
 
   <h2>The stats</h2>

@@ -35,6 +35,12 @@
  * a few seconds and only then banked (DESIGN.md §3, Connectivity). Both show as
  * a `hitch` while the reveal (or the start) waits.
  *
+ * Daily Ranked plays twenty questions whatever the answers: a wrong answer
+ * that comes back with the next question goes on to it, as a right one does
+ * (the server only sends one on in the other modes after a right answer). A
+ * Daily run can also pick up where a refresh left it (`resumed`): straight to
+ * the question on screen, its clock capped at what the server says is left.
+ *
  * In a mode with challenge links (Endless, DESIGN.md §13) a run can start from
  * one. The link is offered with the start; the server says whether it checks
  * out — the run is then framed as "Beat n" — or not. Either way the run is a
@@ -46,6 +52,7 @@ import { hasWheel, questionLimit, variantOf } from "@bt/core";
 import type {
   AnswerResponse,
   ChallengeLink,
+  DailyResult,
   ChallengeStatus,
   Mode,
   NamedVariant,
@@ -81,7 +88,13 @@ export type Phase =
 export type EndReason = RunEnd | "network";
 
 /** The modes the game page plays. */
-export type GameMode = Extract<Mode, "friendly" | "endless">;
+export type GameMode = Extract<Mode, "friendly" | "endless" | "ranked">;
+
+/**
+ * An answer's response as the machine reads it: the round's reveal, then the
+ * next question or the end — and, ending a Daily run, its result.
+ */
+export type Answered = AnswerResponse & { readonly result?: DailyResult };
 
 /**
  * One answered round, for the share grid and share image (M5). Only what the
@@ -103,7 +116,15 @@ export type Failure =
   /** A refusal retrying can't fix. */
   | { readonly kind: "fatal" }
   /** A run start the Turnstile check didn't pass (or couldn't run): try Start again. */
-  | { readonly kind: "verification" };
+  | { readonly kind: "verification" }
+  /** A Daily start refused before anything was used: the name, or the day's attempt. */
+  | { readonly kind: "refused"; readonly reason: StartRefusal };
+
+/**
+ * Why a Daily start was refused: the name is taken in today's game, or isn't
+ * allowed; this device has played today; or Game 1 hasn't started yet.
+ */
+export type StartRefusal = "nameTaken" | "nameRejected" | "played" | "notStarted";
 
 /** A request that has to be sent again before the run can carry on. */
 export type Hitch =
@@ -220,6 +241,16 @@ export interface GameState {
   readonly startFailed: boolean;
   /** ...because the Turnstile check didn't pass: the panel suggests trying again. */
   readonly checkFailed: boolean;
+  /** ...because Daily Ranked refused it: the name, or the day's attempt. */
+  readonly refused: StartRefusal | null;
+  /**
+   * Daily Ranked: when the question on screen must be answered by
+   * (`performance.now()`), for a question picked up after a refresh with its
+   * clock already running. Null otherwise.
+   */
+  readonly cap: number | null;
+  /** Daily Ranked: the finished run's result, on the board. */
+  readonly result: DailyResult | null;
   /** A request waiting to be sent again; null when all is well. */
   readonly hitch: Hitch | null;
   /** The challenge link this run came from, if any. */
@@ -259,7 +290,20 @@ export type GameEvent =
   | { readonly type: "guess"; readonly guess: TimedGuess; readonly at: number }
   /** The question's clock ran out: answered as `timeout`. */
   | { readonly type: "timeout"; readonly at: number }
-  | { readonly type: "answered"; readonly response: AnswerResponse; readonly at: number }
+  | { readonly type: "answered"; readonly response: Answered; readonly at: number }
+  /**
+   * Daily Ranked, after a refresh: the run's question on screen and the
+   * answers so far. `remainingMs` is the time its clock has left, or null
+   * for a question dealt fresh, with its whole limit.
+   */
+  | {
+      readonly type: "resumed";
+      readonly runId: string;
+      readonly round: RoundPayload;
+      readonly results: readonly boolean[];
+      readonly remainingMs: number | null;
+      readonly at: number;
+    }
   | { readonly type: "answerFailed"; readonly failure: Failure; readonly at: number }
   /** A hitch's wait is over: send the request again. */
   | { readonly type: "retry"; readonly at: number }
@@ -295,6 +339,9 @@ export function initialState(
     end: null,
     startFailed: false,
     checkFailed: false,
+    refused: null,
+    cap: null,
+    result: null,
     hitch: null,
     challenge,
     link: null,
@@ -313,7 +360,7 @@ export function shouldSpin(round: RoundPayload, wheel = true): boolean {
 
 /** Whether the run on screen has a wheel: core's word on its variant (`hasWheel`). */
 export function wheelOf(state: Pick<GameState, "mode" | "variant">): boolean {
-  return state.mode === "friendly" || hasWheel(variantOf(state.variant));
+  return state.mode !== "endless" || hasWheel(variantOf(state.variant));
 }
 
 /**
@@ -376,10 +423,32 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       return {
         ...state,
         phase: "idle",
-        startFailed: true,
+        startFailed: event.failure.kind !== "refused",
         checkFailed: event.failure.kind === "verification",
+        refused: event.failure.kind === "refused" ? event.failure.reason : null,
         hitch: null,
       };
+
+    case "resumed": {
+      if (state.phase !== "idle" && state.phase !== "over") return state;
+      // The answers so far, as the track and the grid show them: right or wrong only.
+      const history: RoundRecord[] = event.results.map((correct, i) => ({
+        index: i + 1,
+        stat: event.round.stat.key,
+        tier: event.round.stat.tier,
+        correct,
+      }));
+      const fresh: GameState = {
+        ...initialState(state.best, null, state.mode, state.variant),
+        runId: event.runId,
+        history,
+        streak: event.results.filter(Boolean).length,
+        repeat: true,
+        cap: event.remainingMs === null ? null : event.at + event.remainingMs,
+      };
+      // Straight to the cards: no title card, and the stat on the plaque at once.
+      return { ...fresh, phase: "dealing", round: event.round, plaque: event.round.stat };
+    }
 
     case "dealt":
       if (state.phase !== "dealing" || state.round === null) return state;
@@ -406,6 +475,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         phase: "revealing",
         guess: event.type === "timeout" ? "timeout" : event.guess,
         clock: null,
+        cap: null,
         stopped: stopClock(state.clock, event),
         count: { tappedAt: event.at, arrivedAt: null },
       };
@@ -428,6 +498,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         next: "next" in response ? response.next : null,
         end: "end" in response ? response.end : null,
         link: "end" in response ? (response.challenge ?? null) : null,
+        result: response.result ?? null,
       };
     }
 
@@ -482,14 +553,15 @@ export function reduce(state: GameState, event: GameEvent): GameState {
     }
 
     case "slide":
-      if (state.phase !== "verdict" || state.reveal?.correct !== true || state.next === null) {
+      if (state.phase !== "verdict" || state.reveal === null || state.next === null) {
         return state;
       }
       return { ...state, phase: "sliding" };
 
     case "advance":
       if (state.phase !== "verdict" && state.phase !== "sliding") return state;
-      if (state.reveal?.correct === true && state.next !== null) {
+      // On to the next question: after a right answer, or in Daily Ranked after any.
+      if (state.reveal !== null && state.next !== null) {
         return deal(
           {
             ...state,
@@ -519,11 +591,17 @@ function stopClock(
   return { remainingMs, limitMs: clock.limitMs };
 }
 
-/** The clock for the round on screen, in a timed mode; null in Friendly. */
+/**
+ * The clock for the round on screen, in a timed mode; null in Friendly. A
+ * question picked up after a refresh gets no more than the time it had left.
+ */
 function clockFor(state: GameState, at: number | undefined): QuestionClock | null {
   if (state.round === null) return null;
   const limitMs = questionLimit(state.mode, state.round.index);
-  return limitMs === null ? null : { startedAt: at ?? 0, limitMs };
+  if (limitMs === null) return null;
+  const startedAt = at ?? 0;
+  const left = state.cap === null ? limitMs : Math.max(0, state.cap - startedAt);
+  return { startedAt, limitMs: Math.min(limitMs, left) };
 }
 
 /** What the server made of the offered link. A refusal made before the start stands. */
@@ -633,16 +711,16 @@ export function verdictAt(count: CountClock, timings: Timings): number {
 
 /** From the verdict colour to the next deal, or to the game-over panel. */
 export function advanceDelay(state: GameState, timings: Timings): number {
-  return state.reveal?.correct === true && state.next !== null ? timings.next : timings.over;
+  return state.reveal !== null && state.next !== null ? timings.next : timings.over;
 }
 
 /**
  * Whether this verdict hands over to the next pair with the carousel slide:
- * a right answer with a next round, and motion allowed. A wrong answer or a
- * win goes to the game-over panel instead.
+ * an answer with a next round (a right one, or in Daily Ranked any), and
+ * motion allowed. An answer that ends the run goes to the game-over panel.
  */
 export function slides(state: GameState, reducedMotion: boolean): boolean {
-  return !reducedMotion && state.reveal?.correct === true && state.next !== null;
+  return !reducedMotion && state.reveal !== null && state.next !== null;
 }
 
 /**

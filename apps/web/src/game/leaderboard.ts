@@ -18,7 +18,16 @@
  */
 
 import { countdown } from "@bt/core";
-import type { BoardEntry, BoardPeriod, BoardResponse, MineEntry, MineResponse } from "@bt/core";
+import type {
+  BoardEntry,
+  BoardPeriod,
+  BoardResponse,
+  DailyBoardEntry,
+  DailyBoardResponse,
+  DailyMineResponse,
+  MineEntry,
+  MineResponse,
+} from "@bt/core";
 import { t } from "../i18n";
 import type { Fetch } from "./api";
 import type { Standing } from "./device";
@@ -65,6 +74,10 @@ export interface BoardRow {
   readonly mine: boolean;
   /** A stable key for the list. */
   readonly key: string;
+  /** Daily Ranked: a perfect twenty, its score marked with a star. */
+  readonly perfect?: boolean;
+  /** Daily Ranked: the score as a screen reader hears it ("25: twenty out of twenty and 5 bonus"). */
+  readonly spoken?: string;
 }
 
 /** Where the player's own best entry stands in the period on show. */
@@ -82,6 +95,9 @@ export interface OwnPosition {
   readonly country: string | null;
   /** Live from the server, or the rank the player's own publish came back with. */
   readonly live: boolean;
+  /** Daily Ranked, as on a row. */
+  readonly perfect?: boolean;
+  readonly spoken?: string;
 }
 
 export interface BoardView {
@@ -294,6 +310,8 @@ export function pinnedRow(view: BoardView, page: number): Pinned | null {
     thinkMs: own.thinkMs,
     country: own.country,
     live: own.live,
+    ...(own.perfect !== undefined ? { perfect: own.perfect } : {}),
+    ...(own.spoken !== undefined ? { spoken: own.spoken } : {}),
     page: onPage,
   };
 }
@@ -401,4 +419,88 @@ export function totalText(total: number): string {
   return total === 1
     ? t("leaderboard.total.one")
     : t("leaderboard.total.other", { total: count(total) });
+}
+
+// ------------------------------------------------------------ Daily Ranked
+
+/** A Daily score as a row shows it: the number, the perfect run's star, the words. */
+function dailyScore(e: Pick<DailyBoardEntry, "score" | "perfect" | "bonus">): {
+  perfect: boolean;
+  spoken: string;
+} {
+  return {
+    perfect: e.perfect === true,
+    spoken:
+      e.perfect === true
+        ? t("daily.perfectSpoken", { score: e.score, bonus: e.bonus })
+        : String(e.score),
+  };
+}
+
+/**
+ * Where this device stands in today's game, from `/me`: its finished run's
+ * row as its owner sees it, or null (nothing finished today, or no answer).
+ */
+export function dailyOwnPosition(mine: DailyMineResponse | null): OwnPosition | null {
+  if (mine === null || mine.state !== "finished") return null;
+  const e = mine.standing;
+  return {
+    entryId: e.id,
+    rank: e.rank,
+    total: mine.result.total ?? e.rank,
+    streak: e.score,
+    nickname: e.nickname,
+    tied: e.tied,
+    thinkMs: e.tied ? e.thinkMs : null,
+    country: e.country,
+    live: true,
+    ...dailyScore(e),
+  };
+}
+
+/** Today's Daily board as the page shows it: the server's rows, the player's own marked. */
+export function dailyBoardView(board: DailyBoardResponse, own: OwnPosition | null): BoardView {
+  const rows: BoardRow[] = board.entries.map((e) => ({
+    rank: e.rank,
+    nickname: e.nickname,
+    streak: e.score,
+    tied: e.tied === true,
+    thinkMs: e.tied === true && typeof e.thinkMs === "number" ? e.thinkMs : null,
+    country: typeof e.country === "string" ? e.country : null,
+    mine: own !== null && e.id === own.entryId,
+    key: e.id,
+    ...dailyScore(e),
+  }));
+  const at = own === null ? -1 : rows.findIndex((r) => r.mine);
+  return {
+    rows,
+    total: board.total,
+    own: own === null ? null : { ...own, index: at === -1 ? null : at },
+  };
+}
+
+/**
+ * "BraveFreekick35 got 23 in Game 11": the previous game's winner in parts,
+ * the name and score in gold; null before Game 2, or when nobody finished it.
+ */
+export function dailyWinnerLine(previous: DailyBoardResponse["previous"]): WinnerLine | null {
+  if (previous === null || previous.winner === null) return null;
+  const { winner } = previous;
+  const values: Record<string, Segment> = {
+    name: { text: winner.nickname ?? t("leaderboard.retired"), gold: true, name: true },
+    score: { text: count(winner.score), gold: true },
+    game: { text: t("daily.game", { game: previous.gameNo }), gold: false },
+  };
+  const parts: Segment[] = [];
+  for (const piece of t("dailyBoard.winnerLine").split(/(\{\w+\})/)) {
+    const name = /^\{(\w+)\}$/.exec(piece)?.[1];
+    const value = name === undefined ? undefined : values[name];
+    const part = value ?? { text: piece, gold: false };
+    if (part.text === "") continue;
+    const last = parts.at(-1);
+    if (last !== undefined && !last.gold && !part.gold) {
+      parts[parts.length - 1] = { text: last.text + part.text, gold: false };
+    } else parts.push(part);
+  }
+  return { parts, country: typeof winner.country === "string" ? winner.country : null };
 }

@@ -1,0 +1,55 @@
+---
+// The Daily Ranked leaderboard (DESIGN.md §13): today's game, its top 50, the
+// countdown to the next game and the previous game's winner. A static page;
+// the island fetches the board (GET /api/board/daily), served from a cache up
+// to a minute old, and this device's place in it. The switch above it goes to
+// Endless's boards. No player's figure anywhere.
+import Page from "../../../../layouts/Page.astro";
+import Breadcrumb from "../../../../components/Breadcrumb.astro";
+import BoardSwitch from "../../../../components/BoardSwitch.astro";
+import Leaderboard from "../../../../components/Leaderboard.svelte";
+import { t } from "../../../../i18n";
+import { DAILY_LEADERBOARD_PATH, DAILY_PATH } from "../../../../lib/paths";
+import { breadcrumbLd, breadcrumbTrail } from "../../../../lib/seo";
+
+const trail = breadcrumbTrail(DAILY_LEADERBOARD_PATH);
+---
+
+<Page
+  title={t("dailyBoard.title")}
+  description={t("dailyBoard.description")}
+  legendsLights
+  structuredData={[breadcrumbLd(trail)]}
+>
+  <Breadcrumb items={trail.slice(1).map((crumb) => ({ label: crumb.name, href: crumb.path }))} />
+  <!-- The Legends page's heading: two short lines, centred, in the gold glow. -->
+  <h1 class="twoline glow">
+    {t("dailyBoard.headingMode")}
+    <br />
+    <em>{t("leaderboard.headingBoard")}</em>
+  </h1>
+  <BoardSwitch current="daily" />
+  <p class="centred">{t("dailyBoard.framing")}</p>
+  <p class="next">
+    <a class="cta" href={DAILY_PATH}>
+      {t("dailyBoard.play")}
+    </a>
+  </p>
+
+  <Leaderboard client:load mode="ranked" />
+  <noscript>
+    <p class="centred">{t("leaderboard.noscript")}</p>
+  </noscript>
+
+  <p class="next">
+    <a class="cta" href={DAILY_PATH}>
+      {t("dailyBoard.play")}
+    </a>
+  </p>
+</Page>
+
+<style>
+  .next {
+    text-align: center;
+  }
+</style>

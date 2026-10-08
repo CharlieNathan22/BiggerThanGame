@@ -7,6 +7,7 @@
 import type { MessageKey } from "../i18n";
 import {
   ABOUT_PATH,
+  ENDLESS_LEADERBOARD_PATH,
   FOOTBALL_PATH,
   HOW_TO_PLAY_PATH,
   LEADERBOARD_PATH,
@@ -19,11 +20,13 @@ export interface NavLink {
   readonly label: MessageKey;
   /** The part of the site the link stands for, when that's more than its own page. */
   readonly section?: string;
+  /** Other pages the link stands for: Endless's board, under Leaderboards (Daily's board). */
+  readonly also?: readonly string[];
 }
 
 export const NAV_LINKS: readonly NavLink[] = [
   { href: LEGENDS_PATH, label: "nav.play", section: FOOTBALL_PATH },
-  { href: LEADERBOARD_PATH, label: "nav.leaderboards" },
+  { href: LEADERBOARD_PATH, label: "nav.leaderboards", also: [ENDLESS_LEADERBOARD_PATH] },
   { href: HOW_TO_PLAY_PATH, label: "nav.howToPlay" },
   { href: ABOUT_PATH, label: "nav.about" },
 ];
@@ -45,17 +48,27 @@ export function currentPage(
   return section !== undefined && isWithin(current, section) ? "true" : undefined;
 }
 
+/** The link's mark on its own pages: `"page"` on its page, `"true"` on one it also stands for. */
+function ownMark(link: NavLink, current: string | undefined): "page" | "true" | undefined {
+  const mark = currentPage(link.href, current);
+  if (mark !== undefined) return mark;
+  return current !== undefined && link.also?.includes(current) === true ? "true" : undefined;
+}
+
 /**
  * A nav link's `aria-current` among `links`: as `currentPage`, except that a
  * link current only for its section stands down when another link is the
- * page itself — on the leaderboard page, Leaderboards is current, not Play.
+ * page itself, or stands for it — on either leaderboard page, Leaderboards
+ * is current, not Play.
  */
 export function navCurrent(
   link: NavLink,
   current: string | undefined,
   links: readonly NavLink[] = NAV_LINKS,
 ): "page" | "true" | undefined {
+  const own = ownMark(link, current);
+  if (own !== undefined) return own;
   const mark = currentPage(link.href, current, link.section);
   if (mark !== "true") return mark;
-  return links.some((other) => currentPage(other.href, current) === "page") ? undefined : mark;
+  return links.some((other) => ownMark(other, current) !== undefined) ? undefined : mark;
 }

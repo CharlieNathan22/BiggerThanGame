@@ -476,10 +476,13 @@ describe("overCaption", () => {
 });
 
 describe("scores, per mode", () => {
-  it("reads out of twenty in Friendly and plain elsewhere", () => {
+  it("reads out of twenty in Friendly and Daily Ranked, and plain in Endless", () => {
     expect(scoreFigure(7, "friendly")).toBe("7/20");
     expect(scoreFigure(7, "endless")).toBe("7");
-    expect(scoreFigure(7, "ranked")).toBe("7");
+    expect(scoreFigure(7, "ranked")).toBe("7/20");
+    // Past a perfect twenty, the bonus rounds.
+    expect(scoreFigure(20, "ranked")).toBe("20/20");
+    expect(scoreFigure(23, "ranked")).toBe("20/20 +3");
   });
 
   it("gives the progress as text in Friendly only", () => {

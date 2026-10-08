@@ -1,0 +1,74 @@
+---
+// The switch between the two leaderboards, Daily Ranked and Endless, at the
+// top of both board pages: two links, the page on show marked current, in
+// the boards' own tab style (outlined pills, the current one gold). Plain
+// links, so it works with no JS; each board is a page of its own.
+import { t } from "../i18n";
+import { DAILY_LEADERBOARD_PATH, ENDLESS_LEADERBOARD_PATH } from "../lib/paths";
+
+interface Props {
+  current: "daily" | "endless";
+}
+
+const { current } = Astro.props;
+const boards = [
+  { id: "daily", href: DAILY_LEADERBOARD_PATH, label: t("board.switch.daily") },
+  { id: "endless", href: ENDLESS_LEADERBOARD_PATH, label: t("board.switch.endless") },
+] as const;
+---
+
+<nav class="switch" aria-label={t("board.switch")}>
+  {boards.map((board) => (
+    <a href={board.href} aria-current={board.id === current ? "page" : undefined}>
+      {board.label}
+    </a>
+  ))}
+</nav>
+
+<style>
+  .switch {
+    display: flex;
+    justify-content: center;
+    gap: var(--board-tab-gap);
+    margin: var(--board-switch-top) auto 0;
+    max-width: var(--board-switch-max-w);
+  }
+  a {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--target-min);
+    padding: var(--board-tab-pad);
+    border: var(--btn2-border) solid var(--board-switch-edge);
+    border-radius: var(--radius-pill);
+    color: var(--chalk);
+    font-size: var(--fs-body);
+    font-variation-settings: var(--fv-cta);
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      color var(--dur-hover),
+      background-color var(--dur-hover),
+      box-shadow var(--dur-hover);
+  }
+  a:hover {
+    color: var(--gold);
+  }
+  a[aria-current="page"] {
+    border-color: var(--btn2-edge);
+    background: var(--btn2-bg);
+    color: var(--btn2-text);
+    box-shadow: var(--glow);
+    text-shadow: var(--glow);
+  }
+  a:focus-visible {
+    outline: var(--focus-ring) solid var(--chalk);
+    outline-offset: var(--focus-offset);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    a {
+      transition: none;
+    }
+  }
+</style>

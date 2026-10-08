@@ -6,12 +6,13 @@
 // every run is different, and the longest streak wins. No player's figure anywhere.
 import Page from "../../../../layouts/Page.astro";
 import Breadcrumb from "../../../../components/Breadcrumb.astro";
+import BoardSwitch from "../../../../components/BoardSwitch.astro";
 import Leaderboard from "../../../../components/Leaderboard.svelte";
 import { t } from "../../../../i18n";
-import { ENDLESS_PATH, LEADERBOARD_PATH } from "../../../../lib/paths";
+import { ENDLESS_PATH, ENDLESS_LEADERBOARD_PATH } from "../../../../lib/paths";
 import { breadcrumbLd, breadcrumbTrail } from "../../../../lib/seo";
 
-const trail = breadcrumbTrail(LEADERBOARD_PATH);
+const trail = breadcrumbTrail(ENDLESS_LEADERBOARD_PATH);
 ---
 
 <Page
@@ -27,6 +28,7 @@ const trail = breadcrumbTrail(LEADERBOARD_PATH);
     <br />
     <em>{t("leaderboard.headingBoard")}</em>
   </h1>
+  <BoardSwitch current="endless" />
   <p class="centred">{t("leaderboard.framing")}</p>
   <p class="next">
     <a class="cta" href={ENDLESS_PATH}>
@@ -34,7 +36,7 @@ const trail = breadcrumbTrail(LEADERBOARD_PATH);
     </a>
   </p>
 
-  <Leaderboard client:load />
+  <Leaderboard client:load mode="endless" />
   <noscript>
     <p class="centred">{t("leaderboard.noscript")}</p>
   </noscript>

@@ -7,6 +7,7 @@
  */
 
 import {
+  DAILY_QUESTIONS,
   WIN_ROUNDS,
   hasBoards as variantHasBoards,
   hasWheel,
@@ -16,17 +17,23 @@ import {
 import type { EndlessVariantId, Mode, NamedVariant, SquadTheme, StatKey } from "@bt/core";
 import { hasMessage, t } from "../i18n";
 import type { MessageKey, Params } from "../i18n";
-import { ENDLESS_PATH, FRIENDLY_PATH, INSTAGRAM_PATH, themePagePath } from "../lib/paths";
+import {
+  DAILY_PATH,
+  ENDLESS_PATH,
+  FRIENDLY_PATH,
+  INSTAGRAM_PATH,
+  themePagePath,
+} from "../lib/paths";
 import type { GameMode } from "./machine";
 
 /**
- * Names a page's plays: `friendly`, `endless`, `endless-instagram`,
- * `squad:club-barcelona`.
+ * Names a page's plays: `friendly`, `ranked` (Daily Ranked), `endless`,
+ * `endless-instagram`, `squad:club-barcelona`.
  */
-export type PlayId = "friendly" | EndlessVariantId;
+export type PlayId = "friendly" | "ranked" | EndlessVariantId;
 
 export function playId(mode: GameMode, variant?: NamedVariant): PlayId {
-  return mode === "friendly" ? "friendly" : variantOf(variant);
+  return mode === "friendly" || mode === "ranked" ? mode : variantOf(variant);
 }
 
 /** A "Clear the squad" theme as a page knows it: from `themes.json`, names and counts only. */
@@ -46,8 +53,13 @@ export interface Play {
 /** A mode, standing for its own play (Friendly, Endless), or a play spelled out. */
 export type PlayLike = Mode | Play;
 
+/**
+ * Daily Ranked reads out of its twenty questions, like Friendly, though it has
+ * no win target: a perfect twenty goes on into the bonus rounds.
+ */
 export function asPlay(play: PlayLike): Play {
-  return typeof play === "string" ? { mode: play, target: WIN_ROUNDS[play] } : play;
+  if (typeof play !== "string") return play;
+  return { mode: play, target: play === "ranked" ? DAILY_QUESTIONS : WIN_ROUNDS[play] };
 }
 
 /** The play on a page: a squad's when it has a theme, else the mode's own. */
@@ -60,6 +72,7 @@ export function playOf(mode: GameMode, theme?: Theme): Play {
 /** Each play's game page: where its challenge links point. */
 export function playPath(play: PlayId, theme?: Theme): string {
   if (play === "friendly") return FRIENDLY_PATH;
+  if (play === "ranked") return DAILY_PATH;
   if (play === "endless") return ENDLESS_PATH;
   if (play === "endless-instagram") return INSTAGRAM_PATH;
   if (theme === undefined) throw new Error(`no theme for ${play}`);
@@ -73,7 +86,7 @@ export function hasBoards(mode: GameMode, variant?: NamedVariant): boolean {
 
 /** Whether the wheel spins: everywhere but a variant that fixes the stat. */
 export function spins(mode: GameMode, variant?: NamedVariant): boolean {
-  return mode === "friendly" || hasWheel(variantOf(variant));
+  return mode !== "endless" || hasWheel(variantOf(variant));
 }
 
 /**
@@ -82,6 +95,7 @@ export function spins(mode: GameMode, variant?: NamedVariant): boolean {
  */
 export function modeSubtitle(mode: GameMode, variant?: NamedVariant, theme?: Theme): string {
   if (theme !== undefined) return theme.name;
+  if (mode === "ranked") return t("daily.subtitle");
   return variant === "endless-instagram"
     ? t("mode.instagram.subtitle")
     : t(mode === "friendly" ? "mode.friendly.name" : "mode.endless.name");
@@ -115,5 +129,6 @@ export function squadNoteText(stat: StatKey, theme: Theme): string {
 /** The start panel's intro, when the run isn't a challenge and has no win target. */
 export function startIntro(mode: GameMode, variant?: NamedVariant): string {
   if (variant === "endless-instagram") return t("start.introInstagram");
+  if (mode === "ranked") return t("daily.intro");
   return t(mode === "endless" ? "start.introEndless" : "start.intro");
 }

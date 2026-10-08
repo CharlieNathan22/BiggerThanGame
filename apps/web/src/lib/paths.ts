@@ -33,8 +33,17 @@ export function themePagePath(theme: Pick<SquadTheme, "type" | "slug">): string 
   return themePath(theme);
 }
 
+/** Daily Ranked on the Legends deck: twenty questions a day, the same for everyone. */
+export const DAILY_PATH = "/football-higher-or-lower/legends/daily";
+
+/** Daily Ranked's board: today's game. */
+export const DAILY_LEADERBOARD_PATH = "/football-higher-or-lower/legends/daily/leaderboard";
+
 /** Endless's boards: today, this week and this month. */
-export const LEADERBOARD_PATH = "/football-higher-or-lower/legends/endless/leaderboard";
+export const ENDLESS_LEADERBOARD_PATH = "/football-higher-or-lower/legends/endless/leaderboard";
+
+/** Where the title bar's and the footer's "Leaderboards" go: Daily Ranked's, the headline board. */
+export const LEADERBOARD_PATH = DAILY_LEADERBOARD_PATH;
 
 export const ABOUT_PATH = "/about";
 export const CREDITS_PATH = "/credits";
