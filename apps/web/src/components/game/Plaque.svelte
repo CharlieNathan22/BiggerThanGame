@@ -60,11 +60,11 @@
     clock?: QuestionClock | null;
     /** `performance.now()` this frame, from the game's one frame loop. */
     now?: number;
-    /** The Endless variant: a squad reads club goals as "Total career club goals". */
+    /** The Endless variant: a squad reads its career stats as "Total career club goals" and so on. */
     variant?: NamedVariant | undefined;
     /**
-     * A line under the plaque once the stat is on it: in a squad, what club
-     * goals count ("Whole career, not just Barcelona"). Empty for none.
+     * A line under the plaque once the stat is on it: in a squad, what a
+     * career stat counts ("Whole career, not just Barcelona"). Empty for none.
      */
     note?: string;
   }

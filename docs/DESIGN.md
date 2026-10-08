@@ -200,10 +200,13 @@ the Classic Era 14 (the 1980s 8, the 1970s 3, the 1960s 3). Next to qualify: Par
   be paired at all, and deals first any who would otherwise be stranded (§10). If the players
   left can't be dealt under any stat, the run ends there, as cleared. On today's deck that never
   happens (`simulation.md` counts it per theme).
-- **Club goals reads "Total career club goals"** in every squad mode, on the plaque, the reveal,
-  the game-over panel and the share image, with a note under the plaque ("Whole career, not just
-  Barcelona"; "… every league"; "… not just the 2000s"): the figure is the whole career, not goals
-  for the squad's club.
+- **The career stats say so.** In every squad mode club goals reads "Total career club goals",
+  club appearances "All club appearances", club trophies "Career club trophies" and the highest
+  transfer fee "Career-high transfer fee", on the plaque, the reveal, the game-over panel and the
+  share image, with a note under the plaque ("Whole career, not just Barcelona"; "… every
+  league"; "… not just the 2000s"): each figure is the whole career, not just the squad's club,
+  league or era. Each label fits one line of the plaque at every width, so the note never covers
+  it. The international stats, clubs played for, followers and age read as everywhere else.
 - **No boards.** The server refuses to publish a squad run, and the game-over panel has no
   Publish and no "beat it" line.
 - **Share**: "I cleared the Barcelona squad 🏆", or "21/34 through the Barcelona squad · Captain",

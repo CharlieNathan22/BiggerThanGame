@@ -4,7 +4,7 @@
  * its challenge links, its club goals label and note, and its local best.
  */
 
-import { STAT_KEYS, squadNote, statLabel as coreLabel } from "@bt/core";
+import { SQUAD_LABELS, STAT_KEYS, squadNote, statLabel as coreLabel } from "@bt/core";
 import type { Tier } from "@bt/core";
 import { describe, expect, it } from "vitest";
 import { statLabel, t } from "../../i18n";
@@ -168,27 +168,35 @@ describe("its share", () => {
   });
 });
 
-describe("the club goals label", () => {
-  it("matches core's, stat by stat, in a squad and out of one", () => {
+describe("the career stats' labels", () => {
+  it("match core's, stat by stat, in a squad and out of one", () => {
     for (const key of STAT_KEYS) {
       expect(statLabel(key, VARIANT)).toBe(coreLabel(key, VARIANT));
       expect(statLabel(key)).toBe(coreLabel(key));
       expect(statLabel(key, "endless-instagram")).toBe(coreLabel(key, "endless-instagram"));
     }
     expect(statLabel("club_goals", VARIANT)).toBe("Total career club goals");
+    expect(statLabel("apps", VARIANT)).toBe("All club appearances");
+    expect(statLabel("ct", VARIANT)).toBe("Career club trophies");
+    expect(statLabel("fee", VARIANT)).toBe("Career-high transfer fee");
+    expect(statLabel("apps")).toBe("Club appearances");
   });
 
-  it("comes with a note under the plaque that matches core's, for club goals only", () => {
+  it("come with a note under the plaque that matches core's, for the career stats only", () => {
     const themes: Theme[] = [
       BARCELONA,
       { id: "league-la-liga", type: "league", name: "La Liga", slug: "la-liga", players: 69 },
       { id: "era-2000s", type: "era", name: "2000s", slug: "2000s", players: 51 },
     ];
     for (const theme of themes) {
-      expect(squadNoteText("club_goals", theme)).toBe(squadNote("club_goals", theme));
-      expect(squadNoteText("caps", theme)).toBe("");
+      for (const key of STAT_KEYS) {
+        expect(squadNoteText(key, theme), key).toBe(squadNote(key, theme) ?? "");
+        expect(squadNoteText(key, theme) !== "", key).toBe(key in SQUAD_LABELS);
+      }
     }
-    expect(squadNoteText("club_goals", BARCELONA)).toBe("Whole career, not just Barcelona");
+    for (const key of Object.keys(SQUAD_LABELS) as (keyof typeof SQUAD_LABELS)[]) {
+      expect(squadNoteText(key, BARCELONA)).toBe("Whole career, not just Barcelona");
+    }
   });
 });
 

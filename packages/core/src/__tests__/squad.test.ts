@@ -19,7 +19,7 @@ import {
 } from "../ramp.js";
 import { buildRun } from "../sequence.js";
 import { valueOf } from "../engine.js";
-import { STAT_KEYS } from "../stats.js";
+import { STATS, STAT_KEYS } from "../stats.js";
 import {
   THEME_MIN_PLAYERS,
   eraTheme,
@@ -31,11 +31,13 @@ import {
 } from "../themes.js";
 import {
   ENDLESS_VARIANTS,
+  SQUAD_LABELS,
   formatOf,
   hasBoards,
   hasWheel,
   isEndlessVariantId,
   isNamedVariant,
+  isSquadCareerStat,
   isSquadVariantId,
   resolveVariant,
   seedDomainOf,
@@ -43,7 +45,7 @@ import {
   squadVariantId,
   statLabel,
 } from "../variants.js";
-import type { Band, Player, Position, Round } from "../types.js";
+import type { Band, Player, Position, Round, StatKey } from "../types.js";
 import type { BandRow } from "../ramp.js";
 
 /**
@@ -442,28 +444,43 @@ describe("followers in a squad", () => {
   });
 });
 
-describe("the club goals label", () => {
-  it('reads "Total career club goals" in squad modes only', () => {
-    expect(statLabel("club_goals", NORTHFIELD)).toBe("Total career club goals");
-    expect(statLabel("club_goals", "squad:era-2000s")).toBe("Total career club goals");
-    expect(statLabel("club_goals")).toBe("Club goals");
-    expect(statLabel("club_goals", "endless")).toBe("Club goals");
-    expect(statLabel("club_goals", "endless-instagram")).toBe("Club goals");
-    expect(statLabel("caps", NORTHFIELD)).toBe("International caps");
+describe("the career stats' labels", () => {
+  /** The stats a squad could read as its own club's, league's or era's, and their squad labels. */
+  const CAREER: Partial<Record<StatKey, string>> = {
+    club_goals: "Total career club goals",
+    apps: "All club appearances",
+    ct: "Career club trophies",
+    fee: "Career-high transfer fee",
+  };
+
+  it("are exactly club goals, club appearances, club trophies and the highest fee", () => {
+    expect(SQUAD_LABELS).toEqual(CAREER);
+    for (const key of STAT_KEYS) expect(isSquadCareerStat(key), key).toBe(key in CAREER);
   });
 
-  it("says what the figure counts, for club goals only", () => {
-    expect(squadNote("club_goals", { type: "club", name: "Barcelona" })).toBe(
-      "Whole career, not just Barcelona",
+  it.each(STAT_KEYS)("%s: reads as the whole career in squad modes only", (key) => {
+    const squad = CAREER[key] ?? STATS[key].label;
+    expect(statLabel(key, NORTHFIELD)).toBe(squad);
+    expect(statLabel(key, LEAGUE)).toBe(squad);
+    expect(statLabel(key, "squad:era-2000s")).toBe(squad);
+    expect(statLabel(key)).toBe(STATS[key].label);
+    expect(statLabel(key, "endless")).toBe(STATS[key].label);
+    expect(statLabel(key, "endless-instagram")).toBe(STATS[key].label);
+  });
+
+  it.each(STAT_KEYS)("%s: has a note saying what it counts if it is a career stat", (key) => {
+    const career = key in CAREER;
+    const note = (theme: Parameters<typeof squadNote>[1]) => squadNote(key, theme);
+    expect(note({ type: "club", name: "Barcelona" })).toBe(
+      career ? "Whole career, not just Barcelona" : undefined,
     );
-    expect(squadNote("club_goals", { type: "league", name: "La Liga" })).toBe(
-      "Whole career, every league",
+    expect(note({ type: "league", name: "La Liga" })).toBe(
+      career ? "Whole career, every league" : undefined,
     );
-    expect(squadNote("club_goals", { type: "era", name: "2000s" })).toBe(
-      "Whole career, not just the 2000s",
+    expect(note({ type: "era", name: "2000s" })).toBe(
+      career ? "Whole career, not just the 2000s" : undefined,
     );
-    expect(squadNote("caps", { type: "club", name: "Barcelona" })).toBeUndefined();
-    expect(squadNote("club_goals", undefined)).toBeUndefined();
+    expect(note(undefined)).toBeUndefined();
   });
 });
 

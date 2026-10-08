@@ -11,6 +11,7 @@ import {
   WIN_ROUNDS,
   hasBoards as variantHasBoards,
   hasWheel,
+  isSquadCareerStat,
   squadQuestions,
   variantOf,
 } from "@bt/core";
@@ -119,11 +120,12 @@ export function themeText(
 }
 
 /**
- * The line under the plaque in a squad: what club goals count there ("Whole
- * career, not just Barcelona"; `squadNote` in @bt/core). Empty for any other stat.
+ * The line under the plaque in a squad: what a career stat (club goals, club
+ * appearances, club trophies, the highest fee) counts there ("Whole career,
+ * not just Barcelona"; `squadNote` in @bt/core). Empty for any other stat.
  */
 export function squadNoteText(stat: StatKey, theme: Theme): string {
-  return stat === "club_goals" ? themeText("squad.note", theme) : "";
+  return isSquadCareerStat(stat) ? themeText("squad.note", theme) : "";
 }
 
 /** The start panel's intro, when the run isn't a challenge and has no win target. */

@@ -583,7 +583,7 @@
   const report = $derived(reportedRound(game));
   /** Endless: the streak title the run holds so far, at the top of the pitch. */
   const chip = $derived(titleChip(game, rules));
-  /** A squad's line under the plaque on club goals: "Whole career, not just Barcelona". */
+  /** A squad's line under the plaque on a career stat: "Whole career, not just Barcelona". */
   const plaqueNote = $derived(
     theme !== undefined && game.plaque !== null ? squadNoteText(game.plaque.key, theme) : "",
   );
@@ -1212,8 +1212,17 @@
                         game.refused === "nameRejected"}
                       aria-describedby="daily-name-problem daily-line"
                     />
-                    <button type="button" class="ghost shuffle" onclick={shuffleName}>
-                      {t("publish.shuffle")}
+                    <!-- "Another name": a shuffle icon in the field's right edge. -->
+                    <button
+                      type="button"
+                      class="shuffle"
+                      aria-label={t("publish.shuffle")}
+                      title={t("publish.shuffle")}
+                      onclick={shuffleName}
+                    >
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
+                      </svg>
                     </button>
                   </div>
                   <p class="nameproblem" id="daily-name-problem" role="alert">
@@ -2699,24 +2708,28 @@
     margin-top: var(--daily-form-top);
     text-align: left;
   }
+  /* Everything in the form is centred: "Your name", the field and the name in
+     it, the flag option and the leaderboard line. "Another name" is a shuffle
+     icon in the field's right edge, and the field's padding mirrors it on the
+     left so the name stays centred. */
   .dailyform label {
     display: block;
     margin-bottom: 6px;
+    text-align: center;
     font-size: var(--fs-lab);
     color: var(--dim);
     font-variation-settings: var(--fv-caps);
   }
   .namerow {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 10px;
+    position: relative;
   }
   .namerow input {
-    flex: 1 1 12em;
+    width: 100%;
     min-width: 0;
+    text-align: center;
     min-height: var(--target-min);
     padding: var(--field-pad);
+    padding-inline: var(--target-min);
     border: var(--border) solid var(--field-edge);
     border-radius: var(--field-radius);
     background: var(--field-bg);
@@ -2732,11 +2745,30 @@
   .namerow input[aria-invalid="true"] {
     border-color: var(--flare);
   }
-  .namerow .ghost {
-    width: auto;
-    margin-top: 0;
-    min-height: var(--target-min);
-    padding: 0 6px;
+  .namerow .shuffle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--target-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--field-radius);
+    color: var(--dim);
+    transition:
+      color var(--dur-hover),
+      filter var(--dur-hover);
+  }
+  .namerow .shuffle:hover,
+  .namerow .shuffle:active,
+  .namerow .shuffle:focus-visible {
+    color: var(--chalk);
+    filter: var(--glow-hover-filter);
+  }
+  .namerow .shuffle:focus-visible {
+    outline: var(--focus-ring-thin) solid var(--gold);
+    outline-offset: calc(-1 * var(--focus-ring-thin));
   }
   .panel .nameproblem {
     margin-top: 6px;
@@ -2752,6 +2784,7 @@
   .dailyform .flagopt {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--flag-gap);
     min-height: var(--target-min);
     margin: 4px 0 0;
@@ -2775,6 +2808,7 @@
   }
   .panel .dailyline {
     margin-top: 6px;
+    text-align: center;
     font-size: var(--fs-caption);
     color: var(--dim);
     font-variation-settings: var(--fv-caption);
