@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildRun } from "@bt/core";
+import { SQUAD_LABELS, STATS, STAT_KEYS, buildRun } from "@bt/core";
 import type { GuessEndResponse, GuessResponse, RoundPayload } from "@bt/core";
 import { toDataPoint, toLogLine } from "../analytics.js";
 import type { GameEvent } from "../analytics.js";
@@ -132,7 +132,7 @@ describe("playing a squad run", () => {
     );
   });
 
-  it('labels club goals "Total career club goals" in a squad, and only there', () => {
+  it("labels the career stats as the whole career in a squad, and only there", () => {
     const run = buildRun({
       deck: THEMED_DECK,
       seed: "label",
@@ -140,14 +140,20 @@ describe("playing a squad run", () => {
       now: TODAY,
       variant: SQUAD,
     });
-    const round = { ...run[0]!, stat: "club_goals" as const };
-    expect(toRoundPayload(round, new Date(), {}, undefined, SQUAD).stat.label).toBe(
-      "Total career club goals",
-    );
-    expect(toRoundPayload(round, new Date(), {}, undefined, "endless").stat.label).toBe(
-      "Club goals",
-    );
-    expect(toRoundPayload(round, new Date(), {}).stat.label).toBe("Club goals");
+    const career: Readonly<Record<string, string>> = SQUAD_LABELS;
+    for (const stat of STAT_KEYS) {
+      const round = { ...run[0]!, stat };
+      expect(toRoundPayload(round, new Date(), {}, undefined, SQUAD).stat.label, stat).toBe(
+        career[stat] ?? STATS[stat].label,
+      );
+      expect(toRoundPayload(round, new Date(), {}, undefined, "endless").stat.label).toBe(
+        STATS[stat].label,
+      );
+      expect(toRoundPayload(round, new Date(), {}).stat.label).toBe(STATS[stat].label);
+    }
+    expect(
+      toRoundPayload({ ...run[0]!, stat: "apps" }, new Date(), {}, undefined, SQUAD).stat.label,
+    ).toBe("All club appearances");
   });
 
   it("answers a token whose theme the deck has since lost with token_mismatch", async () => {

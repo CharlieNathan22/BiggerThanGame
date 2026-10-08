@@ -149,7 +149,8 @@ export const en = {
     "{players} legends of the Classic Era, the 1980s and older. Can you clear the whole squad and win?",
   "squad.rules":
     "One life, 15 seconds for the first question and 10 for the rest, and every player comes up once.",
-  // Under the plaque, when the stat is club goals
+  // Under the plaque, when the stat counts the whole career: club goals, club
+  // appearances, club trophies and the highest transfer fee
   "squad.note.club": "Whole career, not just {name}",
   "squad.note.league": "Whole career, every league",
   "squad.note.era": "Whole career, not just the {name}",
@@ -529,8 +530,12 @@ export const en = {
 
   // Stat labels, by StatKey
   "stat.club_goals": "Club goals",
-  // "Clear the squad": the figure is the whole career, not goals for the squad's club
+  // "Clear the squad": the figure is the whole career, not just the squad's club,
+  // league or era (SQUAD_LABELS in @bt/core)
   "stat.squad.club_goals": "Total career club goals",
+  "stat.squad.apps": "All club appearances",
+  "stat.squad.ct": "Career club trophies",
+  "stat.squad.fee": "Career-high transfer fee",
   "stat.caps": "International caps",
   "stat.apps": "Club appearances",
   "stat.ig": "Instagram followers",

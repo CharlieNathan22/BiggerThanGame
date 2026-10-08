@@ -220,24 +220,45 @@ export function squadQuestions(players: number): number {
 }
 
 /**
- * A stat's label in a variant. In "Clear the squad" club goals reads "Total
- * career club goals": the figure is the player's whole club career, and a
- * Barcelona squad would otherwise read it as goals for Barcelona. The plaque,
- * the wheel, the reveal and the round payload all take the label from here.
+ * The stats a squad could misread as its own club's, league's or era's: each
+ * counts the player's whole club career. Their labels in "Clear the squad",
+ * each short enough for one line on the plaque at every width, so the note
+ * bar on the plaque's bottom edge never covers a second line.
+ */
+export const SQUAD_LABELS = {
+  club_goals: "Total career club goals",
+  apps: "All club appearances",
+  ct: "Career club trophies",
+  fee: "Career-high transfer fee",
+} as const satisfies Partial<Record<StatKey, string>>;
+
+/** A stat that reads as the whole career in a squad (`SQUAD_LABELS`). */
+export type SquadCareerStat = keyof typeof SQUAD_LABELS;
+
+export function isSquadCareerStat(stat: StatKey): stat is SquadCareerStat {
+  return Object.hasOwn(SQUAD_LABELS, stat);
+}
+
+/**
+ * A stat's label in a variant. In "Clear the squad" the career stats say so
+ * ("Total career club goals", `SQUAD_LABELS`): each figure is the player's
+ * whole club career, and a Barcelona squad would otherwise read it as goals,
+ * appearances, trophies or a fee for Barcelona. The plaque, the wheel, the
+ * reveal and the round payload all take the label from here.
  */
 export function statLabel(stat: StatKey, variant?: EndlessVariantId): string {
-  if (stat === "club_goals" && variant !== undefined && isSquadVariantId(variant)) {
-    return "Total career club goals";
+  if (isSquadCareerStat(stat) && variant !== undefined && isSquadVariantId(variant)) {
+    return SQUAD_LABELS[stat];
   }
   return STATS[stat].label;
 }
 
-/** The line under the plaque that says what a squad's club goals count, or undefined. */
+/** The line under the plaque that says what a squad's career stat counts, or undefined. */
 export function squadNote(
   stat: StatKey,
   theme: Pick<SquadTheme, "type" | "name"> | undefined,
 ): string | undefined {
-  if (stat !== "club_goals" || theme === undefined) return undefined;
+  if (!isSquadCareerStat(stat) || theme === undefined) return undefined;
   switch (theme.type) {
     case "club":
       return `Whole career, not just ${theme.name}`;
