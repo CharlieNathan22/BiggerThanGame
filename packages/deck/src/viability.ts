@@ -22,9 +22,6 @@ import {
 } from "@bt/core";
 import type { Band, Mode, Player, StatKey } from "@bt/core";
 
-/** Names for the long schedule's bands, in order. */
-const BAND_LABELS = ["opening", "early", "middle", "late", "hard", "knife edge"] as const;
-
 /** The rounds of `mode`'s schedule that use `band`, e.g. `"1–8"`, or "" if none do. */
 export function roundsWith(mode: Mode, band: Band): string {
   let from = 1;
@@ -53,9 +50,10 @@ export interface ReportBand {
 const same = (a: Band, b: Band): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * The distinct bands the ramp uses, with a label for the report: the long
- * schedule (Ranked's), some of which the other modes reuse over other rounds,
- * then any band only Friendly uses, then Endless's own. Counts use
+ * The distinct bands the ramp uses, with a label for the report: the opening
+ * band every mode shares, then any band only Friendly uses, then Endless's
+ * own — which are Daily Ranked's too, since it plays Endless's ramp (its
+ * twenty questions, then the later rows as bonus rounds). Counts use
  * `bandFor(stat, round, mode)`, which adds the volatility floor for Instagram,
  * Friendly's final stretch and Endless's pair rules — the same band the
  * engine applies. `rounds` says where each band falls in every schedule.
@@ -67,30 +65,23 @@ const same = (a: Band, b: Band): boolean => JSON.stringify(a) === JSON.stringify
  * first round.
  */
 export const REPORT_BANDS: readonly ReportBand[] = (() => {
-  const shared = (band: Band, own: Mode): string =>
-    (["friendly", "endless"] as const)
-      .filter((mode) => mode !== own)
-      .map((mode) => [mode, roundsWith(mode, band)] as const)
-      .filter(([mode, rounds]) => rounds !== "" && !underRules(mode, band))
-      .map(([mode, rounds]) => `; ${capital(mode)} ${rounds}`)
-      .join("");
-  const long = BAND_SCHEDULES.ranked.map((row, i, rows): ReportBand => {
-    return {
-      label: BAND_LABELS[i] ?? `band ${i + 1}`,
-      rounds: `${roundsWith("ranked", row.band)}${shared(row.band, "ranked")}`,
-      mode: "ranked",
-      round: i === 0 ? 1 : rows[i - 1]!.upTo + 1,
-      band: row.band,
-    };
+  const out: ReportBand[] = [];
+  const opening = BAND_SCHEDULES.endless[0]!.band;
+  out.push({
+    label: "opening",
+    rounds:
+      `Friendly ${roundsWith("friendly", opening)}; ` +
+      `Endless and Daily ${roundsWith("endless", opening)}`,
+    mode: "endless",
+    round: 1,
+    band: opening,
   });
-  const own: ReportBand[] = [];
   const covered = (band: Band): boolean =>
-    long.some((b) => same(b.band, band)) ||
-    own.some((b) => b.mode !== "endless" && same(b.band, band));
+    out.some((b) => (b.mode !== "endless" || b.round === 1 ? same(b.band, band) : false));
   BAND_SCHEDULES.friendly.forEach((row, i, rows) => {
     if (covered(row.band)) return;
     const rounds = roundsWith("friendly", row.band);
-    own.push({
+    out.push({
       label: `Friendly ${rounds}`,
       rounds: `Friendly ${rounds}`,
       mode: "friendly",
@@ -104,32 +95,16 @@ export const REPORT_BANDS: readonly ReportBand[] = (() => {
     if (!ruled && covered(row.band)) return;
     const to = row.upTo === Infinity ? "+" : round === row.upTo ? "" : `–${row.upTo}`;
     const rounds = `${round}${to}`;
-    own.push({
+    out.push({
       label: `Endless ${rounds}`,
-      rounds: `Endless ${rounds}${ruled ? ", pair rules" : ""}`,
+      rounds: `Endless and Daily ${rounds}${ruled ? ", pair rules" : ""}`,
       mode: "endless",
       round,
       band: row.band,
     });
   });
-  return [...long, ...own];
+  return out;
 })();
-
-/** Whether every round of `mode` using `band` is under its pair rules. */
-function underRules(mode: Mode, band: Band): boolean {
-  const from = PAIR_RULES[mode]?.from;
-  if (from === undefined) return false;
-  let start = 1;
-  for (const row of BAND_SCHEDULES[mode]) {
-    if (same(row.band, band) && start < from) return false;
-    start = row.upTo + 1;
-  }
-  return true;
-}
-
-function capital(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
 
 /** Bands in `mode`'s schedule that the report doesn't cover. Always empty; a test holds it there. */
 export function uncoveredBands(mode: Mode): Band[] {
@@ -309,7 +284,7 @@ export function viabilityReport(players: readonly Player[], now: Date): string {
       .map((key) => STATS[key as StatKey].label.toLowerCase())
       .join(", ");
     lines.push(
-      `Endless's rows from round ${rules.from} count under its pair rules: ${narrow} by ` +
+      `Endless's rows (Daily Ranked's too) from round ${rules.from} count under its pair rules: ${narrow} by ` +
         `their value rule instead of the band, every other stat within the band and at least ` +
         `${Math.round(rules.wideMinRatio * 100)}% apart. Neither rule ever relaxes, so a 0 there ` +
         "for a narrow stat means it can't be dealt at all.",

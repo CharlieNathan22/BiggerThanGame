@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { requirePrivateError } from "../build.js";
+import { dailyEpochError, requirePrivateError } from "../build.js";
 import {
   DECK,
   MIN_PRIVATE_DECK,
@@ -228,5 +228,20 @@ describe("--require-private", () => {
 
   it("changes nothing when the flag is absent", () => {
     expect(requirePrivateError(as(sampleDeck), false)).toBeUndefined();
+  });
+});
+
+describe("the production build and DAILY_EPOCH", () => {
+  it("refuses a production build while DAILY_EPOCH is unset", () => {
+    expect(dailyEpochError(true, null)).toMatch(/DAILY_EPOCH is not set/);
+  });
+
+  it("refuses a malformed epoch", () => {
+    expect(dailyEpochError(true, "2026-02-30")).toMatch(/not a real date/);
+  });
+
+  it("allows a set epoch, and never troubles a dev build", () => {
+    expect(dailyEpochError(true, "2026-11-01")).toBeUndefined();
+    expect(dailyEpochError(false, null)).toBeUndefined();
   });
 });
