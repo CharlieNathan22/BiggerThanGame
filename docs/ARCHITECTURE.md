@@ -520,19 +520,39 @@ under a millisecond and an Endless run's first thirty a few, so the server recom
 storing.
 
 **Game numbering.** `gameNo = floor((now - EPOCH) / 86400000) + 1`, `EPOCH` being launch day at
-00:00 UTC. **Game 1 is launch day and the epoch is never moved** — game numbers become permanent
-the moment people start sharing them. Rollover is UTC midnight.
+00:00 UTC: `DAILY_EPOCH` in `packages/core/src/daily.ts` (`gameNoAt`, `gameStartsAt`,
+`nextGameAt`). **Game 1 is launch day and the epoch is never moved** — game numbers become
+permanent the moment people start sharing them. Rollover is UTC midnight. While `DAILY_EPOCH` is
+`null`, dev and tests run on a fixed dev epoch (`DEV_DAILY_EPOCH`), and the deck build's
+`--require-private` path — `pnpm build:prod`, the deploy script, `deploy.yml` — fails, so the site
+can't go live without one. Before launch day `gameNo` is below 1: starts are refused
+(`409 not_started`), resume and `/me` answer `none`, the board is empty with Game 1's start as its
+countdown, and the cron does nothing for Daily.
 
 **Puzzles are labelled "Game 123", never by date** — a date label disagrees with the local calendar
 for anyone west of UTC, where rollover lands the previous evening. The UI shows a countdown to the
 next game rather than a clock time.
 
 A run belongs to the game it was minted against. A Ranked run started at 23:58 UTC finishes on that
-game's board, with a grace window on submission.
+game's board. Its run id is `YYYYMMDD-<uuid>.<sig>` with the game's date, signed under
+`"run:ranked:" + runBody`.
 
-**Deck versioning.** Each game pins the deck version it was minted against, so a correction landing
-mid-game cannot shift the sequence under players who have already played. Deck changes take effect
-at the next rollover.
+**Frozen at midnight** (`worker/src/daily-game.ts`). A game is dealt once and stored in D1
+(`daily_games`, §10): seed `HMAC(RUN_SECRET, "ranked:" + gameNo)`, `buildRun` in mode `ranked` with
+the game's day as its reference date, the twenty questions and the bonus rounds up to Endless's
+cap of 150. Each stored round keeps its stat, band, and both players' display fields and figures,
+so a deploy, a deck correction or an image change during the day can't change today's questions,
+names or values; the row records the deck version and a hash of the Ranked rules
+(`RULES_VERSION`). The 00:00 cron freezes the new game; if that failed, the first start does
+(`ensureDailyGame`): `INSERT … ON CONFLICT (game_no) DO NOTHING`, then the row is read back, so two
+racing builders end up playing the same stored game. A stored row's day must match its game's date
+by the epoch in force — it can only differ if the epoch moved, and is then refused. Every Daily
+request plays from the stored game, never a fresh deal. **Only the photo is resolved live**: image
+keys are content-hashed (`legends/originals/<id>.<hash16><ext>`), so a re-cropped photo changes its
+key; the payload uses the stored key while the current manifest still has it, else the player's
+current image by id, else none (the monogram). The stored rounds hold hidden values and never reach
+a response: each payload is built field by field (`daily-payload.ts`), and the response-shape test
+and the leak scan cover them.
 
 ---
 
@@ -645,8 +665,8 @@ In order: the flood limit, then `RUN_STARTS`; strict parsing (`challenge` is `{ 
 score 0–150); Turnstile Siteverify (`403 verification_failed` on a fail,
 `502 unavailable` if it can't be asked); the challenge link checked (it sets the target only);
 a fresh Endless run id minted; rounds one and two dealt (two for `upcoming`); the run's Durable
-Object told about the first token (`503` if it can't be); the response. For Ranked it will also
-check the signed device-day token and refuse a second run.
+Object told about the first token (`503` if it can't be); the response. A start with
+`mode: "ranked"` is Daily Ranked's (below).
 
 **`POST /api/round/next`** — Friendly, Phase 3. Stateless: no storage, no token, no nonce, no
 timer. Types live in `packages/core/src/api.ts`, shared by the Worker and the web app.
@@ -902,6 +922,67 @@ ordinary rank. `null` for a period the device has nothing in; a retired name is 
 `thinkMs` and `country` follow the board's rules. The device id is hashed exactly as at submit,
 used for the query and never stored or logged.
 
+### Daily Ranked
+
+The same machinery as Endless — signed per-question tokens, the run's Durable Object spending each
+nonce once, the server's clock — around the stored game (§7) and its rules (DESIGN.md §3). Handlers
+are pure functions in `worker/src/daily.ts`, the run's state is `daily-ledger.ts`, posting is
+`daily-post.ts` and the board's SQL `daily-scores.ts`.
+
+- **Its token** is the progress token's shape under its own prefix, `"daily:"`
+  (`signDailyToken`): `{ v, runId, mode: "ranked", gameNo, round, correct, anchorId, challengerId,
+stat, anchorValue, issuedAt, deadline, nonce }`, with `correct` in place of `streak` (a wrong
+  answer doesn't end the run). Strict parse; Endless's tokens are unchanged. `POST
+/api/round/guess` routes on the prefix.
+- **Its Durable Object** is the same `RunDO` class, named by the run key, with tables of its own
+  (`daily_run`, `daily_answers`), so no new Durable Object migration. It keeps the device hash,
+  the round, the nonce, the deadline, the right/wrong marks, and each answer's time and the
+  allowance it was measured against. The resend rule is Endless's. **A refused answer doesn't void
+  a Daily run** (`409`, the first answer stands): voiding the day's only attempt would be harsh, and
+  a replay still gains nothing; the page recovers through resume.
+- **The rules**: questions 1–19 always carry on; question 20 carries on only after twenty right;
+  in the bonus the first miss ends the run (`finished`, `wrong` or `timeout`); the cap ends it
+  `deck-exhausted`.
+- **The idle alarm.** While a run is in play the alarm is set `IDLE_FINISH_MS` (5 minutes) past
+  its last activity. If nothing came, the run is finished `abandoned`: the open question and every
+  unanswered question of the twenty count as wrong. Then it is posted to D1 from the object; a
+  failed post is retried by the alarm a minute later, and posting is idempotent. Once posted, the
+  record is deleted six hours later.
+- **Thinking time** (`dailyThinkMs`): as Endless's (§10), each answer from question 2 less its
+  allowance, clamped to 0 – its limit; but a **timeout counts its full limit** (question 1's
+  included), and in an abandoned run so does every question never answered. So running the clock
+  down or leaving can never improve a time.
+
+**`POST /api/run/start`** with `{ mode: "ranked", nickname, showCountry, deviceId, turnstileToken }`
+→ `{ runId, gameNo, round, token, country, nickname }`. In order: the flood limit and
+`RUN_STARTS`; strict parsing; the game in play by the server's clock (`409 not_started` before
+Game 1); the name's form (`400`) and the blocklist (`422 nickname_rejected`); Turnstile; the stored
+game; then one **atomic D1 batch** inserting the device's `ranked_attempts` row and the
+`daily_entries` row that reserves the name. If either unique constraint fails the batch rolls back,
+so nothing is used, and a follow-up read says which: `409 already_played` or `409 name_taken` (as
+the detail). Only then the run's Durable Object (if it can't be told, the entry and attempt are
+released) and the response. The connection count (§12) is written last.
+
+**`POST /api/run/resume`** `{ deviceId, runId? }` → `{ state: "none" }` | `{ state: "playing",
+runId, gameNo, round, token, remainingMs, results, nickname, country }` | `{ state: "finished",
+result }`. The server finds the device's unfinished entry for today's game or yesterday's (a run
+started at 23:58) in `daily_entries`; the run id the page kept is only a hint, so a lost key still
+resumes. The Durable Object checks the device hash again (another device's run is `409`). The open
+question comes back under a fresh nonce with its **original deadline** (`remainingMs` is what is
+left); if that has passed it is recorded as a timeout and the next question is dealt fresh, with
+the resume allowance (`resumeAllowance` in @bt/core) in place of the animation. Limited per run by
+`RUN_ANSWERS`.
+
+**`GET /api/board/daily`** → `{ mode: "ranked", gameNo, nextGameAt, total, entries, previous }`:
+today's game, its top 50 (score, then thinking time, then finish; shadowed entries left out; a
+time only on a tied score), and the previous game's winner from its snapshot. Cached (§11).
+**`POST /api/board/daily/me`** `{ deviceId }` → this device's entry for today: `none`, `playing`
+(with the name), or `finished` with the result and its own row as its owner sees it (shadowed
+entries still visible to their owner). `no-store`, behind `BOARD_LOOKUPS`.
+
+`/api/run/leave` and the correction form accept `mode: "ranked"`, rebuilding the round from the
+stored game. `/api/run/submit` refuses a Daily token: Daily scores post themselves.
+
 ### Disconnection
 
 Offline continuation is impossible by construction: the client does not hold the next value and
@@ -1110,8 +1191,38 @@ CREATE TABLE board_snapshots (
 );
 ```
 
-`ranked_attempts` and the unique Ranked nickname index are for Daily Ranked and unused until it
-comes. `error_reports` is gone: `/api/feedback` (§8) emails reports and stores nothing.
+`error_reports` is gone: `/api/feedback` (§8) emails reports and stores nothing. Daily Ranked
+(`0002_daily.sql`) adds its own tables, because `scores` can't hold a Daily run — its `streak > 0`
+check rules out 0/20, and its rows are written at publish, where a Daily name is reserved at the
+start. So `scores.mode = 'ranked'` and `idx_ranked_name` stay unused; `ranked_attempts` is used.
+
+```sql
+CREATE TABLE daily_games (            -- the frozen game (§7): server-only, values included
+  game_no INTEGER PRIMARY KEY, day_key INTEGER NOT NULL, deck_version TEXT NOT NULL,
+  rules_version TEXT NOT NULL, created_at INTEGER NOT NULL, rounds TEXT NOT NULL);
+
+CREATE TABLE daily_entries (          -- one per run: inserted at the start, finished at the end
+  id TEXT PRIMARY KEY, game_no INTEGER NOT NULL, run_key TEXT NOT NULL UNIQUE,
+  device_hash TEXT NOT NULL, nickname TEXT NOT NULL, nickname_normalised TEXT NOT NULL,
+  country TEXT, started_at INTEGER NOT NULL,
+  finished_at INTEGER, score INTEGER, correct INTEGER, bonus INTEGER, think_ms INTEGER,
+  results TEXT, end_reason TEXT,      -- results: the right/wrong marks, as "1"s and "0"s
+  name_flagged INTEGER NOT NULL DEFAULT 0, shadow INTEGER NOT NULL DEFAULT 0, shadow_reason TEXT);
+-- unique (game_no, nickname_normalised): a name once per game
+-- unique (game_no, device_hash): one entry per device per game
+-- (game_no, score DESC, think_ms, finished_at) WHERE finished_at IS NOT NULL: the board
+
+CREATE TABLE daily_connections (      -- the repeat count (§12): kept 48 hours
+  game_no INTEGER NOT NULL, ip_hash TEXT NOT NULL, run_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL);
+```
+
+A Daily board is every finished, unshadowed entry for the game — one per device by construction —
+ranked by `score`, then `think_ms`, then `finished_at` (then the id). Posting is an idempotent
+`UPDATE … WHERE run_key = ? AND finished_at IS NULL`. Retention: entries go 100 days after their
+game, like scores; stored games and attempts after `DAILY_KEEP_DAYS` (3); connection hashes after
+48 hours; snapshots (`board_snapshots`, `mode = 'ranked'`, `period = 'day'`, the game number as the
+key) are kept. The owner tools (`pnpm db:owner`) find, retire names and shadow in both tables.
 
 - **Periods are ranges of `day_key`.** A day is one key; an ISO week or a calendar month is a
   range, `from` to `to` inclusive (`periods.ts` in @bt/core), since day keys sort as dates do
@@ -1147,8 +1258,9 @@ comes. `error_reports` is gone: `/api/feedback` (§8) emails reports and stores 
 
 `device_hash` is `HMAC(RUN_SECRET, "device:" + id)` over a random first-party id the browser keeps
 (`bt:device`), cut to 128 bits. The raw id is never stored. It is **friction, not identity** —
-clearing storage resets it. For Ranked, log how often a device requests a second run; if that
-number is high, accounts need bringing forward.
+clearing storage resets it. Daily Ranked sends it at the start and keeps its hash with the entry
+and in `ranked_attempts`. `pnpm stats daily` counts how often one connection starts more than one
+run a game; if that number is high, accounts need bringing forward.
 
 ---
 
@@ -1164,16 +1276,22 @@ Why not KV: the free plan allows 1,000 writes a day, and writing a board per sub
 spend that by lunchtime; and nothing needs the board fresher than a minute. The player who has
 just published sees themselves anyway: their own entry and ranks come back in the submit response
 and are kept on their device (`bt:published:…`), and the board page merges them in until the
-cached board catches up. Ranked, later, can use the same cache with its game number in the key.
+cached board catches up. **Daily Ranked's board** (`GET /api/board/daily`) uses the same cache,
+with the game number in the key (`…/daily?g=12`), so midnight is a miss on the new game. The
+player's own row comes from `/api/board/daily/me`, never cached.
 
 ---
 
 ## 12. Abuse surface
 
-- **Turnstile** on Endless's run start (executed on the Start press, `interaction-only`, so most
-  players never see it), on the feedback forms, and on publishing a run. Its script loads on
-  the Endless page once the page is idle, or on the first Start press, never in `<head>` or on
-  another page.
+- **Turnstile** on Endless's and Daily Ranked's run start (executed on the Start or Play press,
+  `interaction-only`, so most players never see it), on the feedback forms, and on publishing a
+  run. Its script loads on those game pages once the page is idle, or on the first press, never
+  in `<head>` or on another page.
+- **Daily Ranked** reuses the same bindings: `RUN_STARTS` and `ROUND_FLOOD` on its start,
+  `RUN_ANSWERS` on each guess and resume keyed on the run, and `BOARD_LOOKUPS` on `/me`. No new
+  limits. The one-attempt rule is the device's `ranked_attempts` row (friction, not identity: see
+  DESIGN.md §3).
 - **Endless** reuses the round endpoint's three limiters: `RUN_STARTS` on `/api/run/start` before
   Turnstile is asked, `RUN_ANSWERS` keyed on the verified run key, and `ROUND_FLOOD` on both. No new
   limits. What stops a replayed answer is the Durable Object's spent-once nonce (§8), not a limit.
@@ -1257,7 +1375,16 @@ cached board catches up. Ranked, later, can use the same cache with its game num
   title card can be skipped, and
   timeouts are left out. The thresholds are named constants in the code and are deliberately kept
   out of these docs. Each flag is a `score_shadowed` warning (§19); `pnpm db:owner shadow` and
-  `unshadow` set it by hand.
+  `unshadow` set it by hand. **Daily Ranked** runs the same heuristics on every posted run, plus
+  a **replay** check of its own: a near-perfect run whose early questions were answered implausibly
+  fast, the shape of an answer sheet carried over from another device. Like the others, its
+  thresholds are constants in the code (`daily-post.ts`) and not in these docs.
+- **Counting repeat connections, Daily only** (`daily_connections`). At each Daily start the server
+  stores `HMAC(RUN_SECRET, "ip:" + gameNo + ":" + rateLimitKey(ip))` — the address salted per game,
+  so it can't be reversed or linked across days — with the run key. The number of earlier starts
+  with the same hash in the game goes into the `run_start` line and data point, and nowhere else:
+  **it never shadows, hides or changes a score**. Rows are deleted after 48 hours. This is the one
+  place an IP-derived value is kept (§19), and the privacy page says so.
 
 ### Telemetry signals
 
@@ -1288,9 +1415,15 @@ Two triggers in `wrangler.toml`, `0 0 * * *` and `30 1 * * *`, both running the 
   catching runs started before midnight and published after it (a run can last most of an hour,
   and publishing is open for 30 minutes after it ends).
 - **Prune** scores whose run started more than 100 days ago.
+- **Daily Ranked.** At **00:00** only, freeze the new game (§7); the first start does it if this
+  failed. On **both** runs, snapshot the game that has just closed (its public top 50 and total),
+  so the 01:30 run catches runs started before midnight and finished after it; the previous
+  game's winner line comes from it. Prune Daily entries by the 100-day rule, stored games and
+  `ranked_attempts` after `DAILY_KEEP_DAYS`, and connection hashes after 48 hours. Nothing for a
+  game before Game 1. No new triggers.
 
-Each run logs one `nightly` line (§19); a D1 failure logs an `error` and throws, so Cloudflare's
-cron history shows it failed. Daily Ranked will add its rollover and `ranked_attempts` pruning.
+Each run logs one `nightly` line (§19), with the Daily counts; a D1 failure logs an `error` and
+throws, so Cloudflare's cron history shows it failed.
 
 **Locally:** `pnpm dev` runs `wrangler dev --test-scheduled`; fire the job with
 `curl "http://localhost:8787/cdn-cgi/handler/scheduled?cron=0+0+*+*+*&time=<ms>"`, where `time`
@@ -1306,15 +1439,17 @@ static site's 404 here. To try a rollover, seed around the last day of the perio
 and the board pages. **Svelte** hydrates one island: the game, on its own page. The URL tree is in `DESIGN.md`
 §17; the paths live in `apps/web/src/lib/paths.ts`.
 
-| Path                                                    | Page                                                | JS         |
-| ------------------------------------------------------- | --------------------------------------------------- | ---------- |
-| `/`                                                     | homepage: brand, one line, a card per game          | none       |
-| `/football-higher-or-lower`                             | the football hub: general intro, a card per deck    | none       |
-| `/football-higher-or-lower/legends`                     | the Legends deck: breadcrumb, intro, the mode cards | none       |
-| `/football-higher-or-lower/legends/friendly`            | the game (Friendly, Legends deck)                   | the island |
-| `/football-higher-or-lower/legends/endless`             | the game (Endless)                                  | the island |
-| `/football-higher-or-lower/legends/endless/leaderboard` | Endless's boards and this device's runs             | an island  |
-| `/about`, `/credits`, `/privacy`                        | the stats and how to play; credits; privacy         | none       |
+| Path                                                    | Page                                                | JS                              |
+| ------------------------------------------------------- | --------------------------------------------------- | ------------------------------- |
+| `/`                                                     | homepage: brand, one line, a card per game          | none                            |
+| `/football-higher-or-lower`                             | the football hub: general intro, a card per deck    | none                            |
+| `/football-higher-or-lower/legends`                     | the Legends deck: breadcrumb, intro, the mode cards | a small island (the Daily card) |
+| `/football-higher-or-lower/legends/friendly`            | the game (Friendly, Legends deck)                   | the island                      |
+| `/football-higher-or-lower/legends/endless`             | the game (Endless)                                  | the island                      |
+| `/football-higher-or-lower/legends/endless/leaderboard` | Endless's boards and this device's runs             | an island                       |
+| `/football-higher-or-lower/legends/daily`               | the game (Daily Ranked)                             | the island                      |
+| `/football-higher-or-lower/legends/daily/leaderboard`   | Daily Ranked's board: today's game                  | an island                       |
+| `/about`, `/credits`, `/privacy`                        | the stats and how to play; credits; privacy         | none                            |
 
 - The game island is `client:load`, not `client:visible` — it is above the fold and the first
   interaction must not wait on an intersection observer.
@@ -1805,8 +1940,21 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   read back from the board and snapshotted by the scheduled handler. Under **workerd** (`workerd.test.ts`, wrangler's
   `createTestHarness`, on the test Worker `worker/test/entry.ts`): the real SQLite-backed
   `RunDO` spending a nonce once, the resend rule, the alarm closing a silent run and refusing its
-  late guess, a whole run over HTTP, and an Endless seed dealing the same run as in Node. The
-  ranked one-attempt rule comes with Ranked.
+  late guess, a whole run over HTTP, and an Endless seed dealing the same run as in Node.
+- **Worker, Daily Ranked:** in Node (`daily.test.ts`, `daily-parts.test.ts`, `daily-app.test.ts`),
+  against a memory ledger and real SQLite: game numbers at the UTC edges and before launch; the game
+  frozen once (two racing builders included) and unchanged by a deck edit, with a stored image
+  falling back to the current one; wrong answers and timeouts carrying on to 20, the bonus only
+  after 20/20 and ending on its first miss; a refused or taken name, or a failed check, using no
+  attempt, and a second start refused; resume keeping the deadline, turning an expired question
+  into a timeout, refusing another device, and working with no run id or a stale one; the idle
+  alarm finishing and posting an abandoned run, and retrying a failed post; auto-posting on every
+  ending; ranking, ties and the think-time rules (a timeout and an unanswered question count the
+  full limit); the replay check shadowing without hiding the run from its owner, and the repeat
+  count never touching a score; the cron's freeze, snapshot and prunes; and the **response-shape
+  test** over many complete Daily runs and resumes, tokens decoded. Under workerd: a whole Daily
+  run over HTTP, the real `RunDO` alarm finishing a silent run into the harness's D1, and the Daily
+  seed dealing the same game as in Node.
 - **Latency:** test the reveal under artificial delay (0ms, 200ms, 800ms, 3s). The count-up must
   hold and settle rather than snap or freeze, and no image fetch may occur inside the reveal window.
   In Endless the question's clock must not run while the answer is in flight, and the next
@@ -1846,8 +1994,8 @@ That gets feedback on feel, comprehension and the difficulty ramp while the long
 hand-entering the deck — proceeds in parallel. `simulation.md` remains the primary instrument for
 ramp tuning; live Friendly play is the check on it.
 
-Endless ships first, with its boards, once the round protocol, Durable Object, D1 schema and
-moderation are complete (Phase 6A); Daily Ranked follows on the same machinery.
+Endless shipped first, with its boards, once the round protocol, Durable Object, D1 schema and
+moderation were complete (Phase 6A); Daily Ranked (Phase 6B) followed on the same machinery.
 
 ---
 
@@ -1885,7 +2033,9 @@ the Worker's own `log()` lines. Don't switch invocation logs back on.
 
 Nothing personal and nothing hidden, in either instrument:
 
-- no IP address, not even hashed — it is a rate-limit key (§12) and nothing else
+- no IP address. It is a rate-limit key (§12), and the one exception is Daily Ranked's repeat
+  count: a per-game salted hash kept 48 hours in D1 (`daily_connections`), used only to count,
+  never logged — the log line and data point carry the count alone
 - no user agent, no cookie, no request headers, and nothing kept in the browser for analytics
 - no `RUN_SECRET` or other secret, no seed, no HMAC or signature, no full run id — the **run key**
   (the run id's body, before the ".") stands in for it
@@ -1915,7 +2065,7 @@ indexes every field, nested ones included (a string would only be searchable as 
 has `level`, `message`, `event` and `route`; most have a `reason`. `message` is what the dashboard
 lists as the line:
 
-- `run_start`, `run_end`, `run_leave` or `run_submit` for the run lines, exactly;
+- `run_start`, `run_end`, `run_resume`, `run_leave` or `run_submit` for the run lines, exactly;
 - `nightly` for the cron's line;
 - `Legend suggested`, `Problem reported` or `Card error reported` for an accepted feedback message;
 - `<event> · <reason>` for a refusal or failure, e.g. `bad_request · invalid_json`, or the event
@@ -1924,7 +2074,8 @@ lists as the line:
 | Level   | `event`               | When                                                                    | `reason`                                                                                        |
 | ------- | --------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `info`  | `run_start`           | a run starts (fresh or challenge)                                       | —                                                                                               |
-| `info`  | `run_end`             | an answer ends a run, or a silent one closes                            | the end: `wrong`, `won`, `deck-exhausted`, `timeout` or `disconnected`                          |
+| `info`  | `run_end`             | an answer ends a run, or a silent one closes                            | the end: `wrong`, `won`, `deck-exhausted`, `timeout`, `disconnected`, `finished` or `abandoned` |
+| `info`  | `run_resume`          | a Daily run is picked up after a refresh                                | —                                                                                               |
 | `info`  | `run_leave`           | the game page is hidden or closed mid-run                               | —                                                                                               |
 | `info`  | `feedback`            | a feedback message is accepted                                          | —                                                                                               |
 | `info`  | `run_submit`          | a run is published to the boards                                        | —                                                                                               |
@@ -1963,7 +2114,15 @@ dataset has those), and no 404 under `/api/`, which scanners probe all day.
 "endless"` and come from `/api/run/start` and `/api/round/guess`; an Endless variant's add
 `"variant": "endless-instagram"` (filter on `variant` to watch one). A "Clear the squad" run's lines
 say `"mode": "squad"` and its `"theme": "club-barcelona"` instead (filter on `theme`), and its
-`run_end` reason is `won` when the squad was cleared. `run_end` adds the round that
+`run_end` reason is `won` when the squad was cleared. **Daily Ranked's** lines say `"mode":
+"ranked"` and carry `gameNo` (filter on it to watch one game); its `run_start` adds
+`repeatFromConnection`, how many runs of the game had already started from the same connection (a
+count, §12 — never the hash), and its `run_end` adds `correct` and `bonus`, with the reason
+`finished` (question 20 answered, not a perfect run), `wrong` or `timeout` (a bonus round missed),
+`deck-exhausted` or `abandoned` (finished by the idle alarm, logged from the Durable Object with
+`"route": "run-do"`). A `run_resume` line (`round`, `expired`) marks each pick-up after a
+refresh, and `run_submit` (with `rank`, the run's place in its game) each run posted to its board.
+`run_end` adds the round that
 ended the run: the miss on `wrong`, the timed-out question on `timeout` (`guess` is then
 `timeout`), the final question on `won`, the last answer on `deck-exhausted`. That's `endStat`
 (the stat's id and label), `guess` and `players`, each with the figure its card showed
@@ -2098,6 +2257,7 @@ data points are exactly as before. Split the squads by `blob10`.
 | `double4` |              | relaxation step, 0–3              |                    |                                               |                          |
 | `double5` |              | rank distance of the pair, 0–1    |                    |                                               |                          |
 | `double6` |              | answer ms (Endless; absent → 0)   |                    |                                               |                          |
+| `double7` |              | Daily: the game number            |                    |                                               |                          |
 
 - **When.** `start` once a run's first round is dealt. `answer` once the server has judged the
   guess and built the response — a request that fails after the judgement records nothing, and an
@@ -2112,7 +2272,15 @@ data points are exactly as before. Split the squads by `blob10`.
 - **Run key** (`index1`): the run id's body, `YYYYMMDD-<uuid>` (45 bytes); older data has
   Friendly's retired replay keys, `YYYYMMDD-<uuid>~<uuid>` (82). Both fit Analytics Engine's 96;
   the run id grammar (§7) allows nothing longer, and a test holds it.
-- **Mode**: `friendly` or `endless`.
+- **Mode**: `friendly`, `endless` (and its variants, above) or `ranked` (Daily Ranked).
+- **Daily Ranked** fills a few more columns, every other mode's points being exactly as before:
+  `start` double1 the game number and double2 the repeat count from the same connection (a count;
+  never the hash); `answer` double7 the game; `end` double2 the game, double3 the right answers out
+  of twenty and double4 the bonus rounds, with the end reasons `finished` and `abandoned` as well;
+  `submit` (the run posted to its board, there being no submit step) double2 the game and blob8
+  the bucket of its rank in the game. A sixth event, **`resume`**: blob6 whether the open question
+  had run out (`1` or `0`), double1 the game and double2 the round on screen after it. Daily's
+  final question is round 20.
 - **Run kind**: `fresh`; `challenge` for an Endless run started from a challenge link that checked
   out (fresh rounds, against the link's score, §7); `replay` for Friendly's challenge replays
   before challenges moved to Endless. A link that fails its check starts a fresh run, recorded as
@@ -2418,6 +2586,34 @@ WHERE blob2 = 'endless'
   AND timestamp > NOW() - INTERVAL '7' DAY
 GROUP BY event
 ORDER BY event
+```
+
+**Daily Ranked: per game** (`daily`): for each game, its players (runs started), runs finished,
+the mean score, perfect twenties, runs finished by the idle alarm (`abandoned`), resumes after a
+refresh, shadowed posts, and starts from a connection that had already started a run of the game.
+The game number is `double1` on a start or a resume and `double2` on an end or a post. The script
+prints the rates over every game shown under it: the 20/20 rate, resumes and repeat connections
+as a share of starts, and alarm finishes and shadowed posts as a share of finished runs. The
+score spread is `scores` and `streaks` under mode `ranked`.
+
+```sql
+SELECT
+  if(blob1 = 'start' OR blob1 = 'resume', double1, double2) AS game,
+  sumIf(_sample_interval, blob1 = 'start') AS players,
+  sumIf(_sample_interval, blob1 = 'end') AS finished,
+  round(sumIf(_sample_interval * double1, blob1 = 'end')
+    / sumIf(_sample_interval, blob1 = 'end'), 1) AS mean_score,
+  sumIf(_sample_interval, blob1 = 'end' AND double3 = 20) AS perfect,
+  sumIf(_sample_interval, blob1 = 'end' AND blob6 = 'abandoned') AS abandoned,
+  sumIf(_sample_interval, blob1 = 'resume') AS resumes,
+  sumIf(_sample_interval, blob1 = 'submit' AND blob7 = '1') AS shadowed,
+  sumIf(_sample_interval, blob1 = 'start' AND double2 > 0) AS repeat_connection
+FROM biggerthan_game_events
+WHERE blob2 = 'ranked'
+  AND (blob1 = 'start' OR blob1 = 'end' OR blob1 = 'resume' OR blob1 = 'submit')
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY game
+ORDER BY game DESC
 ```
 
 **Latest 50 starts and ends** (`latest`): newest first, for a look at what's happening now. The

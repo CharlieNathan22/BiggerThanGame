@@ -48,7 +48,8 @@ export interface RunOptions {
 export const MAX_ROUNDS: Readonly<Record<Mode, number>> = {
   friendly: 20,
   endless: 150,
-  ranked: 60,
+  // Daily Ranked's twenty questions and its bonus rounds, to Endless's cap.
+  ranked: 150,
 };
 
 /** The highest round any mode can deal: the bound on a round number in any request. */
@@ -70,7 +71,7 @@ export const MAX_ANY_ROUND = Math.max(...Object.values(MAX_ROUNDS));
 export const WHEEL_VIABILITY: Readonly<Record<Mode, "band" | "any">> = {
   friendly: "band",
   endless: "any",
-  ranked: "band",
+  ranked: "any",
 };
 
 /**
@@ -115,7 +116,7 @@ export const OPENING_DWELL = 2;
 export const ICONIC_ROUNDS: Readonly<Record<Mode, number>> = {
   friendly: 5,
   endless: 5,
-  ranked: 5,
+  ranked: 3,
 };
 
 /**

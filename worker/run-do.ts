@@ -9,7 +9,12 @@
  * The Worker reaches it by RPC with the run key as its name, so every request
  * for one run meets the same object, one at a time.
  *
- * The alarm does two jobs. While a question is open it is set a little past
+ * A Daily Ranked run (src/daily-ledger.ts) lives in an object of the same
+ * class, under its own tables (`daily_run`, `daily_answers`): its alarm
+ * finishes a run left quiet for `IDLE_FINISH_MS` and posts it to the board,
+ * retries a post that failed, and deletes the run's storage hours later.
+ *
+ * Endless's alarm does two jobs. While a question is open it is set a little past
  * the deadline: if no answer has come by then, the run is closed as
  * `disconnected`, keeping the streak it had verified, and its end is logged and
  * recorded like any other. Once the run is over it is set `RETAIN_MS` after the
@@ -18,7 +23,20 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { toDataPoint, toLogLine } from "./src/analytics.js";
+import type { GameEvent } from "./src/analytics.js";
 import type { Env } from "./src/app.js";
+import { recordPost } from "./src/daily.js";
+import { DailyLedger } from "./src/daily-ledger.js";
+import type {
+  DailyAdvanceResult,
+  DailyAnswer,
+  DailyLedgerStore,
+  DailyResumeResult,
+  DailyRunRecord,
+  DailyStep,
+  NewDailyRun,
+} from "./src/daily-ledger.js";
+import { postDailyRun } from "./src/daily-post.js";
 import { DECK } from "./src/deck.js";
 import { log } from "./src/log.js";
 import { RunLedger } from "./src/run-ledger.js";
@@ -36,11 +54,128 @@ import { disconnectedEnd } from "./src/run.js";
 
 export class RunDO extends DurableObject<Env> {
   readonly #ledger: RunLedger;
+  readonly #daily: DailyLedger;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.#ledger = new RunLedger(sqlStore(ctx.storage.sql));
+    this.#daily = new DailyLedger(dailySqlStore(ctx.storage.sql));
   }
+
+  // ------------------------------------------------------------ Daily Ranked
+
+  async dailyBegin(first: NewDailyRun): Promise<DailyRunRecord | undefined> {
+    const run = this.#daily.begin(first);
+    await this.#scheduleDaily();
+    return run;
+  }
+
+  async dailyAdvance(step: DailyStep): Promise<DailyAdvanceResult> {
+    const result = this.#daily.advance(step);
+    await this.#scheduleDaily();
+    return result;
+  }
+
+  async dailyResume(args: {
+    readonly deviceHash: string;
+    readonly now: number;
+    readonly nonce: string;
+  }): Promise<DailyResumeResult> {
+    const result = this.#daily.resume(args.deviceHash, args.now, args.nonce);
+    await this.#scheduleDaily();
+    return result;
+  }
+
+  /** The run is on the board: the alarm moves on to its retention. */
+  async dailyPosted(): Promise<boolean> {
+    const done = this.#daily.markPosted();
+    await this.#scheduleDaily();
+    return done;
+  }
+
+  /** Posting failed: the alarm tries again. */
+  async dailyPostFailed(now: number): Promise<void> {
+    this.#daily.postFailed(now);
+    await this.#scheduleDaily();
+  }
+
+  async #scheduleDaily(): Promise<void> {
+    const at = this.#daily.alarmAt();
+    if (at === null) await this.ctx.storage.deleteAlarm();
+    else await this.ctx.storage.setAlarm(at);
+  }
+
+  /** A Daily run's alarm: finish it if it went quiet, post it, or delete it. */
+  async #dailyAlarm(now: number): Promise<void> {
+    const action = this.#daily.onAlarm(now);
+    if (action.action === "delete") {
+      await this.ctx.storage.deleteAlarm();
+      await this.ctx.storage.deleteAll();
+      return;
+    }
+    if (action.action === "post")
+      await this.#postDaily(action.run, action.answers, action.finished, now);
+    await this.#scheduleDaily();
+  }
+
+  /** Posts a finished Daily run to its board; a failure leaves the alarm to try again. */
+  async #postDaily(
+    run: DailyRunRecord,
+    answers: readonly DailyAnswer[],
+    finished: boolean,
+    now: number,
+  ): Promise<void> {
+    const ctx = { country: run.country, deckVersion: run.deckVersion };
+    const record = (event: GameEvent): void => {
+      try {
+        const line = toLogLine(event, ctx, "run-do");
+        if (line !== undefined) log(line);
+        this.env.GAME_EVENTS?.writeDataPoint(toDataPoint(event, ctx));
+      } catch {
+        // Telemetry is never worth a failed alarm.
+      }
+    };
+    const db = this.env.DB;
+    if (db === undefined) {
+      this.#daily.postFailed(now);
+      return;
+    }
+    try {
+      const posted = await postDailyRun(db, run, answers);
+      this.#daily.markPosted();
+      if (finished) {
+        record({
+          type: "end",
+          mode: "ranked",
+          run: run.key,
+          runKind: "fresh",
+          gameNo: run.gameNo,
+          end: run.end ?? "abandoned",
+          score: posted.result.score,
+          correct: posted.result.correct,
+          bonus: posted.result.bonus,
+        });
+      }
+      if (posted.fresh) recordPost({ record, log }, run, posted);
+    } catch (err) {
+      this.#daily.postFailed(now);
+      try {
+        log({
+          level: "error",
+          message: "unavailable · daily_post",
+          event: "unavailable",
+          route: "run-do",
+          reason: "daily_post",
+          run: run.key,
+          ...(err instanceof Error ? { cause: err.message.slice(0, 300) } : {}),
+        });
+      } catch {
+        // As above.
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------- Endless
 
   async begin(first: NewRun): Promise<boolean> {
     const begun = this.#ledger.begin(first);
@@ -85,6 +220,10 @@ export class RunDO extends DurableObject<Env> {
    * run it at a chosen moment (worker/test/entry.ts) instead of waiting it out.
    */
   protected async onAlarm(now: number): Promise<void> {
+    if (this.#daily.run !== undefined) {
+      await this.#dailyAlarm(now);
+      return;
+    }
     const action = this.#ledger.onAlarm(now);
     if (action.action === "delete") {
       await this.ctx.storage.deleteAlarm();
@@ -179,6 +318,44 @@ function sqlStore(sql: SqlStorage): LedgerStore {
     clear() {
       sql.exec("DELETE FROM run");
       sql.exec("DELETE FROM answers");
+    },
+  };
+}
+
+/** A Daily run's ledger store, over the object's own SQLite, apart from Endless's tables. */
+function dailySqlStore(sql: SqlStorage): DailyLedgerStore {
+  sql.exec(
+    "CREATE TABLE IF NOT EXISTS daily_run (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)",
+  );
+  sql.exec(
+    "CREATE TABLE IF NOT EXISTS daily_answers (seq INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)",
+  );
+  return {
+    read() {
+      const row = sql
+        .exec<{ data: string }>("SELECT data FROM daily_run WHERE id = 1")
+        .toArray()[0];
+      return row === undefined ? undefined : (JSON.parse(row.data) as DailyRunRecord);
+    },
+    write(run) {
+      sql.exec(
+        "INSERT INTO daily_run (id, data) VALUES (1, ?) " +
+          "ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+        JSON.stringify(run),
+      );
+    },
+    addAnswer(answer) {
+      sql.exec("INSERT INTO daily_answers (data) VALUES (?)", JSON.stringify(answer));
+    },
+    answers() {
+      return sql
+        .exec<{ data: string }>("SELECT data FROM daily_answers ORDER BY seq")
+        .toArray()
+        .map((r) => JSON.parse(r.data) as DailyAnswer);
+    },
+    clear() {
+      sql.exec("DELETE FROM daily_run");
+      sql.exec("DELETE FROM daily_answers");
     },
   };
 }

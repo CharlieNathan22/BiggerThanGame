@@ -90,9 +90,9 @@ function parseCorrection(record: Record<string, unknown>): ParsedFeedback {
   if (!common.ok) return common;
 
   // Absent for a Friendly run, as the form has always sent; "endless" for an Endless one,
-  // with the variant when it isn't general Endless.
+  // with the variant when it isn't general Endless; "ranked" for a Daily one.
   const { mode, variant, runId, round } = record;
-  if (mode !== undefined && mode !== "endless") return fail("invalid_mode");
+  if (mode !== undefined && mode !== "endless" && mode !== "ranked") return fail("invalid_mode");
   if (variant !== undefined && (mode !== "endless" || !isNamedVariant(variant))) {
     return fail("invalid_mode");
   }
@@ -104,7 +104,7 @@ function parseCorrection(record: Record<string, unknown>): ParsedFeedback {
 
   const value: CorrectionRequest = {
     kind: "correction",
-    ...(mode === "endless" ? { mode } : {}),
+    ...(mode === "endless" || mode === "ranked" ? { mode } : {}),
     ...(isNamedVariant(variant) ? { variant } : {}),
     runId,
     round,

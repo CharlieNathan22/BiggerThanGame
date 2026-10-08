@@ -40,8 +40,8 @@ import { hmacSha256, timingSafeEqual, toBase64Url } from "./hmac.js";
 
 /**
  * The kinds of run with run ids: Friendly, and each Endless variant (variants.ts
- * in @bt/core), general Endless being `endless`. Ranked will number its games
- * instead.
+ * in @bt/core), general Endless being `endless`. Daily Ranked's run ids are
+ * minted and checked apart (`mintRankedRunId`), since its seed is the game's.
  */
 export type RunMode = "friendly" | EndlessVariantId;
 
@@ -172,6 +172,35 @@ export async function verifyRunId(
   return timingSafeEqual(given, await signature(secret, parsed.body, mode)) ? parsed : undefined;
 }
 
+/**
+ * Daily Ranked's run ids sign under `run:ranked:`, so one verifies only as a
+ * Daily run. The body's date is the game's day, `YYYYMMDD-<uuid>`.
+ */
+const RANKED_PREFIX = "run:ranked:";
+
+/** A fresh, signed Daily run id for the game whose day is `gameDay`. */
+export async function mintRankedRunId(
+  gameDay: Date,
+  uuid: string,
+  secret: string,
+): Promise<string> {
+  const y = gameDay.getUTCFullYear();
+  const m = String(gameDay.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(gameDay.getUTCDate()).padStart(2, "0");
+  const body = `${y}${m}${d}-${uuid}`;
+  return `${body}.${await signWith(secret, RANKED_PREFIX, body)}`;
+}
+
+/** The run id's parts if this server signed it as a Daily run; undefined otherwise. */
+export async function verifyRankedRunId(runId: string, secret: string): Promise<RunId | undefined> {
+  const parsed = parseRunId(runId);
+  if (parsed === undefined || parsed.replay) return undefined;
+  const given = runId.slice(parsed.body.length + 1);
+  return timingSafeEqual(given, await signWith(secret, RANKED_PREFIX, parsed.body))
+    ? parsed
+    : undefined;
+}
+
 /** True when a fresh run's date is within the tolerance of today (UTC). */
 export function isRunDateCurrent(date: Date, clock: Date): boolean {
   const age = ageInDays(date, clock);
@@ -202,6 +231,10 @@ function ageInDays(date: Date, clock: Date): number {
 }
 
 async function signature(secret: string, body: string, mode: RunMode): Promise<string> {
-  const mac = await hmacSha256(secret, `${runPrefix(mode)}${body}`);
+  return signWith(secret, runPrefix(mode), body);
+}
+
+async function signWith(secret: string, prefix: string, body: string): Promise<string> {
+  const mac = await hmacSha256(secret, `${prefix}${body}`);
   return toBase64Url(mac.subarray(0, SIGNATURE_BYTES));
 }

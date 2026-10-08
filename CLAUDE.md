@@ -53,7 +53,8 @@ pnpm simulate     # 20k-run difficulty simulation → simulation.md; --model ran
 pnpm deck:import  # players.csv (+ image-log.csv, focus.csv) → players/*.yaml; --dry-run, --prune
 pnpm stats        # gameplay analytics from Analytics Engine; needs .env (see "Logs and analytics")
 pnpm db:migrate:local   # apply migrations/ to wrangler's LOCAL D1 (pnpm dev does it first)
-pnpm db:seed:local      # a few hundred fake scores around today (--date YYYY-MM-DD); local only
+pnpm db:seed:local      # a few hundred fake scores around today (--date YYYY-MM-DD), and Daily
+                        # entries for the previous and current game (one named TakenName); local only
 pnpm db:reset:local     # wipe the local D1 and migrate it again
 pnpm db:migrate:remote  # OWNER ONLY, deploy day: migrations to production, after asking
 pnpm db:owner           # OWNER ONLY: flag-name / shadow a score by id (--local to try it locally)
@@ -113,7 +114,7 @@ they record every request's IP, location, user agent and headers. Don't turn the
 
 **Gameplay analytics** — `pnpm stats` prints the start/end summary (runs started, finished,
 abandoned, score spread, win rate) for the last 7 days. Name queries to see more:
-`pnpm stats streaks endings clock friendly stats distance bands dropoff leaves replays endless latest`, or
+`pnpm stats streaks endings clock friendly stats distance bands dropoff leaves replays endless daily latest`, or
 `pnpm stats all`;
 `pnpm stats run <runKey>` lists one run's answers with the gaps between them (the run key is in
 its `run_start`/`run_end` log lines);
@@ -132,10 +133,12 @@ packages/core/    framework-free TypeScript. The game.
 packages/deck/    schema, validation, build pipeline. Data is a private submodule.
 apps/web/         Astro + Svelte
 worker/           fetch handler: /api/round/next (Friendly), /api/run/start and /api/round/guess
-                  (Endless: tokens, RunDO), /api/run/submit, GET /api/board/endless/:period
-                  and POST /api/board/endless/me (the boards: D1, Cache API; your live rank),
-                  /api/feedback, /api/run/leave; scheduled (the
-                  nightly snapshot and prune)
+                  (Endless and Daily Ranked: tokens, RunDO), /api/run/resume (Daily),
+                  /api/run/submit, GET /api/board/endless/:period and POST
+                  /api/board/endless/me (the boards: D1, Cache API; your live rank), GET
+                  /api/board/daily and POST /api/board/daily/me, /api/feedback,
+                  /api/run/leave; scheduled (the nightly snapshot and prune, and Daily's
+                  midnight freeze)
 migrations/       D1 migrations
 scripts/          pnpm stats (Node, no dependencies)
 ```

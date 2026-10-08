@@ -378,6 +378,45 @@ ORDER BY event`,
       );
     },
   },
+  daily: {
+    title: "Daily Ranked: per game",
+    about:
+      "Per game: players (runs started), runs finished, the mean score, perfect twenties, " +
+      "runs finished by the idle alarm (abandoned), resumes after a refresh, shadowed posts, " +
+      "and starts from a connection that had already started a run of the game (a count " +
+      "only; nothing is done with it). `pnpm stats scores streaks` show the score spread " +
+      "under mode ranked. The summary gives the rates over every game shown.",
+    sql: (o) => `SELECT
+  if(blob1 = 'start' OR blob1 = 'resume', double1, double2) AS game,
+  sumIf(_sample_interval, blob1 = 'start') AS players,
+  sumIf(_sample_interval, blob1 = 'end') AS finished,
+  round(sumIf(_sample_interval * double1, blob1 = 'end')
+    / sumIf(_sample_interval, blob1 = 'end'), 1) AS mean_score,
+  sumIf(_sample_interval, blob1 = 'end' AND double3 = 20) AS perfect,
+  sumIf(_sample_interval, blob1 = 'end' AND blob6 = 'abandoned') AS abandoned,
+  sumIf(_sample_interval, blob1 = 'resume') AS resumes,
+  sumIf(_sample_interval, blob1 = 'submit' AND blob7 = '1') AS shadowed,
+  sumIf(_sample_interval, blob1 = 'start' AND double2 > 0) AS repeat_connection
+FROM ${DATASET}
+WHERE blob2 = 'ranked'
+  AND (blob1 = 'start' OR blob1 = 'end' OR blob1 = 'resume' OR blob1 = 'submit')
+  AND ${timeWindow(o)}
+GROUP BY game
+ORDER BY game DESC`,
+    summary: (rows) => {
+      const total = (key: string) => rows.reduce((sum, r) => sum + num(r[key]), 0);
+      const players = total("players");
+      const finished = total("finished");
+      const pct = (a: number, b: number) => (b === 0 ? "–" : `${round1((100 * a) / b)}%`);
+      return (
+        `20/20 rate ${pct(total("perfect"), finished)}; ` +
+        `resumes ${pct(total("resumes"), players)} of starts; ` +
+        `finished by the alarm ${pct(total("abandoned"), finished)}; ` +
+        `shadow rate ${pct(total("shadowed"), finished)}; ` +
+        `repeat connections ${pct(total("repeat_connection"), players)} of starts`
+      );
+    },
+  },
   latest: {
     title: "Latest 50 starts and ends",
     about: "Newest first. run is the run key, which pairs a start with its end.",

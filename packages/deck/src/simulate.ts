@@ -65,8 +65,12 @@ export function rangeOf(index: number): string {
   return ROUND_RANGES.find((r) => index >= r.from && index <= r.to)!.label;
 }
 
-/** Every mode, in the order the report shows them. */
-export const SIM_MODES = Object.keys(ICONIC_ROUNDS) as Mode[];
+/**
+ * The one-life modes, in the order the report shows them. Daily Ranked plays
+ * twenty questions whatever the answers, so it has a simulation of its own
+ * (simulate-daily.ts).
+ */
+export const SIM_MODES: readonly Mode[] = ["friendly", "endless"];
 
 const RELAXATIONS: readonly Relaxation[] = ["none", "iconic", "band", "seen"];
 
@@ -852,8 +856,8 @@ function modelsSection(results: readonly SimResult[]): string[] {
     "",
     "`fan` is the default and the model Friendly and Endless are tuned with. `rank` was",
     "the only model until Friendly's retune; it is far weaker than a real football fan,",
-    "so bands tuned with it proved too soft in real play. Ranked was tuned with it. The",
-    "fan model has no clock, so Endless, with ten seconds a question, plays harder still.",
+    "so bands tuned with it proved too soft in real play. The fan model has no clock, so",
+    "Endless and Daily Ranked, with ten seconds a question, play harder still.",
     "",
     "- `pnpm simulate` uses `fan`; `pnpm simulate --model rank` uses `rank`.",
     "- `pnpm simulate --calibration <file.json>` replaces the fan's points with a list",

@@ -2,10 +2,15 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { dailyBoard } from "../../worker/src/daily-scores.js";
+import { sqliteD1 } from "../../worker/src/__tests__/d1-sqlite.js";
 import {
   PLACEHOLDER_ID,
+  SEED_TAKEN_NAME,
+  SEED_WINNER,
   asksRemote,
   d1Block,
+  dailySeedSql,
   databaseConfig,
   localArgs,
   ownerSql,
@@ -86,7 +91,10 @@ describe("ownerSql", () => {
   const id = "0f1e2d3c-4b5a-4968-8776-655443322110";
 
   it("updates one score by id", () => {
-    expect(ownerSql("flag-name", id)).toBe(`UPDATE scores SET name_flagged = 1 WHERE id = '${id}'`);
+    expect(ownerSql("flag-name", id)).toBe(
+      `UPDATE scores SET name_flagged = 1 WHERE id = '${id}'; ` +
+        `UPDATE daily_entries SET name_flagged = 1 WHERE id = '${id}'`,
+    );
     expect(ownerSql("unflag-name", id)).toContain("name_flagged = 0");
     expect(ownerSql("shadow", id)).toContain("shadow = 1");
     expect(ownerSql("unshadow", id)).toContain("shadow = 0, shadow_reason = NULL");
@@ -101,6 +109,10 @@ describe("ownerSql", () => {
   it("finds by the normalised name, quotes escaped", () => {
     expect(ownerSql("find", "O'Neill 10")).toContain("nickname_normalised = 'oneilio'");
     expect(ownerSql("find", "x' OR '1'='1")).not.toMatch(/'1'='1/);
+  });
+
+  it("finds Daily Ranked entries too", () => {
+    expect(ownerSql("find", "TakenName")).toContain("FROM daily_entries");
   });
 });
 
@@ -149,5 +161,61 @@ describe("seedSql", () => {
   it("includes shadowed scores and retired names", () => {
     expect(rows.filter((r) => r.endsWith(", 1, 'seed')")).length).toBeGreaterThan(3);
     expect(rows.filter((r) => /, 1, [01], (NULL|'seed')\)$/.test(r)).length).toBeGreaterThan(2);
+  });
+});
+
+describe("dailySeedSql", () => {
+  const epoch = Date.UTC(2026, 9, 1);
+  const today = new Date("2026-10-12T12:00:00Z"); // Game 12
+
+  it("seeds today's game and the one before into the real schema, with a taken name", async () => {
+    const db = sqliteD1();
+    db.exec(dailySeedSql(today, epoch));
+    const games = db.rows<{ game_no: number; n: number }>(
+      "SELECT game_no, COUNT(*) AS n FROM daily_entries GROUP BY game_no ORDER BY game_no",
+    );
+    expect(games).toEqual([
+      { game_no: 11, n: 140 },
+      { game_no: 12, n: 30 },
+    ]);
+    expect(
+      db.rows("SELECT game_no FROM daily_entries WHERE nickname = ?", SEED_TAKEN_NAME),
+    ).toEqual([{ game_no: 12 }]);
+    const board = await dailyBoard(db, 11);
+    expect(board.entries[0]).toMatchObject({
+      nickname: SEED_WINNER,
+      score: 23,
+      perfect: true,
+      bonus: 3,
+    });
+    expect(board.entries[9]!.score).toBe(board.entries[10]!.score);
+    // Every row's marks agree with its score.
+    for (const row of db.rows<{ score: number; correct: number; bonus: number; results: string }>(
+      "SELECT score, correct, bonus, results FROM daily_entries",
+    )) {
+      expect(
+        row.results
+          .slice(0, 20)
+          .split("")
+          .filter((c) => c === "1").length,
+      ).toBe(row.correct);
+      expect(row.correct + row.bonus).toBe(row.score);
+    }
+  });
+
+  it("replaces an earlier seed, and is the same for the same day", () => {
+    const sql = dailySeedSql(today, epoch);
+    expect(sql.startsWith("DELETE FROM daily_entries WHERE run_key LIKE 'seed-%';")).toBe(true);
+    expect(dailySeedSql(today, epoch)).toBe(sql);
+    const db = sqliteD1();
+    db.exec(sql);
+    db.exec(sql);
+    expect(db.rows("SELECT COUNT(*) AS n FROM daily_entries")).toEqual([{ n: 170 }]);
+  });
+
+  it("seeds nothing before Game 1", () => {
+    expect(dailySeedSql(new Date("2026-09-20T12:00:00Z"), epoch)).toBe(
+      "DELETE FROM daily_entries WHERE run_key LIKE 'seed-%';\n",
+    );
   });
 });

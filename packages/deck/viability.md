@@ -1,6 +1,6 @@
 # Deck viability
 
-Generated 2026-10-06 from 131 players.
+Generated 2026-10-08 from 131 players.
 
 Counts are **unordered pairs that clear the band**, before the recently-seen
 queue takes its cut. Bands are in rank distance — how far apart two players sit
@@ -8,39 +8,34 @@ in the deck's spread for the stat — and Instagram also needs the volatility fl
 exactly as the engine deals them. A stat showing 0 at a band cannot be dealt there
 and will force relaxation every time the wheel picks it.
 
-Endless's rows from round 16 count under its pair rules: age, international trophies, clubs played for by their value rule instead of the band, every other stat within the band and at least 10% apart. Neither rule ever relaxes, so a 0 there for a narrow stat means it can't be dealt at all.
+Endless's rows (Daily Ranked's too) from round 16 count under its pair rules: age, international trophies, clubs played for by their value rule instead of the band, every other stat within the band and at least 10% apart. Neither rule ever relaxes, so a 0 there for a narrow stat means it can't be dealt at all.
 
 | Band | Rank distance | Rounds |
 |---|---|---|
-| opening | 0.45–no ceiling | 1–10; Friendly 1–5; Endless 1–5 |
-| early | 0.25–0.7 | 11–18 |
-| middle | 0.15–0.5 | 19–26 |
-| late | 0.1–0.35 | 27–34 |
-| hard | 0.05–0.25 | 35–42 |
-| knife edge | 0.02–0.12 | 43+ |
+| opening | 0.45–no ceiling | Friendly 1–5; Endless and Daily 1–5 |
 | Friendly 6–10 | 0.35–no ceiling | Friendly 6–10 |
 | Friendly 11–13 | 0.06–0.16 | Friendly 11–13 |
 | Friendly 14–17 | 0.02–0.08 | Friendly 14–17 |
 | Friendly 18–19 | 0.02–0.04 | Friendly 18–19 |
 | Friendly 20 | 0.01–0.03 | Friendly 20 |
-| Endless 6–10 | 0.12–0.25 | Endless 6–10 |
-| Endless 11–15 | 0.03–0.1 | Endless 11–15 |
-| Endless 16–20 | 0.02–0.04 | Endless 16–20, pair rules |
-| Endless 21–30 | 0.01–0.04 | Endless 21–30, pair rules |
-| Endless 31+ | 0.01–0.03 | Endless 31+, pair rules |
+| Endless 6–10 | 0.12–0.25 | Endless and Daily 6–10 |
+| Endless 11–15 | 0.03–0.1 | Endless and Daily 11–15 |
+| Endless 16–20 | 0.02–0.04 | Endless and Daily 16–20, pair rules |
+| Endless 21–30 | 0.01–0.04 | Endless and Daily 21–30, pair rules |
+| Endless 31+ | 0.01–0.03 | Endless and Daily 31+, pair rules |
 
-| Stat | Eligible | Distinct | Tied pairs | opening | early | middle | late | hard | knife edge | Friendly 6–10 | Friendly 11–13 | Friendly 14–17 | Friendly 18–19 | Friendly 20 | Endless 6–10 | Endless 11–15 | Endless 16–20 | Endless 21–30 | Endless 31+ |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Club goals | 124 | 105 | 26 | 2358 | 3641 | 3640 | 2979 | 2570 | 1436 | 3253 | 1366 | 882 | 144 | 89 | 1623 | 1008 | 144 | 168 | 89 |
-| International caps | 131 | 82 | 66 | 2644 | 4066 | 4074 | 3296 | 2885 | 1578 | 3663 | 1509 | 923 | 33 | 18 | 1789 | 1166 | 33 | 40 | 18 |
-| Club appearances | 131 | 118 | 13 | 2629 | 4068 | 4067 | 3311 | 2921 | 1583 | 3667 | 1527 | 953 | 6 | 2 | 1816 | 1166 | 6 | 7 | 2 |
-| Instagram followers | 115 | 94 | 31 | 2026 | 3128 | 3034 | 2072 | 1284 | 178 | 2843 | 379 | 73 | 11 | 3 | 1125 | 116 | 11 | 11 | 3 |
-| Highest transfer fee | 108 | 93 | 20 | 1776 | 2749 | 2729 | 2245 | 1967 | 1043 | 2491 | 1062 | 646 | 116 | 95 | 1237 | 736 | 116 | 156 | 95 |
-| International goals | 124 | 53 | 142 | 2375 | 3648 | 3645 | 2974 | 2595 | 1427 | 3257 | 1368 | 868 | 154 | 62 | 1658 | 1012 | 154 | 159 | 62 |
-| Club trophies | 131 | 33 | 297 | 2594 | 4052 | 4050 | 3200 | 2872 | 1471 | 3742 | 1451 | 917 | 72 | 35 | 1893 | 1195 | 72 | 86 | 35 |
-| International trophies | 131 | 6 | 2307 | 2580 | 4486 | 3210 | 3292 | 1204 | 126 | 2790 | 464 | 14 | 14 | 0 | 1092 | 126 | 4498 | 4498 | 4498 |
-| Clubs played for | 131 | 14 | 944 | 2600 | 4007 | 4173 | 3429 | 2791 | 795 | 3767 | 1837 | 222 | 10 | 7 | 2038 | 363 | 3214 | 3214 | 3214 |
-| Age | 123 | 31 | 270 | 2353 | 3594 | 3647 | 2956 | 2584 | 1324 | 3201 | 1318 | 840 | 2 | 0 | 1631 | 987 | 1978 | 1978 | 1978 |
+| Stat | Eligible | Distinct | Tied pairs | opening | Friendly 6–10 | Friendly 11–13 | Friendly 14–17 | Friendly 18–19 | Friendly 20 | Endless 6–10 | Endless 11–15 | Endless 16–20 | Endless 21–30 | Endless 31+ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Club goals | 124 | 105 | 26 | 2358 | 3253 | 1366 | 882 | 144 | 89 | 1623 | 1008 | 144 | 168 | 89 |
+| International caps | 131 | 82 | 66 | 2644 | 3663 | 1509 | 923 | 33 | 18 | 1789 | 1166 | 33 | 40 | 18 |
+| Club appearances | 131 | 118 | 13 | 2629 | 3667 | 1527 | 953 | 6 | 2 | 1816 | 1166 | 6 | 7 | 2 |
+| Instagram followers | 115 | 94 | 31 | 2026 | 2843 | 379 | 73 | 11 | 3 | 1125 | 116 | 11 | 11 | 3 |
+| Highest transfer fee | 108 | 93 | 20 | 1776 | 2491 | 1062 | 646 | 116 | 95 | 1237 | 736 | 116 | 156 | 95 |
+| International goals | 124 | 53 | 142 | 2375 | 3257 | 1368 | 868 | 154 | 62 | 1658 | 1012 | 154 | 159 | 62 |
+| Club trophies | 131 | 33 | 297 | 2594 | 3742 | 1451 | 917 | 72 | 35 | 1893 | 1195 | 72 | 86 | 35 |
+| International trophies | 131 | 6 | 2307 | 2580 | 2790 | 464 | 14 | 14 | 0 | 1092 | 126 | 4498 | 4498 | 4498 |
+| Clubs played for | 131 | 14 | 944 | 2600 | 3767 | 1837 | 222 | 10 | 7 | 2038 | 363 | 3214 | 3214 | 3214 |
+| Age | 123 | 31 | 276 | 2362 | 3206 | 1332 | 831 | 2 | 0 | 1543 | 970 | 1967 | 1967 | 1967 |
 
 ## Problems
 
@@ -49,7 +44,7 @@ Endless's rows from round 16 count under its pair rules: age, international trop
 
 ## Iconic preference
 
-56 of 131 players are iconic. Early rounds prefer an iconic challenger (friendly 1–5, endless 1–5, ranked 1–5). An anchor with no iconic challenger in the opening band always falls back to the whole deck; `simulation.md` reports how often that happens in play.
+56 of 131 players are iconic. Early rounds prefer an iconic challenger (friendly 1–5, endless 1–5, ranked 1–3). An anchor with no iconic challenger in the opening band always falls back to the whole deck; `simulation.md` reports how often that happens in play.
 
 | Stat | Iconic eligible | Anchors with an iconic challenger |
 |---|---|---|

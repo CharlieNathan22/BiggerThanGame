@@ -261,19 +261,20 @@ export async function ownStanding(
   };
 }
 
-export interface Snapshot {
+/** A closed board: Endless's period's, or (with its own entries) a Daily game's. */
+export interface Snapshot<E = BoardEntry> {
   readonly takenAt: number;
   readonly total: number;
-  readonly entries: readonly BoardEntry[];
+  readonly entries: readonly E[];
 }
 
 /** Stores a closed period's board, replacing any earlier snapshot of it. */
-export async function saveSnapshot(
+export async function saveSnapshot<E = BoardEntry>(
   db: D1Like,
-  mode: BoardMode,
+  mode: BoardMode | "ranked",
   period: string,
   key: string,
-  snapshot: Snapshot,
+  snapshot: Snapshot<E>,
 ): Promise<void> {
   await db
     .prepare(
@@ -285,12 +286,12 @@ export async function saveSnapshot(
     .run();
 }
 
-export async function readSnapshot(
+export async function readSnapshot<E = BoardEntry>(
   db: D1Like,
-  mode: BoardMode,
+  mode: BoardMode | "ranked",
   period: string,
   key: string,
-): Promise<Snapshot | undefined> {
+): Promise<Snapshot<E> | undefined> {
   const row = await db
     .prepare(
       "SELECT taken_at, total, entries FROM board_snapshots " +
@@ -302,7 +303,7 @@ export async function readSnapshot(
   return {
     takenAt: row.taken_at,
     total: row.total,
-    entries: JSON.parse(row.entries) as BoardEntry[],
+    entries: JSON.parse(row.entries) as E[],
   };
 }
 

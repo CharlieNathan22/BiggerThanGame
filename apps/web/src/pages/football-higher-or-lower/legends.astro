@@ -1,9 +1,10 @@
 ---
 // The Legends deck: its intro and its modes (DESIGN.md §17). Static, but for
-// the few lines on each open mode's card that show this device's "Your best". Where
-// "Play" goes. The modes, then "Clear the squad"'s themes in a section per
-// type (Clubs, Leagues, Eras), generated from the deck build's themes.json,
-// then Daily Ranked. Below the cards, a long read about this deck: who's
+// the few lines on each open mode's card that show this device's "Your best",
+// and Daily Ranked's game, countdown and result, drawn in the browser. Where
+// "Play" goes. Daily Ranked first, full width in gold, then the other modes,
+// then "Clear the squad"'s themes in a section per type (Clubs, Leagues,
+// Eras), generated from the deck build's themes.json. Below the cards, a long read about this deck: who's
 // in it, what it asks and how to play it; nothing from the football page's.
 // Names only, and no digits anywhere near them, so the leak scan has nothing
 // to weigh (dist-scan.ts). Draft copy.
@@ -20,15 +21,18 @@ import Page from "../../layouts/Page.astro";
 import Breadcrumb from "../../components/Breadcrumb.astro";
 import Card from "../../components/Card.astro";
 import Cards from "../../components/Cards.astro";
+import DailyCardStatus from "../../components/DailyCardStatus.svelte";
 import { t } from "../../i18n";
 import { bestKey } from "../../game/best";
 import { themeText } from "../../game/variant";
 import {
   ABOUT_PATH,
+  DAILY_LEADERBOARD_PATH,
+  DAILY_PATH,
   ENDLESS_PATH,
   FRIENDLY_PATH,
   INSTAGRAM_PATH,
-  LEADERBOARD_PATH,
+  ENDLESS_LEADERBOARD_PATH,
   LEGENDS_PATH,
   themePagePath,
 } from "../../lib/paths";
@@ -86,10 +90,20 @@ const tiers =
 
   <Cards label={t("legends.modes")} stack>
     <Card
+      name={t("mode.ranked.name")}
+      body={t("mode.ranked.body")}
+      href={DAILY_PATH}
+      accent="daily"
+      extra={{ href: DAILY_LEADERBOARD_PATH, label: t("daily.leaderboard") }}
+      wide
+    >
+      <DailyCardStatus client:load />
+    </Card>
+    <Card
       name={t("mode.endless.name")}
       body={t("mode.endless.body")}
       href={ENDLESS_PATH}
-      extra={{ href: LEADERBOARD_PATH, label: t("mode.endless.leaderboard") }}
+      extra={{ href: ENDLESS_LEADERBOARD_PATH, label: t("mode.endless.leaderboard") }}
       bestKey={bestKey("legends", "endless")}
       wide
     />
@@ -130,11 +144,6 @@ const tiers =
       </Cards>
     </section>
   ))}
-
-  <!-- Daily Ranked sits last while it's coming soon; it moves to the top when it launches. -->
-  <Cards label={t("mode.soon")} stack>
-    <Card name={t("mode.ranked.name")} body={t("mode.ranked.body")} wide />
-  </Cards>
 
   <article class="reading">
     <h2>A football legends quiz, one question at a time</h2>
@@ -181,16 +190,18 @@ const tiers =
 
     <h2>How to play the deck</h2>
     <p>
-      <strong>Friendly</strong> is open now: twenty questions with no clock, and a win if you get
-      every one right. It's the best way to learn the deck. Two more modes are coming soon.
-      <strong>Endless</strong> will give you as many runs as you like against a short clock, with a
-      board for the best run of the day, and <strong>Daily Ranked</strong> will deal one run a day,
-      the same questions for everyone, on a global leaderboard.
+      <strong>Daily Ranked</strong> is one game a day: the same twenty questions for everyone,
+      against a short clock, with one go each. A wrong answer doesn't end it, and getting all twenty
+      right opens bonus rounds that run until your first miss. Everyone's score goes on that day's
+      leaderboard. <strong>Endless</strong> gives you as many runs as you like against the same
+      clock, until your first wrong answer, with leaderboards for the best runs.
+      <strong>Friendly</strong> is twenty questions with no clock, and a win if you get every one
+      right. It's the best way to learn the deck.
     </p>
 
     <p class="next">
-      <a class="cta" href={FRIENDLY_PATH}>
-        Play Friendly
+      <a class="cta" href={DAILY_PATH}>
+        {t("mode.ranked.play")}
       </a>
     </p>
   </article>

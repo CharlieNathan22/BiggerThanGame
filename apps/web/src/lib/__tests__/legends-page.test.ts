@@ -1,8 +1,8 @@
 /**
- * The Legends page's modes (DESIGN.md §17): their order — Endless, Instagram
- * Endless, Friendly, then "Clear the squad"'s Clubs, Leagues and Eras, then
- * Daily Ranked — the theme sections' grid, and the cards' "Your best" lines
- * from this device. Read from the page and card sources: the built page is
+ * The Legends page's modes (DESIGN.md §17): their order — Daily Ranked, in
+ * gold at the top, then Endless, Instagram Endless, Friendly, then "Clear the
+ * squad"'s Clubs, Leagues and Eras — the theme sections' grid, and the cards'
+ * "Your best" lines from this device. Read from the page and card sources: the built page is
  * checked by `pnpm check:site`.
  */
 
@@ -15,9 +15,10 @@ const source = (path: string) =>
 const page = source("../../pages/football-higher-or-lower/legends.astro");
 const card = source("../../components/Card.astro");
 const cardsList = source("../../components/Cards.astro");
+const dailyStatus = source("../../components/DailyCardStatus.svelte");
 
-/** Each `<Card …/>` on the page, in order, as its attribute text. */
-const cards = [...page.matchAll(/<Card\b([\s\S]*?)\/>/g)].map((m) => m[1] ?? "");
+/** Each `<Card …/>` or `<Card …>` on the page, in order, as its attribute text. */
+const cards = [...page.matchAll(/<Card\b([^>]*?)\/?>/g)].map((m) => m[1] ?? "");
 const nameOf = (attrs: string) =>
   /name=\{t\("mode\.(\w+)\.name"\)\}/.exec(attrs)?.[1] ??
   (/name=\{theme\.name\}/.test(attrs) ? "theme" : undefined);
@@ -28,19 +29,19 @@ const modeScript = scripts.find((s) => s.includes("data-best-key")) ?? "";
 const squadScript = scripts.find((s) => s.includes("data-squad-key")) ?? "";
 
 describe("the Legends page's modes", () => {
-  it("run Endless, Instagram Endless, Friendly, the themes, then Daily Ranked last", () => {
-    expect(cards.map(nameOf)).toEqual(["endless", "instagram", "friendly", "theme", "ranked"]);
-    for (const attrs of [cards[0], cards[1], cards[2], cards[4]]) expect(attrs).toMatch(/\bwide\b/);
+  it("run Daily Ranked first, then Endless, Instagram Endless, Friendly and the themes", () => {
+    expect(cards.map(nameOf)).toEqual(["ranked", "endless", "instagram", "friendly", "theme"]);
+    for (const attrs of cards.slice(0, 4)) expect(attrs).toMatch(/\bwide\b/);
   });
 
-  it("put the themes in a section per type, between Friendly and Daily Ranked", () => {
+  it("put the themes in a section per type, after the modes", () => {
     const at = (text: string) => page.indexOf(text);
     expect(page).toMatch(/THEME_TYPES\.map\(\(type\) =>/);
     expect(page).toMatch(/<h2 class="themes-heading" id=\{`themes-\$\{type\}`\}>/);
     expect(page).toMatch(/\{t\(`themes\.\$\{type\}`\)\}/);
     expect(page).toMatch(/<Cards label=\{t\(`themes\.\$\{type\}`\)\} grid>/);
     expect(at("themes-heading")).toBeGreaterThan(at('t("mode.friendly.name")'));
-    expect(at("themes-heading")).toBeLessThan(at('t("mode.ranked.name")'));
+    expect(at("themes-heading")).toBeGreaterThan(at('t("mode.ranked.name")'));
     // A type the deck has no theme of gets no section.
     expect(page).toMatch(/\.filter\(\(section\) => section\.themes\.length > 0\)/);
   });
@@ -53,35 +54,94 @@ describe("the Legends page's modes", () => {
     expect(style).toMatch(/text-align: center/);
   });
 
-  it("keep Daily Ranked coming soon at the bottom", () => {
-    const ranked = cards.at(-1)!;
-    expect(ranked).not.toMatch(/href=/);
-    expect(page).toMatch(/moves to the top when it launches/);
+  it("give Daily Ranked the gold card, its game, its board and its live lines", () => {
+    const ranked = cards[0]!;
+    expect(ranked).toMatch(/href=\{DAILY_PATH\}/);
+    expect(ranked).toMatch(/accent="daily"/);
+    expect(ranked).toMatch(/extra=\{\{ href: DAILY_LEADERBOARD_PATH/);
+    expect(page).toMatch(/<DailyCardStatus client:load \/>/);
+    // Nothing is coming soon any more.
+    expect(page).not.toMatch(/mode\.soon/);
   });
 
   it("show this device's best on every open mode's and theme's card", () => {
-    expect(cards[0]).toMatch(/bestKey=\{bestKey\("legends", "endless"\)\}/);
-    expect(cards[1]).toMatch(/bestKey=\{bestKey\("legends", "endless-instagram"\)\}/);
-    expect(cards[2]).toMatch(/bestKey=\{bestKey\("legends", "friendly"\)\}/);
-    expect(cards[2]).toMatch(/bestOf=\{WIN_ROUNDS\.friendly \?\? undefined\}/);
-    expect(cards[3]).toMatch(/bestKey=\{bestKey\("legends", squadVariantId\(theme\)\)\}/);
-    expect(cards[3]).toMatch(/bestOf=\{squadQuestions\(theme\.players\)\}/);
-    expect(cards[4]).not.toMatch(/bestKey=/);
+    expect(cards[1]).toMatch(/bestKey=\{bestKey\("legends", "endless"\)\}/);
+    expect(cards[2]).toMatch(/bestKey=\{bestKey\("legends", "endless-instagram"\)\}/);
+    expect(cards[3]).toMatch(/bestKey=\{bestKey\("legends", "friendly"\)\}/);
+    expect(cards[3]).toMatch(/bestOf=\{WIN_ROUNDS\.friendly \?\? undefined\}/);
+    expect(cards[4]).toMatch(/bestKey=\{bestKey\("legends", squadVariantId\(theme\)\)\}/);
+    expect(cards[4]).toMatch(/bestOf=\{squadQuestions\(theme\.players\)\}/);
+    // Daily Ranked shows today's result instead.
+    expect(cards[0]).not.toMatch(/bestKey=/);
   });
 
   it("give each theme its page, its player count and its colours", () => {
-    const theme = cards[3]!;
+    const theme = cards[4]!;
     expect(theme).toMatch(/href=\{themePagePath\(theme\)\}/);
     expect(theme).toMatch(/body=\{themeText\("theme\.players", theme\)\}/);
     expect(theme).toMatch(/colours: themeColours\(theme\)/);
   });
 
   it("give Instagram Endless its page, accent and best line, and no leaderboard button", () => {
-    const instagram = cards[1]!;
+    const instagram = cards[2]!;
     expect(instagram).toMatch(/href=\{INSTAGRAM_PATH\}/);
     expect(instagram).toMatch(/accent="instagram"/);
     expect(instagram).not.toMatch(/extra=/);
-    expect(cards[0]).toMatch(/extra=/);
+    expect(cards[1]).toMatch(/extra=/);
+  });
+});
+
+describe("the Daily card's button place", () => {
+  const markup = dailyStatus.slice(
+    dailyStatus.indexOf('<div class="status">'),
+    dailyStatus.indexOf("<style>"),
+  );
+  const style = dailyStatus.slice(dailyStatus.indexOf("<style>"));
+  const action = markup.slice(markup.indexOf('<div class="action">'));
+  const rule = (selector: string) =>
+    new RegExp(`(^|\\n)\\s*${selector.replace(/[.()]/g, (c) => `\\${c}`)} \\{([^}]*)\\}`).exec(
+      style,
+    )?.[2] ?? "";
+
+  it("puts every state in the one action area: the placeholder, Play, Carry on, and done", () => {
+    expect(markup.match(/<div class="action">/g)).toHaveLength(1);
+    expect(action).toMatch(/class="pill pending"/);
+    expect(action).toMatch(/class="pill play"/);
+    expect(action).toMatch(/t\("daily\.resume"\)/);
+    expect(action).toMatch(/t\("mode\.ranked\.play"\)/);
+    expect(action).toMatch(/class="result"/);
+    expect(action).toMatch(/class="done" role="status"/);
+  });
+
+  it("never collapses: it keeps one height, at least the 44px target, in every state", () => {
+    expect(rule(".action")).toMatch(/min-height: var\(--daily-card-action-h\);/);
+    const tokens = source("../../styles/tokens.css");
+    const h = Number(/--daily-card-action-h: (\d+)px;/.exec(tokens)?.[1]);
+    expect(h).toBeGreaterThanOrEqual(44);
+    // The lines above it keep their height while they're still empty, before mount.
+    expect(rule(".game")).toMatch(/min-height: 1lh;/);
+    expect(rule(".next")).toMatch(/min-height: 1lh;/);
+    // The placeholder is Play's size: the same pill, with Play's words, hidden.
+    expect(action).toMatch(
+      /class="pill pending" aria-hidden="true"\s*><span class="ghost">\{t\("mode\.ranked\.play"\)\}/,
+    );
+    expect(rule(".ghost")).toMatch(/visibility: hidden;/);
+  });
+
+  it("starts out asking, never showing Play before the server has answered", () => {
+    expect(dailyStatus).toMatch(/let action = \$state<CardAction>\(\{ kind: "pending" \}\);/);
+  });
+
+  it("glows on Play and Carry on only: the placeholder and the done line never do", () => {
+    expect(rule(".play")).toMatch(/box-shadow: var\(--glow\);/);
+    expect(style).toMatch(/:global\(\.card\.open:hover\) \.play,/);
+    expect(style).toMatch(
+      /:global\(\.card\.open:active\) \.play \{\s*box-shadow: var\(--glow-strong\);/,
+    );
+    expect(rule(".done")).not.toMatch(/box-shadow|transform|cursor/);
+    expect(rule(".pending")).not.toMatch(/box-shadow/);
+    // No hover, focus or press rule reaches the done line or the placeholder.
+    expect(style).not.toMatch(/\)\s*\.(done|pending)\b/);
   });
 });
 

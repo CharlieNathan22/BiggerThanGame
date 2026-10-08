@@ -24,24 +24,6 @@ export interface BandRow {
 }
 
 /**
- * The long schedule, Ranked's (Endless has had its own since its retune), in
- * rank distance. `upTo` is inclusive; the final row catches everything after.
- *
- * Tuned against simulation.md on the 77-player legends deck. Re-check it
- * there after substantial deck growth — the floors are fractions of the deck,
- * so they scale with it, but the knife-edge band's absolute width shrinks as
- * the deck grows.
- */
-const LONG_SCHEDULE: readonly BandRow[] = [
-  { upTo: 10, band: { floor: 0.45, ceiling: null } },
-  { upTo: 18, band: { floor: 0.25, ceiling: 0.7 } },
-  { upTo: 26, band: { floor: 0.15, ceiling: 0.5 } },
-  { upTo: 34, band: { floor: 0.1, ceiling: 0.35 } },
-  { upTo: 42, band: { floor: 0.05, ceiling: 0.25 } },
-  { upTo: Infinity, band: { floor: 0.02, ceiling: 0.12 } },
-];
-
-/**
  * Friendly's schedule: twenty questions (`WIN_ROUNDS`). Uncapped for the five
  * rounds that prefer iconic challengers (`ICONIC_ROUNDS`) and the five after,
  * then capped and **never easier**: from round 5 each band is at least as hard
@@ -209,7 +191,9 @@ function blend(from: readonly BandRow[], to: readonly BandRow[], t: number): rea
 export const BAND_SCHEDULES: Readonly<Record<Mode, readonly BandRow[]>> = {
   friendly: FRIENDLY_SCHEDULE,
   endless: ENDLESS_SCHEDULE,
-  ranked: LONG_SCHEDULE,
+  // Daily Ranked plays Endless's ramp: rows 1–20 are its twenty questions, the
+  // rows after them its bonus rounds (daily.ts).
+  ranked: ENDLESS_SCHEDULE,
 };
 
 /**
@@ -260,20 +244,23 @@ export interface PairRules {
   readonly narrow: Readonly<Partial<Record<StatKey, ValueRule>>>;
 }
 
+const ENDLESS_PAIR_RULES: PairRules = {
+  from: 16,
+  wideMinRatio: 0.1,
+  narrow: {
+    age: { kind: "relative", max: 0.1 },
+    it: { kind: "difference", min: 1, max: 2 },
+    clubs: { kind: "difference", min: 1, max: 2 },
+    // Club trophies stay banded: their figures spread widely enough that the
+    // band still holds pairs 10% apart in every late round (viability.md).
+  },
+};
+
+/** Daily Ranked shares Endless's: it plays Endless's ramp. */
 export const PAIR_RULES: Readonly<Record<Mode, PairRules | null>> = {
   friendly: null,
-  endless: {
-    from: 16,
-    wideMinRatio: 0.1,
-    narrow: {
-      age: { kind: "relative", max: 0.1 },
-      it: { kind: "difference", min: 1, max: 2 },
-      clubs: { kind: "difference", min: 1, max: 2 },
-      // Club trophies stay banded: their figures spread widely enough that the
-      // band still holds pairs 10% apart in every late round (viability.md).
-    },
-  },
-  ranked: null,
+  endless: ENDLESS_PAIR_RULES,
+  ranked: ENDLESS_PAIR_RULES,
 };
 
 /**
@@ -290,15 +277,15 @@ export const SQUAD_PAIR_RULES: PairRules = { from: 0.7, wideMinRatio: 0.1, narro
 export type RelaxationLadder = "coarse" | "fine";
 
 /**
- * Per mode. Friendly and Ranked keep the original coarse ladder (their runs
- * are unchanged); Endless lifts its ceiling gently, so a dense stat whose
- * nearest neighbours its 10% floor rules out is dealt the next-closest pair
- * rather than any pair at all.
+ * Per mode. Friendly keeps the original coarse ladder (its runs are
+ * unchanged); Endless, and Daily Ranked on Endless's ramp, lift the ceiling
+ * gently, so a dense stat whose nearest neighbours its 10% floor rules out is
+ * dealt the next-closest pair rather than any pair at all.
  */
 export const RELAXATION_LADDERS: Readonly<Record<Mode, RelaxationLadder>> = {
   friendly: "coarse",
   endless: "fine",
-  ranked: "coarse",
+  ranked: "fine",
 };
 
 /** Each step of the fine ladder lifts the ceiling to this many times the last. */

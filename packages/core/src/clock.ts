@@ -97,6 +97,17 @@ export function answerAllowance(round: number, statChanged: boolean, wheel = tru
 }
 
 /**
+ * The most animation an honest client plays before a resumed question can be
+ * answered (Daily Ranked, after a refresh): no title card, the longest hold
+ * while its photos load, the cards coming in, then the beat and spin if the
+ * question opens on one (`spins`) or the short hold.
+ */
+export function resumeAllowance(spins: boolean): number {
+  const t = ANSWER_TIMINGS;
+  return t.holdMin + t.holdExtra + t.introMin + (spins ? t.beat + t.spin + t.land : t.hold);
+}
+
+/**
  * When the server stops accepting an answer to question `round`, for a token
  * issued at `issuedAt` (ms since the epoch). Null for a mode with no clock.
  * `wheel`: false for a variant without one (`answerAllowance`).

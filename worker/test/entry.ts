@@ -8,7 +8,7 @@
  * runs the Durable Object's alarm as at a chosen moment.
  */
 
-import { buildRun, isEndlessVariantId } from "@bt/core";
+import { DAY_MS, buildRun, isEndlessVariantId, startOfDay } from "@bt/core";
 import type { EndlessVariantId, Mode } from "@bt/core";
 import { NOW, fixtureDeck } from "../../packages/core/src/__fixtures__/deck.js";
 import { RunDO as BaseRunDO } from "../run-do.js";
@@ -21,13 +21,24 @@ export class RunDO extends BaseRunDO {
   }
 }
 
-const app = createApp({
-  deck: fixtureDeck,
-  images: {},
-  deckVersion: "legends-fixture",
-  log: () => {},
-  fetch: async () => new Response(JSON.stringify({ success: true })),
-});
+/**
+ * The app, made on the first request: Daily Ranked's epoch here is two days
+ * before the test runs, so today is Game 3 whatever `DAILY_EPOCH` says (a
+ * launch date still to come would refuse every start). Not at the top level,
+ * where workerd's clock hasn't started.
+ */
+let made: ReturnType<typeof createApp> | undefined;
+function app(): ReturnType<typeof createApp> {
+  made ??= createApp({
+    deck: fixtureDeck,
+    images: {},
+    deckVersion: "legends-fixture",
+    epoch: startOfDay(new Date()) - 2 * DAY_MS,
+    log: () => {},
+    fetch: async () => new Response(JSON.stringify({ success: true })),
+  });
+  return made;
+}
 
 const allow = { limit: async () => ({ success: true }) };
 
@@ -56,7 +67,7 @@ export default {
         fingerprint(seed, mode, isEndlessVariantId(variant) ? variant : undefined),
       );
     }
-    return app.fetch(request, {
+    return app().fetch(request, {
       ...env,
       RUN_ANSWERS: allow,
       RUN_STARTS: allow,
@@ -66,5 +77,5 @@ export default {
       BOARD_LOOKUPS: allow,
     });
   },
-  scheduled: (controller: ScheduledController, env: Env) => app.scheduled(controller, env),
+  scheduled: (controller: ScheduledController, env: Env) => app().scheduled(controller, env),
 } satisfies ExportedHandler<Env>;

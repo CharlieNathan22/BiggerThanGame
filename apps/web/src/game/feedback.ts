@@ -155,6 +155,7 @@ export function feedbackRequest(
   return {
     kind,
     ...(report.mode === "endless" ? { mode: "endless" as const } : {}),
+    ...(report.mode === "ranked" ? { mode: "ranked" as const } : {}),
     ...(report.mode === "endless" && report.variant !== undefined
       ? { variant: report.variant }
       : {}),

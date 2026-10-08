@@ -10,6 +10,11 @@
 // A "Clear the squad" theme's card (`theme`) is the same card made compact for
 // a grid of four: its name an h3 under the section's h2, in its own two tints,
 // the edge in its own colours, how many legends, and the device's best.
+//
+// Daily Ranked's card (`accent="daily"`) is the premium one, at the top of
+// the Legends page: gold leaf across its name and along a thicker top edge, a
+// warm glow behind it, and a gold edge all round. Its live lines (the game,
+// the countdown, this device's result) come in through the slot.
 import type { ThemeType } from "@bt/core";
 import { t } from "../i18n";
 
@@ -32,8 +37,9 @@ interface Props {
    * A mode's own accent in place of the gold (Instagram Endless's pink): its
    * edge, glow, chevron, title on hover and best line, and an original glyph
    * over the title — a red heart that fills in on hover, never a brand's mark.
+   * Daily Ranked's (`daily`) is the site's own gold, made richer.
    */
-  accent?: "instagram";
+  accent?: "instagram" | "daily";
   /**
    * The device's best for the mode (`bt:best:legends:endless`), shown as
    * "Your best: n" by a few lines of script when storage has one. Without
@@ -98,6 +104,7 @@ const Heading = theme === undefined ? "h2" : "h3";
       )}
     </Heading>
     <p class="body">{body}</p>
+    <slot />
     {bestKey !== undefined && !soon && theme === undefined && (
       <p
         class="best"
@@ -435,6 +442,49 @@ const Heading = theme === undefined ? "h2" : "h3";
       var(--card-top-light), 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 20px rgba(0, 0, 0, 0.4),
       0 0 20px rgba(var(--instagram-rgb), 0.28);
   }
+  /* Daily Ranked: the premium card. A gold edge all round, gold leaf along a
+       thicker top edge and across the name, a warm glow from the top behind
+       the text, and a deeper gold glow when lifted. The text stays the card's
+       own colours, which read at AA on it (tokens.css). */
+  .card.daily {
+    --card-edge: var(--daily-card-edge);
+    --card-shadow: var(--daily-card-shadow);
+    --card-shadow-lifted: var(--daily-card-shadow-lifted);
+    background: var(--daily-card-surface);
+  }
+  .card.daily::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--daily-card-band-h);
+    pointer-events: none;
+    background: var(--legends-gradient);
+  }
+  .card.daily .name {
+    background: var(--legends-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: var(--legends-shadow);
+  }
+  .card.daily h2 a {
+    text-shadow: none;
+  }
+  .card.daily.open:hover h2 a,
+  .card.daily.open:active h2 a,
+  .card.daily h2 a:focus-visible {
+    color: transparent;
+    text-shadow: none;
+  }
+  .card.daily h2 {
+    font-family: var(--font-display);
+    font-variation-settings: normal;
+    font-weight: var(--fw-legends);
+    font-size: var(--fs-daily-card-name);
+  }
+
   /* The heart: a red outline, filled in when the card is hovered or focused. */
   .glyph {
     width: var(--card-glyph);

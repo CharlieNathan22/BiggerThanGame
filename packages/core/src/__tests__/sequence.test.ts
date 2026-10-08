@@ -242,12 +242,12 @@ describe("a run's length and bands, per mode", () => {
     expect(isFinalRound(MAX_ROUNDS.ranked, "ranked")).toBe(false);
   });
 
-  it("caps Friendly at its win target, Endless at 150 and Ranked at 60", () => {
+  it("caps Friendly at its win target, Endless and Daily Ranked at 150", () => {
     expect(WIN_ROUNDS).toEqual({ friendly: 20, endless: null, ranked: null });
-    expect(MAX_ROUNDS).toEqual({ friendly: 20, endless: 150, ranked: 60 });
+    expect(MAX_ROUNDS).toEqual({ friendly: 20, endless: 150, ranked: 150 });
     expect(roundCap("friendly")).toBe(20);
     expect(roundCap("endless")).toBe(150);
-    expect(roundCap("ranked")).toBe(60);
+    expect(roundCap("ranked")).toBe(150);
     expect(MAX_ANY_ROUND).toBe(150);
   });
 
@@ -311,13 +311,13 @@ describe("the wheel in a run", () => {
   });
 
   it("never follows a rare stat with another while a non-rare stat was viable", () => {
-    // Rebuild what the wheel saw at each switch: the seen queue is the last
-    // SEEN_DEPTH anchors. On this 12-player deck the queue sometimes leaves no
+    // On the band-only wheel (Friendly's). Rebuild what the wheel saw at each
+    // switch: the seen queue is the last SEEN_DEPTH anchors. On this 12-player deck the queue sometimes leaves no
     // non-rare stat dealable, which is the fallback — counted, not failed.
     let withChoice = 0;
     let fallbacks = 0;
     for (let i = 0; i < 200; i++) {
-      const rounds = run(`no-rr-${i}`, 40);
+      const rounds = run(`no-rr-${i}`, 20, "friendly");
       for (let j = 1; j < rounds.length; j++) {
         const prev = rounds[j - 1]!;
         const cur = rounds[j]!;
@@ -331,7 +331,7 @@ describe("the wheel in a run", () => {
           (key) =>
             STATS[key].tier !== "rare" &&
             isEligible(cur.anchor, key, NOW) &&
-            candidates(cur.anchor, key, bandFor(key, cur.index, "ranked"), {
+            candidates(cur.anchor, key, bandFor(key, cur.index, "friendly"), {
               deck: fixtureDeck,
               now: NOW,
               seen,
@@ -465,8 +465,8 @@ describe("Endless", () => {
     }
   });
 
-  it("keeps Friendly and Ranked on the band-only wheel", () => {
-    expect(WHEEL_VIABILITY).toEqual({ friendly: "band", endless: "any", ranked: "band" });
+  it("keeps Friendly on the band-only wheel; Daily Ranked has Endless's", () => {
+    expect(WHEEL_VIABILITY).toEqual({ friendly: "band", endless: "any", ranked: "any" });
   });
 
   it("runs past round 20 and up to its cap", () => {

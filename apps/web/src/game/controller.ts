@@ -111,6 +111,25 @@ export class GameController {
     this.#dispatch({ type: "guess", guess, at: this.#deps.now() });
   }
 
+  /**
+   * Daily Ranked: carries on a run after a refresh, at the question the
+   * server hands back (`POST /api/run/resume`), straight to the cards.
+   */
+  resume(run: {
+    readonly runId: string;
+    readonly round: RoundPayload;
+    readonly results: readonly boolean[];
+    readonly remainingMs: number | null;
+  }): void {
+    if (this.#state.phase !== "idle" && this.#state.phase !== "over") return;
+    this.#generation++;
+    this.#clearTimer();
+    // Both cards are new to this page: their photos load as the cards come in.
+    void this.#deps.preload?.(run.round.anchor.image);
+    void this.#deps.preload?.(run.round.challenger.image);
+    this.#dispatch({ type: "resumed", ...run, at: this.#deps.now() });
+  }
+
   /** A tap or a key during the title card or the hold: straight to the cards. */
   skip(): void {
     this.#dispatch({ type: "skip" });

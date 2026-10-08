@@ -6,7 +6,7 @@ describe("the title bar's navigation", () => {
   it("is Play, Leaderboards, How to play and About, in that order", () => {
     expect(NAV_LINKS.map((link) => [t(link.label), link.href])).toEqual([
       ["Play", "/football-higher-or-lower/legends"],
-      ["Leaderboards", "/football-higher-or-lower/legends/endless/leaderboard"],
+      ["Leaderboards", "/football-higher-or-lower/legends/daily/leaderboard"],
       ["How to play", "/about#how-to-play"],
       ["About", "/about"],
     ]);
@@ -24,14 +24,25 @@ describe("the title bar's navigation", () => {
     }
   });
 
-  it("marks Leaderboards, and only Leaderboards, current on the leaderboard page", () => {
+  it("marks Leaderboards, and only Leaderboards, current on either leaderboard page", () => {
     const marks = (path: string) =>
       Object.fromEntries(NAV_LINKS.map((link) => [t(link.label), navCurrent(link, path)]));
-    expect(marks("/football-higher-or-lower/legends/endless/leaderboard")).toEqual({
+    expect(marks("/football-higher-or-lower/legends/daily/leaderboard")).toEqual({
       Play: undefined,
       Leaderboards: "page",
       "How to play": undefined,
       About: undefined,
+    });
+    // Endless's board, a page of its own behind the switch, is under Leaderboards too.
+    expect(marks("/football-higher-or-lower/legends/endless/leaderboard")).toEqual({
+      Play: undefined,
+      Leaderboards: "true",
+      "How to play": undefined,
+      About: undefined,
+    });
+    expect(marks("/football-higher-or-lower/legends/daily")).toMatchObject({
+      Play: "true",
+      Leaderboards: undefined,
     });
     // Elsewhere in the football pages Play is still the current section.
     expect(marks("/football-higher-or-lower/legends/endless")).toEqual({

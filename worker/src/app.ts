@@ -3,8 +3,11 @@
  * (round.ts), Endless's `/api/run/start` and `/api/round/guess` (run.ts),
  * publishing to the boards, `/api/run/submit` (submit.ts), the boards
  * themselves, `GET /api/board/endless/:period` (board.ts), `/api/feedback`
- * (feedback.ts) and `/api/run/leave` (leave.ts). And the nightly cron
- * (cron.ts), as `scheduled`.
+ * (feedback.ts) and `/api/run/leave` (leave.ts). Daily Ranked (daily.ts) shares
+ * the start and the guess — a start with `mode: "ranked"`, a guess with a Daily
+ * token — and adds `/api/run/resume`, `GET /api/board/daily` and
+ * `POST /api/board/daily/me` (daily-board.ts). And the nightly cron (cron.ts),
+ * as `scheduled`.
  *
  * `/api/*` runs here (`run_worker_first` in wrangler.toml); everything else is
  * the static site, served from the ASSETS binding. Every `/api/*` response is
@@ -21,11 +24,21 @@
  * one `info` line with what was sent (feedback.ts). None can change a response.
  */
 
+import { dailyEpochMs } from "@bt/core";
 import type { ApiError, BoardPeriod, Player } from "@bt/core";
 import { countryOf, toDataPoint, toLogLine } from "./analytics.js";
 import { parseBoardPeriod, serveBoard } from "./board.js";
 import type { BoardCache } from "./board.js";
 import { runNightly } from "./cron.js";
+import { handleDailyGuess, handleDailyResume, handleDailyStart } from "./daily.js";
+import type { DailyContext, DailyHandlerResult, DailyStub } from "./daily.js";
+import {
+  DAILY_BOARD_PATH,
+  DAILY_MINE_PATH,
+  handleDailyMine,
+  serveDailyBoard,
+} from "./daily-board.js";
+import { ensureDailyGame } from "./daily-game.js";
 import type { AnalyticsDataset, EventContext, GameEvent } from "./analytics.js";
 import { feedbackLogLine, handleFeedback } from "./feedback.js";
 import { handleLeave } from "./leave.js";
@@ -37,10 +50,11 @@ import type { ImageLookup } from "./payload.js";
 import { RATE_LIMITS, checkRateLimit, rateLimitKey } from "./rate-limit.js";
 import type { RateLimiter, RateLimiters } from "./rate-limit.js";
 import { handleNextRound } from "./round.js";
-import { handleGuess, handleRunStart } from "./run.js";
+import { handleGuess, handleRunStart, parseGuess } from "./run.js";
 import type { RunContext, RunResult, RunStub } from "./run.js";
 import type { D1Like } from "./scores.js";
 import { SUBMIT_PATH, handleSubmit } from "./submit.js";
+import { verifyDailyToken } from "./token.js";
 import type { SubmitStub } from "./submit.js";
 import { verifyTurnstile } from "./turnstile.js";
 import type { FetchLike } from "./turnstile.js";
@@ -96,7 +110,7 @@ export interface WaitContext {
 /** The `RUNS` Durable Object namespace, typed structurally for Node tests. */
 export interface RunNamespace {
   idFromName(name: string): unknown;
-  get(id: never): RunStub & SubmitStub;
+  get(id: never): RunStub & SubmitStub & DailyStub;
 }
 
 export interface AppDeps {
@@ -121,6 +135,8 @@ export interface AppDeps {
    * doesn't exist (so every board read goes to D1).
    */
   readonly cache?: () => BoardCache | undefined;
+  /** Daily Ranked's epoch, ms: `dailyEpochMs()` by default. Tests pick their own. */
+  readonly epoch?: number;
 }
 
 export const ROUND_PATH = "/api/round/next";
@@ -131,6 +147,8 @@ export const GUESS_PATH = "/api/round/guess";
 export { SUBMIT_PATH };
 export const BOARD_PATH = "/api/board/endless";
 export { MINE_PATH };
+export const RESUME_PATH = "/api/run/resume";
+export { DAILY_BOARD_PATH, DAILY_MINE_PATH };
 
 /**
  * An Endless start: a Turnstile token (up to 2,048 characters) and perhaps a
@@ -159,7 +177,10 @@ type Route =
   | typeof GUESS_PATH
   | typeof SUBMIT_PATH
   | typeof BOARD_PATH
-  | typeof MINE_PATH;
+  | typeof MINE_PATH
+  | typeof RESUME_PATH
+  | typeof DAILY_BOARD_PATH
+  | typeof DAILY_MINE_PATH;
 
 /** The run's Durable Object failed us: our problem, a calm 503. */
 class RunStoreError extends Error {
@@ -187,6 +208,7 @@ export function createApp(deps: AppDeps): {
   const uuid = deps.uuid ?? (() => crypto.randomUUID());
   const logger = deps.log ?? log;
   const deckVersion = deps.deckVersion ?? "unknown";
+  const epoch = deps.epoch ?? dailyEpochMs();
 
   const fetchFn: FetchLike = deps.fetch ?? ((input, init) => fetch(input, init));
   const boardCache =
@@ -316,6 +338,7 @@ export function createApp(deps: AppDeps): {
         to,
         uuid,
         verifyTurnstile: (token) => verifyTurnstile(token, turnstileSecret, fetchFn),
+        ...(env.DB !== undefined ? { daily: { db: env.DB, epoch } } : {}),
         accepted: (accepted) => {
           try {
             logger(feedbackLogLine(accepted, countryOf(request), route));
@@ -438,6 +461,27 @@ export function createApp(deps: AppDeps): {
       return refuse(route, 400, "bad_request", { detail: "body must be JSON" });
     }
 
+    // Daily Ranked: a start that says so, or a guess carrying a Daily token.
+    const isDailyStart =
+      starting && typeof body === "object" && body !== null && "mode" in body
+        ? (body as { mode: unknown }).mode === "ranked"
+        : false;
+    let dailyGuess: Awaited<ReturnType<typeof verifyDailyToken>>;
+    if (!starting) {
+      const parsed = parseGuess(body);
+      if (parsed.ok) dailyGuess = await verifyDailyToken(secret, parsed.value.token);
+    }
+    if (isDailyStart || dailyGuess !== undefined) {
+      return daily<unknown>(request, env, route, (ctx) => {
+        if (dailyGuess !== undefined) {
+          const parsed = parseGuess(body);
+          if (!parsed.ok) throw new Error("a guess that parsed once no longer does");
+          return handleDailyGuess(dailyGuess, parsed.value.guess, ctx);
+        }
+        return handleDailyStart(body, ctx);
+      });
+    }
+
     const ctx: RunContext = {
       deck: deps.deck,
       images: deps.images,
@@ -471,6 +515,213 @@ export function createApp(deps: AppDeps): {
         return refuse(route, 503, "unavailable", { reason: "run_store", cause: err.message });
       }
       return refuse(route, 500, "internal", describeError(err));
+    }
+  }
+
+  /**
+   * A Daily Ranked request (daily.ts), once its route has passed the flood
+   * limit and its body has been read: the context, and the handler's answer
+   * as a response. Needs D1 as well as the run's Durable Object.
+   */
+  async function daily<T>(
+    request: Request,
+    env: Env,
+    route: Route,
+    handle: (ctx: DailyContext) => Promise<DailyHandlerResult<T>>,
+  ): Promise<Response> {
+    const { RUN_SECRET: secret, TURNSTILE_SECRET: turnstileSecret, RUNS: runs, DB: db } = env;
+    if (!secret || runs === undefined || db === undefined || !turnstileSecret) {
+      const missing = [
+        secret ? "" : "RUN_SECRET",
+        runs === undefined ? "RUNS" : "",
+        db === undefined ? "DB" : "",
+        turnstileSecret ? "" : "TURNSTILE_SECRET",
+      ].filter((name) => name !== "");
+      return refuse(route, 500, "internal", {
+        reason: "not_configured",
+        cause: `${missing.join(", ")} missing`,
+      });
+    }
+    const limiters = limitersOf(env);
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+    const ctx: DailyContext = {
+      deck: deps.deck,
+      images: deps.images,
+      secret,
+      clock,
+      uuid,
+      db,
+      epoch,
+      verifyTurnstile: (token) => verifyTurnstile(token, turnstileSecret, fetchFn),
+      runs: (key) => runStub(runs, key),
+      limits: {
+        start: () => checkRateLimit(limiters, "starts", ip),
+        answer: (run) => checkRateLimit(limiters, "answers", run),
+      },
+      record: recorder(request, env, route),
+      log: (line) => {
+        try {
+          logger(line);
+        } catch {
+          // A log line is never worth a failed answer.
+        }
+      },
+      country: countryOf(request),
+      deckVersion,
+      ip,
+    };
+    try {
+      const result = await handle(ctx);
+      if (result.status === 200) return json(200, result.body);
+      if (result.status === 429) return rateLimited(route, result.retryAfter, result.limit);
+      return refuse(
+        route,
+        result.status,
+        result.body.error,
+        result.body.detail !== undefined ? { detail: result.body.detail } : {},
+      );
+    } catch (err) {
+      if (err instanceof RunStoreError) {
+        return refuse(route, 503, "unavailable", { reason: "run_store", cause: err.message });
+      }
+      return refuse(route, 503, "unavailable", {
+        detail: "daily",
+        reason: "daily",
+        ...describeCause(err),
+      });
+    }
+  }
+
+  /** `POST /api/run/resume` (daily.ts): behind the flood limit, the per-run limit in the handler. */
+  async function resume(request: Request, env: Env): Promise<Response> {
+    const route = RESUME_PATH;
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+    const flood = await checkRateLimit(limitersOf(env), "flood", ip);
+    if (!flood.ok) return rateLimited(route, flood.retryAfter, "flood");
+    if (request.method !== "POST") {
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "POST" } });
+    }
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > MAX_MINE_BYTES) {
+      return refuse(route, 400, "bad_request", { detail: "body too large" });
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return refuse(route, 400, "bad_request", { detail: "body must be JSON" });
+    }
+    return daily(request, env, route, (ctx) => handleDailyResume(body, ctx));
+  }
+
+  /** `GET /api/board/daily` (daily-board.ts): from the cache, or D1 on a miss. */
+  async function dailyBoard(
+    request: Request,
+    env: Env,
+    ctx: WaitContext | undefined,
+  ): Promise<Response> {
+    const route = DAILY_BOARD_PATH;
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+    const flood = await checkRateLimit(limitersOf(env), "flood", ip);
+    if (!flood.ok) return rateLimited(route, flood.retryAfter, "flood");
+    if (request.method !== "GET") {
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "GET" } });
+    }
+    const db = env.DB;
+    if (db === undefined) {
+      return refuse(route, 500, "internal", { reason: "not_configured", cause: "DB missing" });
+    }
+    let cache: BoardCache | undefined;
+    try {
+      cache = boardCache();
+    } catch {
+      cache = undefined;
+    }
+    try {
+      return await serveDailyBoard(new URL(request.url).origin, {
+        db,
+        clock,
+        epoch,
+        ...(cache !== undefined ? { cache } : {}),
+        ...(ctx !== undefined ? { waitUntil: (p: Promise<unknown>) => ctx.waitUntil(p) } : {}),
+        cacheFailed: (err) => {
+          try {
+            logger({
+              level: "error",
+              message: "unavailable · board_cache",
+              event: "unavailable",
+              route,
+              reason: "board_cache",
+              ...describeCause(err),
+            });
+          } catch {
+            // Served from D1 either way.
+          }
+        },
+      });
+    } catch (err) {
+      return refuse(route, 503, "unavailable", {
+        detail: "scores",
+        reason: "scores",
+        ...describeCause(err),
+      });
+    }
+  }
+
+  /** `POST /api/board/daily/me` (daily-board.ts): as `mine`, for today's game. */
+  async function dailyMine(request: Request, env: Env): Promise<Response> {
+    const route = DAILY_MINE_PATH;
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+    const flood = await checkRateLimit(limitersOf(env), "flood", ip);
+    if (!flood.ok) return rateLimited(route, flood.retryAfter, "flood");
+    if (request.method !== "POST") {
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "POST" } });
+    }
+    const { RUN_SECRET: secret, DB: db, BOARD_LOOKUPS: lookups } = env;
+    if (!secret || db === undefined || !lookups) {
+      const missing = [
+        secret ? "" : "RUN_SECRET",
+        db === undefined ? "DB" : "",
+        lookups ? "" : "BOARD_LOOKUPS",
+      ].filter((name) => name !== "");
+      return refuse(route, 500, "internal", {
+        reason: "not_configured",
+        cause: `${missing.join(", ")} missing`,
+      });
+    }
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > MAX_MINE_BYTES) {
+      return refuse(route, 400, "bad_request", { detail: "body too large" });
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return refuse(route, 400, "bad_request", { detail: "body must be JSON" });
+    }
+    try {
+      const result = await handleDailyMine(body, {
+        db,
+        secret,
+        clock,
+        epoch,
+        country: countryOf(request),
+        limit: async () => {
+          const { success } = await lookups.limit({ key: ip });
+          return success ? { ok: true } : { ok: false, retryAfter: RATE_LIMITS.lookups.period };
+        },
+      });
+      if (result.status === 200) return json(200, result.body);
+      if (result.status === 429) return rateLimited(route, result.retryAfter, "lookups");
+      return refuse(route, 400, "bad_request", {
+        ...(result.body.detail !== undefined ? { detail: result.body.detail } : {}),
+      });
+    } catch (err) {
+      return refuse(route, 503, "unavailable", {
+        detail: "scores",
+        reason: "scores",
+        ...describeCause(err),
+      });
     }
   }
 
@@ -511,6 +762,7 @@ export function createApp(deps: AppDeps): {
         secret,
         clock,
         record: recorder(request, env, route),
+        ...(env.DB !== undefined ? { daily: { db: env.DB, epoch } } : {}),
       });
       if (result.status === 204) {
         return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
@@ -743,8 +995,29 @@ export function createApp(deps: AppDeps): {
         });
         return;
       }
+      const db = env.DB;
+      const secret = env.RUN_SECRET;
       try {
-        const done = await runNightly(env.DB, now);
+        const done = await runNightly(db, now, {
+          cron: controller.cron,
+          daily: {
+            epoch,
+            // Today's game is frozen at midnight; the start does it if this fails.
+            build:
+              secret === undefined || secret === ""
+                ? undefined
+                : async (gameNo) => {
+                    await ensureDailyGame(db, gameNo, {
+                      deck: deps.deck,
+                      images: deps.images,
+                      secret,
+                      deckVersion,
+                      epoch,
+                      clock: () => now,
+                    });
+                  },
+          },
+        });
         logger({
           level: "info",
           message: "nightly",
@@ -753,6 +1026,14 @@ export function createApp(deps: AppDeps): {
           cron: controller.cron,
           snapshots: done.snapshots,
           pruned: done.pruned,
+          ...(done.daily !== undefined
+            ? {
+                daily: {
+                  ...(done.daily.built !== null ? { built: done.daily.built } : {}),
+                  pruned: { ...done.daily.pruned },
+                },
+              }
+            : {}),
         });
       } catch (err) {
         logger({
@@ -773,6 +1054,9 @@ export function createApp(deps: AppDeps): {
       if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
       if (pathname === SUBMIT_PATH) return submit(request, env);
       if (pathname === MINE_PATH) return mine(request, env);
+      if (pathname === DAILY_BOARD_PATH) return dailyBoard(request, env, ctx);
+      if (pathname === DAILY_MINE_PATH) return dailyMine(request, env);
+      if (pathname === RESUME_PATH) return resume(request, env);
       const period = parseBoardPeriod(pathname);
       if (period !== undefined) return board(request, env, period, ctx);
       if (pathname === FEEDBACK_PATH) return feedback(request, env);
@@ -791,10 +1075,11 @@ export function createApp(deps: AppDeps): {
  * The Durable Object for the run with this key. A failure reaching it (a
  * throw, or a rejected call) becomes a `RunStoreError`, answered with 503.
  */
-function runStub(namespace: RunNamespace, key: string): RunStub & SubmitStub {
-  const stub = (): RunStub & SubmitStub => namespace.get(namespace.idFromName(key) as never);
+function runStub(namespace: RunNamespace, key: string): RunStub & SubmitStub & DailyStub {
+  type Stub = RunStub & SubmitStub & DailyStub;
+  const stub = (): Stub => namespace.get(namespace.idFromName(key) as never);
   const guarded =
-    <A, R>(call: (s: RunStub & SubmitStub, arg: A) => Promise<R>) =>
+    <A, R>(call: (s: Stub, arg: A) => Promise<R>) =>
     async (arg: A): Promise<R> => {
       try {
         return await call(stub(), arg);
@@ -807,6 +1092,11 @@ function runStub(namespace: RunNamespace, key: string): RunStub & SubmitStub {
     advance: guarded((s, step) => s.advance(step)),
     claimForSubmit: guarded((s, claim) => s.claimForSubmit(claim)),
     markSubmitted: () => guarded((s) => s.markSubmitted())(undefined),
+    dailyBegin: guarded((s, first) => s.dailyBegin(first)),
+    dailyAdvance: guarded((s, step) => s.dailyAdvance(step)),
+    dailyResume: guarded((s, args) => s.dailyResume(args)),
+    dailyPosted: () => guarded((s) => s.dailyPosted())(undefined),
+    dailyPostFailed: guarded((s, now: number) => s.dailyPostFailed(now)),
   };
 }
 

@@ -7,6 +7,7 @@
  *                         = HMAC-SHA256(RUN_SECRET, "endless:instagram:" + runId)
  *   seed(squad:<theme id>, runId)
  *                         = HMAC-SHA256(RUN_SECRET, "squad:<theme id>:" + runId)
+ *   seed(ranked, gameNo)  = HMAC-SHA256(RUN_SECRET, "ranked:" + gameNo)
  *
  * Each Endless variant's domain is its `seedDomain` (variants.ts in @bt/core),
  * so no two variants' runs can share a seed even if they shared a run id.
@@ -35,6 +36,14 @@ export async function endlessSeed(
   variant: EndlessVariantId = "endless",
 ): Promise<string> {
   return toHex(await hmacSha256(secret, `${seedDomainOf(variant)}${runId}`));
+}
+
+/**
+ * Daily Ranked's seed: the game's alone, so every player of a game gets the
+ * same questions. Used once per game, when the game is frozen (daily-game.ts).
+ */
+export async function rankedSeed(secret: string, gameNo: number): Promise<string> {
+  return toHex(await hmacSha256(secret, `ranked:${gameNo}`));
 }
 
 /** The seed for a run of `mode`. */

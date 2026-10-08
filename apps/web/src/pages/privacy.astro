@@ -5,7 +5,7 @@
 // logged or measured changes this page too.
 import Page from "../layouts/Page.astro";
 import { CORRECTIONS_EMAIL } from "../config";
-import { FRIENDLY_PATH, LEADERBOARD_PATH } from "../lib/paths";
+import { DAILY_LEADERBOARD_PATH, FRIENDLY_PATH, ENDLESS_LEADERBOARD_PATH } from "../lib/paths";
 
 const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-policy/";
 ---
@@ -31,6 +31,10 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
       choose and the score for 100 days, and, if you choose, your country's flag; nothing else about
       you.
     </li>
+    <li>
+      Daily Ranked is a leaderboard game: the name you play under and your score go on that day's
+      board, and are kept for 100 days, with your country's flag if you choose.
+    </li>
     <li>Game statistics are anonymous: the only thing about you they record is your country.</li>
     <li>
       Feedback you send is emailed to us and also kept in our server logs for three days. Please
@@ -46,35 +50,68 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
   </p>
   <p>
     In Endless, your browser also keeps your 10 best runs, with their dates and scores, so the{" "}
-    <a href={LEADERBOARD_PATH}>leaderboard page</a> can show them to you; the nickname you last
-    published under, so it's filled in for you next time; and, the first time you publish a run, a
-    random number made for this browser. Only that random number is ever sent, and only when you
-    publish. Clearing this site's data removes all of it, and the next run you publish gets a new
-    number.
+    <a href={ENDLESS_LEADERBOARD_PATH}>leaderboard page</a> can show them to you; the nickname you
+    last published under, so it's filled in for you next time; and, the first time you publish a
+    run, a random number made for this browser. Only that random number is ever sent, and only when
+    you publish. Clearing this site's data removes all of it, and the next run you publish gets a
+    new number.
+  </p>
+  <p>
+    In Daily Ranked, your browser keeps the same random number, which is sent when you start the
+    day's game and when the page checks whether you've played it; the name you last played under and
+    your flag choice; and the day's game number with a random code for your run, so the game can
+    pick up where you left off if the page is reloaded.
   </p>
 
   <h2>When you play</h2>
   <p>
     The game asks our server for each question as you go, so that the hidden number isn't sent to
     your browser before you've answered. Like every website, the server sees your IP address when
-    your browser connects. We use it for one thing: limiting how fast a single connection can play,
-    to stop anyone copying the game's data. The limit forgets it within a minute, and it never goes
-    into our logs or statistics.
+    your browser connects. We use it for limiting how fast a single connection can play, to stop
+    anyone copying the game's data; the limit forgets it within a minute. The address itself never
+    goes into our logs or statistics. The one other use is the scrambled, 48-hour count in Daily
+    Ranked, described below.
   </p>
   <p>
     To see how the game plays and keep it fair, the server records anonymous game events: when a run
     starts and ends, and for each answer the question number, the stat, whether it was right and the
     score. Each event carries the country your connection comes from (as Cloudflare reports it) and
     a random run number made for that run alone. There's no IP address, no details of your device or
-    browser, and nothing that links one run to another or to you. These events are kept for three
-    months.
+    browser, and nothing that links one run to another or to you. The one exception is the start of
+    a Daily Ranked game, which records how many games had already been started from the same
+    connection that day: a number, nothing more. These events are kept for three months.
   </p>
   <p>
-    In Endless, which has a clock, each answer's event also records how long it took to reach our
-    server, measured by the server itself. While an Endless run is in play, the server keeps a short
-    record of it — the question you're on, each answer and its time — so that no question can be
-    answered twice. That record carries the run number and your country, nothing else, and is
-    deleted a few hours after the run ends.
+    In Endless and Daily Ranked, which have a clock, each answer's event also records how long it
+    took to reach our server, measured by the server itself. While an Endless run is in play, the
+    server keeps a short record of it — the question you're on, each answer and its time — so that
+    no question can be answered twice. That record carries the run number and your country, nothing
+    else, and is deleted a few hours after the run ends.
+  </p>
+
+  <h2>Daily Ranked</h2>
+  <p>
+    Daily Ranked is one game a day, played once, and every score goes on that day's{" "}
+    <a href={DAILY_LEADERBOARD_PATH}>leaderboard</a>. Your name is reserved when you press Play, so
+    nobody else can take it that day, and your score is added when you finish, or when you leave a
+    run for a few minutes and the server finishes it for you. We store the name, the score, which
+    questions you got right, how long your answers took (only to break ties), when you started and
+    finished, and, if you leave "Show my country flag" ticked, your country as a two-letter code.
+    These are deleted 100 days after the game; a copy of each game's top 50 is kept, so the page can
+    name its winner. As in Endless, an offensive name is retired and a score that looks automated
+    may be left off the public board.
+  </p>
+  <p>
+    To allow one game per browser each day, we keep a scrambled form of your browser's random number
+    with your entry, and for a few days a record that it has played that day's game. While your run
+    is in play, the server keeps a short record of it — the question you're on, each answer and its
+    time — deleted a few hours after the run ends.
+  </p>
+  <p>
+    To see how many games are played from the same connection, the server keeps a scrambled form of
+    your IP address for each Daily game you start, mixed with a secret key and the game's number, so
+    it can't be turned back into the address or matched from one day to the next. It is used only to
+    count, never to change or hide a score, and it is deleted after 48 hours.
   </p>
 
   <h2>The Endless leaderboard</h2>
@@ -138,13 +175,14 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
 
   <h3>Cloudflare Turnstile</h3>
   <p>
-    Before a form sends, when you start an Endless run, and when you publish one, Cloudflare
-    Turnstile checks that it's a person and not a bot. It loads when you open a form, or on the
-    Endless and Instagram Endless pages once the page has loaded — never while you're playing
-    Friendly. Most of the time you won't see it. To make that check, Cloudflare processes your IP
-    address, details of your connection and your browser's user agent, to detect and block bots,
-    under the <a href={TURNSTILE_ADDENDUM}>Cloudflare Turnstile Privacy Addendum</a>. We receive
-    only whether the check passed.
+    Before a form sends, when you start an Endless run or a Daily Ranked game, and when you publish
+    a run, Cloudflare Turnstile checks that it's a person and not a bot. It loads when you open a
+    form, or on the Endless, Instagram Endless and Daily Ranked pages once the page has loaded —
+    never while you're playing Friendly. Most of the time you won't see it. To make that check,
+    Cloudflare processes your IP address, details of your connection and your browser's user agent,
+    to detect and block bots, under the{" "}
+    <a href={TURNSTILE_ADDENDUM}>Cloudflare Turnstile Privacy Addendum</a>. We receive only whether
+    the check passed.
   </p>
 
   <h2>Visit counts</h2>

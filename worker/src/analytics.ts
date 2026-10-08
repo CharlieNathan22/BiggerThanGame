@@ -35,11 +35,20 @@
  *   submit: blob6 published ("1" | "0"), blob7 shadowed ("1" | "0"), blob8 the day
  *           rank's bucket ("1-10" | "11-100" | "101-1000" | "1000+"; "" if refused),
  *           blob9 why it was refused ("" if published); double1 the run's score
+ *   resume: (Daily Ranked) blob6 whether the open question had timed out ("1" | "0");
+ *           double1 the game number, double2 the round on screen after it
+ *   Daily Ranked ("ranked" in blob2) adds its game number: start double1 the game,
+ *           double2 how many runs of the game had already started from the same
+ *           connection (a count, from a salted hash kept 48 hours; never the hash);
+ *           answer double7 the game; end double2 the game, double3 right answers
+ *           out of twenty, double4 bonus rounds; submit (the run posted to its
+ *           board, there being no submit step) double2 the game
  *   blob10  theme        "Clear the squad" only, on every event: the theme id
  *                        ("club-barcelona"); absent (so "") for every other mode. The
  *                        events' own blobs above are padded to reach it.
  *
- * Privacy (§19): nothing personal — no IP, not even hashed, no user agent, no
+ * Privacy (§19): nothing personal — no IP (Daily's repeat-connection figure is
+ * a count; the salted hash behind it stays in D1 for 48 hours), no user agent, no
  * cookie, nothing kept in the browser. Country only. No stat value in a data
  * point: the rank distance is a position in the deck, of two figures both
  * already revealed, and never reaches the client. The `run_end` log line does
@@ -54,6 +63,7 @@
  */
 
 import {
+  DAILY_QUESTIONS,
   STATS,
   bandForRound,
   isFinalRound,
@@ -78,6 +88,7 @@ import type {
   Tier,
   TimedGuess,
 } from "@bt/core";
+import type { StoredPlayer, StoredRound } from "./daily-game.js";
 import type { LogLine } from "./log.js";
 import { figureFor } from "./payload.js";
 
@@ -108,10 +119,26 @@ interface RunFacts {
   /** The run key: the run id's body, `YYYYMMDD-<uuid>` or a replay's `…~<uuid>`. */
   readonly run: string;
   readonly runKind: RunKind;
+  /** Daily Ranked: the game the run belongs to. */
+  readonly gameNo?: number;
 }
 
 export interface StartEvent extends RunFacts {
   readonly type: "start";
+  /**
+   * Daily Ranked: how many runs of the game had already started from the same
+   * connection. A count only, for `pnpm stats daily`; it never changes a run.
+   */
+  readonly repeat?: number;
+}
+
+/** Daily Ranked: a run carried on after a refresh (`POST /api/run/resume`). */
+export interface ResumeEvent extends RunFacts {
+  readonly type: "resume";
+  /** The round on screen after the resume. */
+  readonly round: number;
+  /** The open question had run out of time and was recorded as a timeout. */
+  readonly expired: boolean;
 }
 
 export interface AnswerEvent extends RunFacts {
@@ -141,6 +168,9 @@ export interface EndEvent extends RunFacts {
   readonly type: "end";
   readonly end: RunEnd;
   readonly score: number;
+  /** Daily Ranked: right answers out of twenty, and bonus rounds answered right. */
+  readonly correct?: number;
+  readonly bonus?: number;
   /** The answered round that ended the run, for its log line. Not in the data point. */
   readonly final?: FinalRound;
   /**
@@ -215,9 +245,12 @@ export interface SubmitEvent extends RunFacts {
   readonly id?: string;
   /** Where it stands, as its owner sees it, when published. */
   readonly ranks?: { readonly day: number; readonly week: number; readonly month: number };
+  /** Daily Ranked: its rank in its game, as its owner sees it. */
+  readonly rank?: number;
 }
 
-export type GameEvent = StartEvent | AnswerEvent | EndEvent | LeaveEvent | SubmitEvent;
+export type GameEvent =
+  StartEvent | AnswerEvent | EndEvent | LeaveEvent | SubmitEvent | ResumeEvent;
 
 /** A day rank as a coarse bucket, so the dataset holds no exact placing. */
 export function rankBucket(rank: number): string {
@@ -355,9 +388,20 @@ export function toDataPoint(event: GameEvent, ctx: EventContext): DataPoint {
 function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
   const common = [event.type, modeColumn(event), event.runKind, ctx.deckVersion, ctx.country];
   const indexes: [string] = [event.run];
+  const game = event.gameNo;
   switch (event.type) {
     case "start":
-      return { indexes, blobs: common, doubles: [] };
+      return {
+        indexes,
+        blobs: common,
+        doubles: game !== undefined ? [game, event.repeat ?? 0] : [],
+      };
+    case "resume":
+      return {
+        indexes,
+        blobs: [...common, event.expired ? "1" : "0"],
+        doubles: [game ?? 0, event.round],
+      };
     case "answer": {
       const tier: Tier = STATS[event.stat].tier;
       return {
@@ -367,7 +411,7 @@ function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
           event.stat,
           tier,
           event.band ?? bandLabel(event.round, event.mode),
-          isFinalRound(event.round, event.mode) ? "1" : "0",
+          isFinalQuestion(event.round, event.mode) ? "1" : "0",
         ],
         doubles: [
           event.round,
@@ -376,11 +420,19 @@ function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
           RELAXATION_STEP[event.relaxation],
           event.rankDistance,
           ...(event.answerMs !== undefined ? [event.answerMs] : []),
+          ...(game !== undefined ? [game] : []),
         ],
       };
     }
     case "end":
-      return { indexes, blobs: [...common, event.end], doubles: [event.score] };
+      return {
+        indexes,
+        blobs: [...common, event.end],
+        doubles:
+          game !== undefined
+            ? [event.score, game, event.correct ?? 0, event.bonus ?? 0]
+            : [event.score],
+      };
     case "leave":
       return {
         indexes,
@@ -394,10 +446,14 @@ function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
           ...common,
           event.published ? "1" : "0",
           event.shadowed ? "1" : "0",
-          event.ranks !== undefined ? rankBucket(event.ranks.day) : "",
+          event.ranks !== undefined
+            ? rankBucket(event.ranks.day)
+            : event.rank !== undefined
+              ? rankBucket(event.rank)
+              : "",
           event.refusal ?? "",
         ],
-        doubles: [event.score],
+        doubles: game !== undefined ? [event.score, game] : [event.score],
       };
   }
 }
@@ -420,12 +476,28 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
     ...(themeOf(event) !== undefined ? { theme: themeOf(event) } : {}),
     run: event.run,
     runKind: event.runKind,
+    ...(event.gameNo !== undefined ? { gameNo: event.gameNo } : {}),
     deckVersion: ctx.deckVersion,
     country: ctx.country,
   } as const;
   switch (event.type) {
     case "start":
-      return { level: "info", message: "run_start", event: "run_start", ...common };
+      return {
+        level: "info",
+        message: "run_start",
+        event: "run_start",
+        ...common,
+        ...(event.repeat !== undefined ? { repeatFromConnection: event.repeat } : {}),
+      };
+    case "resume":
+      return {
+        level: "info",
+        message: "run_resume",
+        event: "run_resume",
+        ...common,
+        round: event.round,
+        expired: event.expired ? "yes" : "no",
+      };
     case "end": {
       const { final, shown } = event;
       return {
@@ -435,6 +507,8 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
         ...common,
         reason: event.end,
         score: event.score,
+        ...(event.correct !== undefined ? { correct: event.correct } : {}),
+        ...(event.bonus !== undefined ? { bonus: event.bonus } : {}),
         ...(final !== undefined
           ? {
               endStat: { id: final.stat, label: STATS[final.stat].label },
@@ -477,10 +551,56 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
         shadowed: event.shadowed ? "yes" : "no",
         ...(event.id !== undefined ? { id: event.id } : {}),
         ...(event.ranks !== undefined ? { ranks: event.ranks } : {}),
+        ...(event.rank !== undefined ? { rank: event.rank } : {}),
       };
     case "answer":
       return undefined;
   }
+}
+
+/** Whether a round is its mode's final question: Friendly's 20th, and Daily Ranked's. */
+function isFinalQuestion(round: number, mode: Mode): boolean {
+  return mode === "ranked" ? round === DAILY_QUESTIONS : isFinalRound(round, mode);
+}
+
+/** A stored Daily round that has been answered, as `run_end` logs it: both figures revealed. */
+export function finalStored(round: StoredRound, guess: TimedGuess): FinalRound {
+  const player = (role: RevealedPlayer["role"], p: StoredPlayer): RevealedPlayer => ({
+    role,
+    id: p.id,
+    name: p.name,
+    value: p.value,
+    display: p.display,
+    ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
+  });
+  return {
+    stat: round.stat,
+    guess,
+    players: [player("anchor", round.anchor), player("challenger", round.challenger)],
+  };
+}
+
+/** A stored Daily round as the player had seen it at `phase` (as `shownRound`). */
+export function shownStored(round: StoredRound, phase: LeavePhase): ShownRound {
+  const player = (role: ShownPlayer["role"], p: StoredPlayer, shown: boolean): ShownPlayer => ({
+    role,
+    id: p.id,
+    name: p.name,
+    ...(shown
+      ? {
+          value: p.value,
+          display: p.display,
+          ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
+        }
+      : {}),
+  });
+  return {
+    stat: round.stat,
+    players: [
+      player("anchor", round.anchor, phase === "question" || phase === "reveal"),
+      player("challenger", round.challenger, phase === "reveal"),
+    ],
+  };
 }
 
 /**

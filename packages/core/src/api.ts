@@ -41,8 +41,13 @@ export type TimedGuess = Guess | "timeout";
  * - `disconnected`: in a timed mode, no answer came at all — the server closes
  *   the run a little after the deadline, keeping the streak it had verified.
  *   Only ever in the server's own records; the client banks the run itself.
+ * - `finished`: Daily Ranked, question 20 answered without all twenty right
+ *   (a perfect run goes on into the bonus, where `wrong` or `timeout` ends it);
+ * - `abandoned`: Daily Ranked, a run with no activity for `IDLE_FINISH_MS`,
+ *   finished by the server with every unanswered question counted wrong.
  */
-export type RunEnd = "wrong" | "deck-exhausted" | "won" | "timeout" | "disconnected";
+export type RunEnd =
+  "wrong" | "deck-exhausted" | "won" | "timeout" | "disconnected" | "finished" | "abandoned";
 
 /** Starts a Friendly run. The server mints the run id; the client never picks a seed. */
 export interface StartRequest {
@@ -76,7 +81,7 @@ export type LeaveTrigger = "hidden" | "pagehide";
  * the run. The server looks the round up for itself; nothing else is sent.
  */
 export interface LeaveRequest {
-  readonly mode: "friendly" | "endless";
+  readonly mode: "friendly" | "endless" | "ranked";
   /** An Endless run's variant, when not general Endless. */
   readonly variant?: NamedVariant;
   readonly runId: string;
@@ -406,6 +411,172 @@ export interface BoardResponse {
   };
 }
 
+// ------------------------------------------------------------ Daily Ranked
+
+/**
+ * `POST /api/run/start` for Daily Ranked: the name, the flag choice and
+ * Turnstile travel with the start, so pressing Play is the whole commitment.
+ * A name that is refused or taken starts nothing and uses no attempt.
+ */
+export interface DailyStartRequest {
+  readonly mode: "ranked";
+  /** Checked with `checkNickname`, the blocklist, and for uniqueness within the game. */
+  readonly nickname: string;
+  /** "Show my country flag", as in publishing. */
+  readonly showCountry: boolean;
+  /** The random id this browser keeps; the server keeps only a keyed hash of it. */
+  readonly deviceId: string;
+  readonly turnstileToken: string;
+}
+
+export interface DailyStartResponse {
+  readonly runId: string;
+  readonly gameNo: number;
+  readonly round: RoundPayload;
+  readonly token: string;
+  /** The flag's country code, or null: the flag the board will show, if any. */
+  readonly country: string | null;
+  /** As stored: cleaned (`cleanNickname`). */
+  readonly nickname: string;
+}
+
+/**
+ * A finished Daily run, as its player sees it. `results` is right or wrong
+ * for each question answered, in order — the twenty, then the bonus rounds —
+ * which the player has already seen; never a value.
+ */
+export interface DailyResult {
+  readonly gameNo: number;
+  readonly score: number;
+  /** Right answers out of the twenty. */
+  readonly correct: number;
+  /** Bonus rounds answered right after a perfect twenty. */
+  readonly bonus: number;
+  readonly results: readonly boolean[];
+  readonly end: RunEnd;
+  /** Null for a name that has been retired. */
+  readonly nickname: string | null;
+  /** Where the run stands on the game's board, as its owner sees it; null until it is posted. */
+  readonly rank: number | null;
+  readonly total: number | null;
+}
+
+/** A Daily run is over: the reveal, and the run's result, already on the board. */
+export interface DailyGuessEndResponse {
+  readonly reveal: Reveal;
+  readonly end: RunEnd;
+  readonly result: DailyResult;
+}
+
+/** `POST /api/round/guess` with a Daily token: the next question, or the end. */
+export type DailyGuessResponse = GuessContinueResponse | DailyGuessEndResponse;
+
+/**
+ * `POST /api/run/resume`: carries on this device's Daily run after a refresh.
+ * The server finds the run from the device; `runId` is only a hint.
+ */
+export interface DailyResumeRequest {
+  readonly deviceId: string;
+  readonly runId?: string;
+}
+
+export type DailyResumeResponse =
+  | {
+      readonly state: "playing";
+      readonly runId: string;
+      readonly gameNo: number;
+      /** The question on screen, with a fresh token. Its clock has kept running. */
+      readonly round: RoundPayload;
+      readonly token: string;
+      /**
+       * Time left on the question, ms, when it was already open; null for a
+       * question dealt fresh by this resume, which gets its whole limit.
+       */
+      readonly remainingMs: number | null;
+      /** Right or wrong for each question answered so far. */
+      readonly results: readonly boolean[];
+      readonly nickname: string;
+      readonly country: string | null;
+    }
+  | { readonly state: "finished"; readonly result: DailyResult }
+  | { readonly state: "none" };
+
+/** One row of a Daily board. */
+export interface DailyBoardEntry {
+  readonly id: string;
+  readonly rank: number;
+  /** Null for a retired name. */
+  readonly nickname: string | null;
+  readonly score: number;
+  /** Twenty out of twenty: the score includes `bonus` bonus rounds. */
+  readonly perfect: boolean;
+  readonly bonus: number;
+  /** Another entry on the game's public board has the same score: the thinking time is shown. */
+  readonly tied: boolean;
+  /** Thinking time, ms, the tiebreak on equal scores; null unless `tied`. */
+  readonly thinkMs: number | null;
+  readonly country: string | null;
+}
+
+/**
+ * `GET /api/board/daily`: today's game, its top `BOARD_SIZE` (50). Before
+ * launch day `gameNo` is 0, with no entries and `nextGameAt` Game 1's start.
+ */
+export interface DailyBoardResponse {
+  readonly mode: "ranked";
+  readonly gameNo: number;
+  /** When the next game starts, ms. */
+  readonly nextGameAt: number;
+  /** Players with a finished run in the game. */
+  readonly total: number;
+  readonly entries: readonly DailyBoardEntry[];
+  /** The game before and its winner, from its snapshot; null before Game 2. */
+  readonly previous: {
+    readonly gameNo: number;
+    readonly winner: {
+      readonly nickname: string | null;
+      readonly score: number;
+      readonly perfect: boolean;
+      readonly bonus: number;
+      readonly country: string | null;
+    } | null;
+  } | null;
+}
+
+/** `POST /api/board/daily/me`: this device and today's game. */
+export interface DailyMineRequest {
+  readonly deviceId: string;
+}
+
+/**
+ * Every answer also carries `country`: the flag's code for this connection
+ * (Cloudflare's), or null, so the start panel can show the flag "Show my
+ * country flag" will put on the board. Only the code, never anything finer.
+ */
+export type DailyMineResponse =
+  | {
+      readonly gameNo: number;
+      readonly nextGameAt: number;
+      readonly country: string | null;
+      readonly state: "none";
+    }
+  | {
+      readonly gameNo: number;
+      readonly nextGameAt: number;
+      readonly country: string | null;
+      readonly state: "playing";
+      readonly nickname: string;
+    }
+  | {
+      readonly gameNo: number;
+      readonly nextGameAt: number;
+      readonly country: string | null;
+      readonly state: "finished";
+      readonly result: DailyResult;
+      /** The device's row as its owner sees it, for the board's pinned row. */
+      readonly standing: DailyBoardEntry;
+    };
+
 export type ApiErrorCode =
   | "bad_request"
   | "not_found"
@@ -417,7 +588,9 @@ export type ApiErrorCode =
   | "verification_failed"
   /**
    * Endless: the progress token was already spent, is out of order, or its run
-   * is over. The run is void; nothing more is taken for it.
+   * is over. The run is void; nothing more is taken for it. Daily Ranked: the
+   * same refusals without voiding the run, and at a start `name_taken`,
+   * `already_played` or `not_started` (as the detail).
    */
   | "conflict"
   /** Feedback only: the message couldn't be sent on. */
@@ -455,8 +628,8 @@ export interface SuggestRequest {
  */
 export interface CorrectionRequest {
   readonly kind: "correction";
-  /** Endless for an Endless run's report; absent for Friendly's, as before. */
-  readonly mode?: "endless";
+  /** Endless or Daily Ranked for their runs' reports; absent for Friendly's, as before. */
+  readonly mode?: "endless" | "ranked";
   /** An Endless run's variant, when not general Endless. */
   readonly variant?: NamedVariant;
   readonly runId: string;

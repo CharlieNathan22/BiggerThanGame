@@ -1,0 +1,40 @@
+---
+// The game: Daily Ranked on the Legends deck (DESIGN.md §3). The same
+// fixed-height, no-scroll screen and island as the other modes, with
+// Friendly's twenty-question track and Endless's clock; the start panel takes
+// the player's name. Indexed like the other game pages, with its own title,
+// description, breadcrumb and the site's default preview image.
+import Base from "../../../layouts/Base.astro";
+import Footer from "../../../components/Footer.astro";
+import Game from "../../../components/game/Game.svelte";
+import { t } from "../../../i18n";
+import { DAILY_PATH } from "../../../lib/paths";
+import { breadcrumbLd, breadcrumbTrail, gameLd } from "../../../lib/seo";
+---
+
+<Base
+  title={t("daily.title")}
+  description={t("daily.description")}
+  game
+  structuredData={[breadcrumbLd(breadcrumbTrail(DAILY_PATH)), gameLd()]}
+>
+  <!-- client:load, not client:visible: the first tap must not wait (ARCHITECTURE.md §14). -->
+  <Game client:load deck="legends" mode="ranked" path={DAILY_PATH} />
+  <noscript>
+    <p class="noscript">{t("start.noscript")}</p>
+  </noscript>
+  <Footer />
+</Base>
+
+<style>
+  /* The island's wrapper element must not break the page's flex column. */
+  :global(astro-island) {
+    display: contents;
+  }
+  .noscript {
+    padding: 8px 18px;
+    text-align: center;
+    font-size: var(--fs-body);
+    color: var(--dim);
+  }
+</style>

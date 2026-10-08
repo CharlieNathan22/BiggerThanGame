@@ -109,6 +109,36 @@ describe("the saved queries", () => {
     }
   });
 
+  it("works out Daily Ranked's rates over the games shown", () => {
+    const rows = [
+      {
+        game: 12,
+        players: 100,
+        finished: 90,
+        perfect: 9,
+        abandoned: 9,
+        resumes: 20,
+        shadowed: 1,
+        repeat_connection: 5,
+      },
+      {
+        game: 11,
+        players: 100,
+        finished: 110,
+        perfect: 2,
+        abandoned: 1,
+        resumes: 10,
+        shadowed: 1,
+        repeat_connection: 5,
+      },
+    ];
+    expect(QUERIES.daily.summary(rows)).toBe(
+      "20/20 rate 5.5%; resumes 15% of starts; finished by the alarm 5%; shadow rate 1%; " +
+        "repeat connections 5% of starts",
+    );
+    expect(QUERIES.daily.summary([])).toContain("20/20 rate –");
+  });
+
   it("works out Endless's publish and shadow rates", () => {
     const rows = QUERIES.endless.post([
       { event: "end", events: "200", mean_score: 9.5, published: "0", shadowed: "0" },

@@ -19,7 +19,9 @@ import {
   FRIENDLY_PATH,
   HOME_PATH,
   INSTAGRAM_PATH,
-  LEADERBOARD_PATH,
+  DAILY_LEADERBOARD_PATH,
+  DAILY_PATH,
+  ENDLESS_LEADERBOARD_PATH,
   LEGENDS_PATH,
 } from "./paths";
 
@@ -167,7 +169,9 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
   const friendly = { name: t("mode.friendly.name"), path: FRIENDLY_PATH };
   const endless = { name: t("mode.endless.name"), path: ENDLESS_PATH };
   const instagram = { name: t("mode.instagram.subtitle"), path: INSTAGRAM_PATH };
-  const leaderboard = { name: t("over.leaderboard"), path: LEADERBOARD_PATH };
+  const daily = { name: t("mode.ranked.name"), path: DAILY_PATH };
+  const leaderboard = { name: t("over.leaderboard"), path: ENDLESS_LEADERBOARD_PATH };
+  const dailyBoard = { name: t("over.leaderboard"), path: DAILY_LEADERBOARD_PATH };
   switch (path) {
     case FOOTBALL_PATH:
       return [home, football];
@@ -179,8 +183,12 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
       return [home, football, legends, endless];
     case INSTAGRAM_PATH:
       return [home, football, legends, endless, instagram];
-    case LEADERBOARD_PATH:
+    case ENDLESS_LEADERBOARD_PATH:
       return [home, football, legends, endless, leaderboard];
+    case DAILY_PATH:
+      return [home, football, legends, daily];
+    case DAILY_LEADERBOARD_PATH:
+      return [home, football, legends, daily, dailyBoard];
     default:
       return [];
   }

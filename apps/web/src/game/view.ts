@@ -15,8 +15,13 @@ import type { PlayLike } from "./variant";
  * (`7/20` in Friendly, `21/34` through a squad), else the plain number.
  */
 export function scoreFigure(score: number, play: PlayLike): string {
-  const { target } = asPlay(play);
-  return target === null ? String(score) : t("score.of", { score, target });
+  const { mode, target } = asPlay(play);
+  if (target === null) return String(score);
+  // Daily Ranked past a perfect twenty: "20/20 +3".
+  if (mode === "ranked" && score > target) {
+    return t("daily.titleBonus", { target, bonus: score - target });
+  }
+  return t("score.of", { score, target });
 }
 
 /** Whether `round` is the play's final question: the last of its win target. */
@@ -146,6 +151,14 @@ export function announcement(state: GameState, play: PlayLike): string {
   if (best !== null) return best === "new" ? t("live.newHighScore") : t("live.matchedBest");
   if ((state.phase === "verdict" || state.phase === "over") && reveal !== null) {
     const params = { challenger: round.challenger.name, value: reveal.display };
+    // Daily Ranked: a miss among the twenty goes on to the next question.
+    if (state.mode === "ranked") {
+      if (state.end !== null) {
+        return t("live.dailyDone", { ...params, score: scoreFigure(state.streak, play) });
+      }
+      if (state.guess === "timeout" && !reveal.correct) return t("live.timeoutOn", params);
+      if (!reveal.correct) return t("live.wrongOn", params);
+    }
     if (state.end === "timeout") return t("live.timeout", params);
     if (!reveal.correct) return t("live.wrong", params);
     if (state.end === "won") {
@@ -374,9 +387,13 @@ export function scoreBadge(state: GameState, play: PlayLike): ScoreBadge | null 
   const last = state.history.at(-1);
   if (last === undefined || !last.correct) return null;
   const score = scoreFigure(state.streak, play);
-  const title = STREAK_TITLES[mode].find(
-    (t) => t.min === state.streak && (target === null || t.min < target),
-  );
+  // Daily Ranked has no streak titles: its score is right answers, not a streak.
+  const title =
+    mode === "ranked"
+      ? undefined
+      : STREAK_TITLES[mode].find(
+          (t) => t.min === state.streak && (target === null || t.min < target),
+        );
   return title === undefined
     ? { key: state.streak, text: score, milestone: false }
     : {
@@ -505,8 +522,10 @@ export interface TopClock extends ClockState {
  * The big clock for the game as it stands at `now`. Running while a question
  * can be answered; frozen on the second the player answered at, through the
  * reveal and the next deal, until the next question becomes answerable; at
- * the full limit, waiting, while round one is dealt. Null in a mode without a
- * clock, and before the cards are in or once the run is over.
+ * the full limit, waiting, while round one is dealt — except a Daily question
+ * picked up after a refresh (`cap`), which counts down what is really left
+ * from its first frame. Null in a mode without a clock, and before the cards
+ * are in or once the run is over.
  */
 export function topClock(state: GameState, now: number): TopClock | null {
   const { phase, round } = state;
@@ -522,6 +541,15 @@ export function topClock(state: GameState, now: number): TopClock | null {
     return { ...clockState(state.stopped.remainingMs), running: false, frozen: true };
   }
   const limit = questionLimit(state.mode, round.index) ?? 0;
+  // A Daily question picked up after a refresh: its clock never stopped, so
+  // it counts down from what the server said was left, from the first frame.
+  if (state.cap !== null) {
+    return {
+      ...clockState(Math.max(0, Math.min(limit, state.cap - now))),
+      running: true,
+      frozen: false,
+    };
+  }
   return { ...clockState(limit), running: false, frozen: false };
 }
 

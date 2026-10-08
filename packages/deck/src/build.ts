@@ -11,7 +11,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { THEME_MIN_PLAYERS } from "@bt/core";
+import { DAILY_EPOCH, THEME_MIN_PLAYERS, assertDailyEpoch } from "@bt/core";
 
 import {
   buildCredits,
@@ -35,6 +35,7 @@ import {
   simulationReport,
 } from "./simulate.js";
 import type { PlayerModel } from "./simulate.js";
+import { dailySection, simulateDaily } from "./simulate-daily.js";
 import { simulateSquads, squadPairsText, squadSection } from "./simulate-squad.js";
 import { formatProblems, formatStaleInstagram, staleInstagram, validateDeck } from "./validate.js";
 import { viabilityReport } from "./viability.js";
@@ -129,6 +130,24 @@ export function requirePrivateError(deck: LoadedDeck, requirePrivate: boolean): 
   );
 }
 
+/**
+ * The production build's Daily Ranked check: `DAILY_EPOCH` must be set to
+ * launch day, so the site never goes live numbering games from the dev epoch.
+ * Undefined when the build may proceed.
+ */
+export function dailyEpochError(
+  requirePrivate: boolean,
+  epoch: string | null = DAILY_EPOCH,
+): string | undefined {
+  if (!requirePrivate) return undefined;
+  try {
+    assertDailyEpoch(epoch);
+    return undefined;
+  } catch (err) {
+    return `--require-private: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
 export function runBuild(opts: BuildOptions = {}): number {
   const now = opts.now ?? new Date();
 
@@ -143,7 +162,9 @@ export function runBuild(opts: BuildOptions = {}): number {
     for (const p of loaded.privateProblems) console.warn(`    ${p}`);
   }
 
-  const refusal = requirePrivateError(loaded, opts.requirePrivate === true);
+  const refusal =
+    requirePrivateError(loaded, opts.requirePrivate === true) ??
+    dailyEpochError(opts.requirePrivate === true);
   if (refusal !== undefined) {
     console.error(`\ndeck: ${refusal}\n`);
     return 1;
@@ -243,11 +264,13 @@ export function runBuild(opts: BuildOptions = {}): number {
       closenessAt: INSTAGRAM_CLOSENESS_AT,
     });
     const squads = simulateSquads({ deck: loaded.players, now, runs, model });
+    const daily = simulateDaily({ deck: loaded.players, now, runs, model });
     console.log(`  ${((Date.now() - started) / 1000).toFixed(1)}s`);
     write(
       join(packageRoot, "simulation.md"),
       [
         simulationReport(results, loaded.players.length, now, instagram),
+        ...dailySection(daily),
         ...squadSection(squads),
       ].join("\n"),
     );

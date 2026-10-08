@@ -16,6 +16,8 @@ import {
   websiteLd,
 } from "../seo";
 import {
+  DAILY_LEADERBOARD_PATH,
+  DAILY_PATH,
   ENDLESS_PATH,
   FOOTBALL_PATH,
   FRIENDLY_PATH,
@@ -52,6 +54,25 @@ describe("the pages in search", () => {
       INSTAGRAM_PATH,
     ]);
     expect(breadcrumbTrail(INSTAGRAM_PATH).at(-1)?.name).toBe("Instagram");
+  });
+
+  it("include Daily Ranked under the Legends page, and its board under it", () => {
+    expect(INDEXABLE_PAGES).toContain(DAILY_PATH);
+    expect(INDEXABLE_PAGES).toContain(DAILY_LEADERBOARD_PATH);
+    expect(breadcrumbTrail(DAILY_PATH).map((c) => c.path)).toEqual([
+      HOME_PATH,
+      FOOTBALL_PATH,
+      LEGENDS_PATH,
+      DAILY_PATH,
+    ]);
+    expect(breadcrumbTrail(DAILY_LEADERBOARD_PATH).map((c) => c.path)).toEqual([
+      HOME_PATH,
+      FOOTBALL_PATH,
+      LEGENDS_PATH,
+      DAILY_PATH,
+      DAILY_LEADERBOARD_PATH,
+    ]);
+    expect(breadcrumbTrail(DAILY_PATH).at(-1)?.name).toBe("Daily Ranked");
   });
 
   it("put the Endless page under the Legends page, like Friendly", () => {

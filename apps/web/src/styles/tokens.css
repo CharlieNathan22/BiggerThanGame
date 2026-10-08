@@ -228,6 +228,8 @@
   --fs-legends: 19px;
   --fs-score-label: 10.5px;
   --fs-score: 18px;
+  /* Daily Ranked's bonus beside the score in the title bar ("+3"): smaller than it. */
+  --fs-score-bonus: 13px;
 
   /* Cards. */
   --fs-name: clamp(22px, 4.1vh, 36px);
@@ -647,6 +649,35 @@
   /* "Your best: n" on a mode's card: gold, or the card's accent. */
   --card-best: var(--gold);
   --card-glyph: 26px;
+  /* Daily Ranked's premium card at the top of the Legends page: a gold edge,
+     a gold-leaf band along the top, a warm glow from the top behind the text
+     (dark enough under it that the body text keeps AA), and a deeper gold
+     glow when lifted. Its live lines: the game in gold leaf, the countdown,
+     and the result or a Play pill in the button's place (--daily-card-action-h). */
+  --daily-card-edge: rgba(var(--glow-rgb), 0.62);
+  --daily-card-surface:
+    radial-gradient(ellipse 80% 70% at 50% 0%, rgba(var(--glow-rgb), 0.16), transparent 70%),
+    var(--card-surface);
+  --daily-card-band-h: 4px;
+  --daily-card-shadow:
+    var(--card-top-light), 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(0, 0, 0, 0.4),
+    0 0 22px rgba(var(--glow-rgb), 0.22);
+  --daily-card-shadow-lifted:
+    var(--card-top-light), 0 2px 4px rgba(0, 0, 0, 0.45), 0 22px 48px rgba(0, 0, 0, 0.45),
+    0 0 34px rgba(var(--glow-rgb), 0.45);
+  --fs-daily-card-name: 30px;
+  --fs-daily-card-game: 20px;
+  --daily-card-status-gap: 4px;
+  /* The button's place, the same height in every state: the result line and
+     the "come back tomorrow" pill (two lines on a narrow phone) fit in it,
+     and Play sits in its middle. */
+  --daily-card-action-h: 76px;
+  /* While the card asks the server: Play's size, a faint gold and no words. */
+  --daily-card-pending-bg: rgba(var(--glow-rgb), 0.14);
+  /* "Today's game completed": status text in a muted pill, not a button. */
+  --daily-card-done-bg: rgba(255, 255, 255, 0.06);
+  --daily-card-done-pad: 6px 16px;
+  --daily-card-done-lh: 1.35;
 
   /* "Clear the squad"'s theme cards (ThemeCard.astro), each in colours of its own,
      by theme id: -1 and -2 its two colours, for the edge's gradient; -rgb the
@@ -773,6 +804,16 @@
   --board-tab-gap: 6px;
   --board-tab-pad: 0 12px;
   --board-tab-max-w: 160px;
+  /* The switch between the two boards (BoardSwitch.astro), under the
+     heading: the same pills, the other one outlined in the cards' edge. */
+  --board-switch-top: 14px;
+  --board-switch-max-w: 340px;
+  --board-switch-edge: var(--card-edge);
+  /* Daily Ranked's start panel: the name field under the rules. */
+  --daily-form-top: 12px;
+  /* A perfect Daily run's star after its score. */
+  --board-star-gap: 2px;
+  --board-star-size: 0.8em;
   --board-cell-pad: 0 6px;
   /* Pages of --board-page-rows rows of --board-row-h, under a --board-head-h
      header; the pinned row is --board-pin-h, a line taller. */

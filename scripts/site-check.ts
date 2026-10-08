@@ -133,12 +133,15 @@ const FRIENDLY = `${LEGENDS}/friendly`;
 const ENDLESS = `${LEGENDS}/endless`;
 const INSTAGRAM = `${ENDLESS}/instagram`;
 const LEADERBOARD = `${ENDLESS}/leaderboard`;
+const DAILY = `${LEGENDS}/daily`;
+const DAILY_LEADERBOARD = `${DAILY}/leaderboard`;
 
 /**
  * What the built site must be, given its non-page files. The Endless page is a
  * game page like Friendly's, with its own canonical and the site's default
  * preview; its leaderboard is an ordinary page under it, with a breadcrumb.
- * Instagram Endless is a game page under Endless, like Endless itself. Each
+ * Instagram Endless is a game page under Endless, like Endless itself. Daily
+ * Ranked is a game page under the Legends page, its board a page under it. Each
  * "Clear the squad" theme (`themePaths`, from the deck build's themes.json) is
  * a game page too, under the Legends page.
  */
@@ -158,6 +161,8 @@ export function siteExpectations(
       [ENDLESS]: game,
       [INSTAGRAM]: game,
       [LEADERBOARD]: ["BreadcrumbList"],
+      [DAILY]: game,
+      [DAILY_LEADERBOARD]: ["BreadcrumbList"],
       ...Object.fromEntries(themePaths.map((path) => [path, game])),
     },
     files,

@@ -21,7 +21,15 @@
  * send are all injected, so tests drive this in Node.
  */
 
-import { STATS, buildRun, isSquadVariantId, statLabel, themeIdOf, valueOf } from "@bt/core";
+import {
+  STATS,
+  buildRun,
+  gameNoAt,
+  isSquadVariantId,
+  statLabel,
+  themeIdOf,
+  valueOf,
+} from "@bt/core";
 import type {
   ApiError,
   CorrectionRequest,
@@ -37,7 +45,18 @@ import type { FeedbackRejection } from "./feedback-validate.js";
 import type { LogLine, LogValue } from "./log.js";
 import type { PlainTextMail } from "./mail.js";
 import { figureFor } from "./payload.js";
-import { canDeal, dealOptions, isRunAnswerable, runModeOf, verifyRunId } from "./run-id.js";
+import { readDailyGame } from "./daily-game.js";
+import type { StoredPlayer } from "./daily-game.js";
+import {
+  canDeal,
+  dealOptions,
+  isRunAnswerable,
+  isRunDateCurrent,
+  runModeOf,
+  verifyRankedRunId,
+  verifyRunId,
+} from "./run-id.js";
+import type { D1Like } from "./scores.js";
 import type { RunId, RunMode } from "./run-id.js";
 import { seedFor } from "./seed.js";
 import type { TurnstileOutcome } from "./turnstile.js";
@@ -69,6 +88,8 @@ export interface FeedbackContext {
   readonly accepted?: (feedback: AcceptedFeedback) => void;
   /** Sends the message. Throws when it couldn't. */
   readonly send: (mail: PlainTextMail) => Promise<void>;
+  /** Daily Ranked's games, where its rounds are looked up: D1, and the epoch in force. */
+  readonly daily?: { readonly db: D1Like; readonly epoch: number };
 }
 
 /** What a sender submitted, as the log keeps it: only what they typed or were shown. */
@@ -186,8 +207,9 @@ type CorrectionReport =
  */
 export async function correctionReport(
   req: CorrectionRequest,
-  ctx: Pick<FeedbackContext, "deck" | "secret" | "clock">,
+  ctx: Pick<FeedbackContext, "deck" | "secret" | "clock" | "daily">,
 ): Promise<CorrectionReport> {
+  if (req.mode === "ranked") return dailyCorrection(req, ctx);
   const mode = runModeOf(req.mode ?? "friendly", req.variant);
   const run = await verifyRunId(req.runId, ctx.secret, mode);
   if (run === undefined || run.replay) return { ok: false, code: "invalid_run" };
@@ -225,6 +247,54 @@ export async function correctionReport(
     const { display, qualifier } = figureFor(player, round.stat, now);
     return { role, name: player.name, display, ...(qualifier !== undefined ? { qualifier } : {}) };
   };
+  const submitted: Submitted = {
+    ...(req.note !== undefined ? { note: req.note } : {}),
+    run: run.body,
+    round: round.index,
+    stat: { id: def.key, label: def.label },
+    players: [shown("anchor", round.anchor), shown("challenger", round.challenger)],
+  };
+  return { ok: true, text, submitted };
+}
+
+/** A Daily run's report: the round from its stored game, as the cards showed it. */
+async function dailyCorrection(
+  req: CorrectionRequest,
+  ctx: Pick<FeedbackContext, "secret" | "clock" | "daily">,
+): Promise<CorrectionReport> {
+  const run = await verifyRankedRunId(req.runId, ctx.secret);
+  if (run === undefined || ctx.daily === undefined) return { ok: false, code: "invalid_run" };
+  if (!isRunDateCurrent(run.date, ctx.clock())) return { ok: false, code: "run_expired" };
+  const gameNo = gameNoAt(run.date.getTime(), ctx.daily.epoch);
+  const game = await readDailyGame(ctx.daily.db, gameNo, ctx.daily.epoch);
+  const round = game?.rounds[req.round - 1];
+  if (round === undefined) return { ok: false, code: "invalid_round" };
+
+  const def = STATS[round.stat];
+  const line = (p: StoredPlayer): string => {
+    const shown = p.qualifier === undefined ? p.display : `${p.display}, ${p.qualifier}`;
+    return `${p.name} (${p.id}): ${shown} [${p.value}]`;
+  };
+  const text = [
+    "Correction report",
+    "",
+    `Stat: ${statLabel(round.stat)} (${def.key})`,
+    `Shown:  ${line(round.anchor)}`,
+    `Hidden: ${line(round.challenger)}`,
+    "",
+    "Note:",
+    req.note ?? "(none)",
+    "",
+    `Round ${round.index} of Daily Ranked Game ${gameNo}, run ${run.body}`,
+    `Received: ${ctx.clock().toISOString()}`,
+    "",
+  ].join("\n");
+  const shown = (role: "anchor" | "challenger", p: StoredPlayer): LogValue => ({
+    role,
+    name: p.name,
+    display: p.display,
+    ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
+  });
   const submitted: Submitted = {
     ...(req.note !== undefined ? { note: req.note } : {}),
     run: run.body,

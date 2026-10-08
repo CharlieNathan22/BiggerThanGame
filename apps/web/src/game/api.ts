@@ -73,6 +73,8 @@ export class ApiFailure extends Error {
     readonly code: ApiErrorCode | "network" | "turnstile",
     /** Seconds, from `retry-after` on a 429. */
     readonly retryAfter?: number,
+    /** The error's detail, when it has one: Daily Ranked's `name_taken`, `already_played`… */
+    readonly detail?: string,
   ) {
     super(`round request failed: ${status} ${code}`);
     this.name = "ApiFailure";
@@ -106,10 +108,12 @@ function poster(fetchFn: Fetch, timeoutMs: number) {
     }
     if (!response.ok) {
       const retry = Number(response.headers.get("retry-after"));
+      const { code, detail } = await errorOf(response);
       throw new ApiFailure(
         response.status,
-        await errorCode(response),
+        code,
         Number.isFinite(retry) && retry > 0 ? retry : undefined,
+        detail,
       );
     }
     try {
@@ -141,6 +145,11 @@ export function createApi(fetchFn: Fetch, options: ApiOptions = {}): GameApi {
  * A retried guess sends the same token again, which the server answers the
  * same way; the token only moves on once a response lands.
  */
+/** POSTs `body` as JSON, the shared way (an `ApiFailure` on any trouble): for Daily Ranked's calls. */
+export function jsonPoster(fetchFn: Fetch, timeoutMs = REQUEST_TIMEOUT_MS) {
+  return poster(fetchFn, timeoutMs);
+}
+
 export function createEndlessApi(
   fetchFn: Fetch,
   checkHuman: () => Promise<string>,
@@ -198,12 +207,17 @@ export function createEndlessApi(
   };
 }
 
-async function errorCode(response: Response): Promise<ApiErrorCode | "network"> {
+async function errorOf(
+  response: Response,
+): Promise<{ code: ApiErrorCode | "network"; detail?: string }> {
   try {
-    const body = (await response.json()) as { error?: unknown };
-    return typeof body.error === "string" ? (body.error as ApiErrorCode) : "network";
+    const body = (await response.json()) as { error?: unknown; detail?: unknown };
+    return {
+      code: typeof body.error === "string" ? (body.error as ApiErrorCode) : "network",
+      ...(typeof body.detail === "string" ? { detail: body.detail } : {}),
+    };
   } catch {
-    return "network";
+    return { code: "network" };
   }
 }
 
@@ -214,6 +228,22 @@ async function errorCode(response: Response): Promise<ApiErrorCode | "network"> 
  */
 export function classifyFailure(err: unknown): Failure {
   if (!(err instanceof ApiFailure)) return { kind: "network" };
+  // Daily Ranked's start, refused before anything was used.
+  if (err.status === 422 && err.code === "nickname_rejected") {
+    return { kind: "refused", reason: "nameRejected" };
+  }
+  if (err.status === 400 && err.detail?.startsWith("nickname_") === true) {
+    return { kind: "refused", reason: "nameRejected" };
+  }
+  if (err.status === 409 && err.detail === "name_taken") {
+    return { kind: "refused", reason: "nameTaken" };
+  }
+  if (err.status === 409 && err.detail === "already_played") {
+    return { kind: "refused", reason: "played" };
+  }
+  if (err.status === 409 && err.detail === "not_started") {
+    return { kind: "refused", reason: "notStarted" };
+  }
   if (err.code === "turnstile" || err.code === "verification_failed") {
     return { kind: "verification" };
   }

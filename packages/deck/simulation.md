@@ -1,28 +1,28 @@
 # Simulation
 
-20,000 runs per mode over 131 players, generated 2026-10-06. Every mode uses the same seeds, so the columns differ only by what the mode changes.
+20,000 runs per mode over 131 players, generated 2026-10-08. Every mode uses the same seeds, so the columns differ only by what the mode changes.
 
 > Streaks come from a **modelled** player, `fan`: a keen football fan, accurate 0.55 at 0, 0.65 at 0.03, 0.78 at 0.08, 0.88 at 0.15, 0.95 at 0.3, 0.99 at 0.5 (rank distance), linear in between and flat beyond the last point. **That model is an assumption** (see Player models below), to be replaced by the accuracy curve observed in real play.
 
 ## Streak distribution
 
-| Measure | friendly | endless | ranked |
-|---|---|---|---|
-| Mean | 12.3 | 9.9 | 23.6 |
-| Median | 12 | 10 | 23 |
-| 75th percentile | 15 | 12 | 32 |
-| 90th percentile | 17 | 16 | 39 |
-| 99th percentile | 20 | 24 | 48 |
-| Best | 20 | 39 | 60 |
+| Measure | friendly | endless |
+|---|---|---|
+| Mean | 12.3 | 9.9 |
+| Median | 12 | 10 |
+| 75th percentile | 15 | 12 |
+| 90th percentile | 17 | 16 |
+| 99th percentile | 20 | 24 |
+| Best | 20 | 39 |
 
-| Streak | friendly | endless | ranked |
-|---|---|---|---|
-| 0 | 1.0% | 1.0% | 1.0% |
-| 1–4 | 4.3% | 4.3% | 4.3% |
-| 5–9 | 7.7% | 41.8% | 5.4% |
-| 10–19 | 82.2% | 49.4% | 26.2% |
-| 20–29 | 4.8% | 3.3% | 32.8% |
-| 30+ | 0.0% | 0.2% | 30.4% |
+| Streak | friendly | endless |
+|---|---|---|
+| 0 | 1.0% | 1.0% |
+| 1–4 | 4.3% | 4.3% |
+| 5–9 | 7.7% | 41.8% |
+| 10–19 | 82.2% | 49.4% |
+| 20–29 | 4.8% | 3.3% |
+| 30+ | 0.0% | 0.2% |
 
 ## Friendly: the 20-question challenge
 
@@ -41,11 +41,11 @@ Reached at least:
 
 | Streak | 5 | 10 | 15 | 18 | 20 |
 |---|---|---|---|---|---|
-| Runs | 94.7% | 87.0% | 25.4% | 9.6% | 4.8% |
+| Runs | 94.7% | 87.0% | 25.4% | 9.5% | 4.8% |
 
 **Win rate: 4.8%.**
 
-Reached the final question (round 20): 6.7% of runs, and 70.9% of those won.
+Reached the final question (round 20): 6.7% of runs, and 71.4% of those won.
 
 By question: the round's scheduled band, the share of runs dealt the question,
 and the share of those that answered it right.
@@ -64,14 +64,14 @@ and the share of those that answered it right.
 | 10 | ≥0.35 | 88.5% | 98.3% |
 | 11 | 0.06–0.16 | 87.0% | 83.2% |
 | 12 | 0.06–0.16 | 72.4% | 82.3% |
-| 13 | 0.06–0.16 | 59.6% | 82.0% |
+| 13 | 0.06–0.16 | 59.6% | 82.1% |
 | 14 | 0.02–0.08 | 48.9% | 72.2% |
 | 15 | 0.02–0.08 | 35.3% | 72.0% |
 | 16 | 0.02–0.08 | 25.4% | 71.3% |
-| 17 | 0.02–0.08 | 18.1% | 70.7% |
+| 17 | 0.02–0.08 | 18.1% | 70.6% |
 | 18 | 0.02–0.04, ≥10% apart | 12.8% | 74.6% |
-| 19 | 0.02–0.04, ≥10% apart | 9.6% | 70.5% |
-| 20 | 0.01–0.03, ≥10% apart | 6.7% | 70.9% |
+| 19 | 0.02–0.04, ≥10% apart | 9.5% | 70.4% |
+| 20 | 0.01–0.03, ≥10% apart | 6.7% | 71.4% |
 
 ## Friendly under each player model
 
@@ -83,11 +83,11 @@ is the model that played the runs above.
 | Mean streak | 12.3 | 6.7 |
 | Median streak | 12 | 6 |
 | Reached question 18 | 12.8% | 1.7% |
-| Reached question 19 | 9.6% | 1.1% |
+| Reached question 19 | 9.5% | 1.1% |
 | Reached question 20 | 6.7% | 0.7% |
-| Correct on question 18 | 74.6% | 66.5% |
-| Correct on question 19 | 70.5% | 64.9% |
-| Correct on question 20 | 70.9% | 66.0% |
+| Correct on question 18 | 74.6% | 66.6% |
+| Correct on question 19 | 70.4% | 64.6% |
+| Correct on question 20 | 71.4% | 66.0% |
 | **Win rate** | **4.8%** | **0.5%** |
 
 ## Endless: a streak with no finish line
@@ -109,10 +109,10 @@ the rest of this report describes.
 | Reached the cap (150) | 0.0% | 0.0% |
 | Correct, rounds 1–5 | 98.9% | 90.7% |
 | Correct, rounds 6–10 | 89.0% | 76.1% |
-| Correct, rounds 11–15 | 76.1% | 65.1% |
-| Correct, rounds 16–20 | 76.5% | 65.8% |
-| Correct, rounds 21–30 | 76.5% | 69.0% |
-| Correct, rounds 31+ | 69.2% | — |
+| Correct, rounds 11–15 | 76.1% | 65.0% |
+| Correct, rounds 16–20 | 76.6% | 65.9% |
+| Correct, rounds 21–30 | 76.4% | 68.5% |
+| Correct, rounds 31+ | 72.4% | — |
 
 From round 16, the pair rules (`PAIR_RULES`):
 
@@ -132,39 +132,39 @@ that answered it right.
 | 4 | ≥0.45 | 96.8% | 98.9% |
 | 5 | ≥0.45 | 95.8% | 98.9% |
 | 6 | 0.12–0.25 | 94.7% | 88.8% |
-| 7 | 0.12–0.25 | 84.1% | 88.9% |
+| 7 | 0.12–0.25 | 84.1% | 89.0% |
 | 8 | 0.12–0.25 | 74.8% | 89.2% |
 | 9 | 0.12–0.25 | 66.7% | 89.1% |
-| 10 | 0.12–0.25 | 59.4% | 89.0% |
+| 10 | 0.12–0.25 | 59.5% | 89.0% |
 | 11 | 0.03–0.1 | 52.9% | 76.4% |
-| 12 | 0.03–0.1 | 40.4% | 75.2% |
+| 12 | 0.03–0.1 | 40.4% | 75.1% |
 | 13 | 0.03–0.1 | 30.4% | 76.8% |
-| 14 | 0.03–0.1 | 23.3% | 76.2% |
-| 15 | 0.03–0.1 | 17.8% | 75.7% |
-| 16 | 0.02–0.04, ≥10% apart; narrow by value | 13.5% | 76.6% |
-| 17 | 0.02–0.04, ≥10% apart; narrow by value | 10.3% | 77.2% |
-| 18 | 0.02–0.04, ≥10% apart; narrow by value | 8.0% | 75.6% |
-| 19 | 0.02–0.04, ≥10% apart; narrow by value | 6.0% | 75.2% |
-| 20 | 0.02–0.04, ≥10% apart; narrow by value | 4.5% | 77.8% |
-| 21 | 0.01–0.04, ≥10% apart; narrow by value | 3.5% | 78.4% |
-| 22 | 0.01–0.04, ≥10% apart; narrow by value | 2.8% | 79.0% |
-| 23 | 0.01–0.04, ≥10% apart; narrow by value | 2.2% | 78.0% |
-| 24 | 0.01–0.04, ≥10% apart; narrow by value | 1.7% | 73.9% |
-| 25 | 0.01–0.04, ≥10% apart; narrow by value | 1.3% | 72.6% |
-| 26 | 0.01–0.04, ≥10% apart; narrow by value | 0.9% | 72.1% |
-| 27 | 0.01–0.04, ≥10% apart; narrow by value | 0.7% | 76.5% |
-| 28 | 0.01–0.04, ≥10% apart; narrow by value | 0.5% | 71.3% |
-| 29 | 0.01–0.04, ≥10% apart; narrow by value | 0.4% | 76.4% |
-| 30 | 0.01–0.04, ≥10% apart; narrow by value | 0.3% | 74.5% |
-| 31 | 0.01–0.03, ≥10% apart; narrow by value | 0.2% | 75.6% |
-| 32 | 0.01–0.03, ≥10% apart; narrow by value | 0.2% | 61.3% |
-| 33 | 0.01–0.03, ≥10% apart; narrow by value | 0.1% | 73.7% |
-| 34 | 0.01–0.03, ≥10% apart; narrow by value | 0.1% | 64.3% |
-| 35 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 66.7% |
-| 36 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 66.7% |
+| 14 | 0.03–0.1 | 23.3% | 76.3% |
+| 15 | 0.03–0.1 | 17.8% | 75.8% |
+| 16 | 0.02–0.04, ≥10% apart; narrow by value | 13.5% | 76.8% |
+| 17 | 0.02–0.04, ≥10% apart; narrow by value | 10.3% | 77.3% |
+| 18 | 0.02–0.04, ≥10% apart; narrow by value | 8.0% | 75.8% |
+| 19 | 0.02–0.04, ≥10% apart; narrow by value | 6.1% | 75.1% |
+| 20 | 0.02–0.04, ≥10% apart; narrow by value | 4.5% | 77.9% |
+| 21 | 0.01–0.04, ≥10% apart; narrow by value | 3.5% | 78.1% |
+| 22 | 0.01–0.04, ≥10% apart; narrow by value | 2.8% | 78.3% |
+| 23 | 0.01–0.04, ≥10% apart; narrow by value | 2.2% | 78.1% |
+| 24 | 0.01–0.04, ≥10% apart; narrow by value | 1.7% | 74.9% |
+| 25 | 0.01–0.04, ≥10% apart; narrow by value | 1.3% | 72.0% |
+| 26 | 0.01–0.04, ≥10% apart; narrow by value | 0.9% | 72.7% |
+| 27 | 0.01–0.04, ≥10% apart; narrow by value | 0.7% | 75.2% |
+| 28 | 0.01–0.04, ≥10% apart; narrow by value | 0.5% | 70.0% |
+| 29 | 0.01–0.04, ≥10% apart; narrow by value | 0.4% | 77.1% |
+| 30 | 0.01–0.04, ≥10% apart; narrow by value | 0.3% | 74.1% |
+| 31 | 0.01–0.03, ≥10% apart; narrow by value | 0.2% | 77.5% |
+| 32 | 0.01–0.03, ≥10% apart; narrow by value | 0.2% | 67.7% |
+| 33 | 0.01–0.03, ≥10% apart; narrow by value | 0.1% | 76.2% |
+| 34 | 0.01–0.03, ≥10% apart; narrow by value | 0.1% | 68.8% |
+| 35 | 0.01–0.03, ≥10% apart; narrow by value | 0.1% | 72.7% |
+| 36 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 75.0% |
 | 37 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 100.0% |
-| 38 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 75.0% |
-| 39 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 66.7% |
+| 38 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 66.7% |
+| 39 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 50.0% |
 | 40 | 0.01–0.03, ≥10% apart; narrow by value | 0.0% | 0.0% |
 
 ### Stats from round 16
@@ -176,15 +176,15 @@ Every stat should still fire: the wheel never skips a stat it can deal.
 |---|---|---|---|
 | Club goals | basic | 15% | 12.9% |
 | International caps | basic | 15% | 12.6% |
-| Club appearances | basic | 15% | 12.8% |
+| Club appearances | basic | 15% | 12.9% |
 | Instagram followers | basic | 15% | 14.0% |
-| Highest transfer fee | uncommon | 10% | 8.2% |
-| International goals | uncommon | 10% | 8.7% |
+| Highest transfer fee | uncommon | 10% | 8.1% |
+| International goals | uncommon | 10% | 8.8% |
 | Club trophies | rare | 5% | 7.1% |
-| International trophies | rare | 5% | 9.0% |
+| International trophies | rare | 5% | 8.9% |
 | Clubs played for | rare | 5% | 8.7% |
-| Age | rare | 5% | 6.0% |
-| _Rounds played_ |  |  | 11422 |
+| Age | rare | 5% | 6.1% |
+| _Rounds played_ |  |  | 11463 |
 
 ## Instagram Endless: a streak with no finish line
 
@@ -280,8 +280,8 @@ apart the pair sits in the deck, in rank distance like the bands.
 
 `fan` is the default and the model Friendly and Endless are tuned with. `rank` was
 the only model until Friendly's retune; it is far weaker than a real football fan,
-so bands tuned with it proved too soft in real play. Ranked was tuned with it. The
-fan model has no clock, so Endless, with ten seconds a question, plays harder still.
+so bands tuned with it proved too soft in real play. The fan model has no clock, so
+Endless and Daily Ranked, with ten seconds a question, play harder still.
 
 - `pnpm simulate` uses `fan`; `pnpm simulate --model rank` uses `rank`.
 - `pnpm simulate --calibration <file.json>` replaces the fan's points with a list
@@ -299,19 +299,19 @@ Share of rounds played on each stat, after tie exclusion and band filtering had
 their say, against the per-stat target for its tier (`TIER_TARGET`). The wheel's
 tier weights are tuned to land within about two points of it.
 
-| Stat | Tier | Target | friendly | endless | ranked |
-|---|---|---|---|---|---|
-| Club goals | basic | 15% | 14.2% | 13.7% | 13.7% |
-| International caps | basic | 15% | 12.7% | 12.7% | 12.5% |
-| Club appearances | basic | 15% | 12.8% | 12.7% | 12.7% |
-| Instagram followers | basic | 15% | 13.8% | 14.7% | 14.0% |
-| Highest transfer fee | uncommon | 10% | 9.1% | 9.0% | 8.9% |
-| International goals | uncommon | 10% | 9.2% | 9.2% | 9.0% |
-| Club trophies | rare | 5% | 7.8% | 7.0% | 7.5% |
-| International trophies | rare | 5% | 6.2% | 7.4% | 7.4% |
-| Clubs played for | rare | 5% | 7.4% | 7.4% | 7.6% |
-| Age | rare | 5% | 6.9% | 6.1% | 6.7% |
-| _Rounds on the opening stat_ |  |  | 15.0% | 18.2% | 8.1% |
+| Stat | Tier | Target | friendly | endless |
+|---|---|---|---|---|
+| Club goals | basic | 15% | 14.2% | 13.7% |
+| International caps | basic | 15% | 12.7% | 12.7% |
+| Club appearances | basic | 15% | 12.8% | 12.7% |
+| Instagram followers | basic | 15% | 13.8% | 14.8% |
+| Highest transfer fee | uncommon | 10% | 9.2% | 9.0% |
+| International goals | uncommon | 10% | 9.2% | 9.2% |
+| Club trophies | rare | 5% | 7.7% | 7.0% |
+| International trophies | rare | 5% | 6.2% | 7.4% |
+| Clubs played for | rare | 5% | 7.4% | 7.4% |
+| Age | rare | 5% | 6.9% | 6.1% |
+| _Rounds on the opening stat_ |  |  | 15.0% | 18.2% |
 
 The opening stat — basic or uncommon, never rare — always holds for rounds 1 and
 2, and most runs are short, so it covers a large share of all rounds. That is why
@@ -331,13 +331,13 @@ under about 30% in every range.
 | Club appearances | basic | 13.2% | 12.6% | 12.5% | 0.0% |
 | Instagram followers | basic | 15.6% | 14.0% | 11.1% | 0.0% |
 | Highest transfer fee | uncommon | 9.5% | 8.8% | 9.1% | 0.0% |
-| International goals | uncommon | 9.5% | 9.3% | 8.8% | 0.0% |
+| International goals | uncommon | 9.5% | 9.3% | 8.7% | 0.0% |
 | Club trophies | rare | 6.4% | 7.4% | 9.9% | 0.0% |
 | International trophies | rare | 6.5% | 7.6% | 3.9% | 0.0% |
 | Clubs played for | rare | 6.6% | 7.7% | 8.0% | 0.0% |
 | Age | rare | 5.5% | 6.7% | 8.8% | 0.0% |
 | **Rare, together** |  | 25.0% | 29.5% | 30.7% | 0.0% |
-| _Rounds played_ |  | 97907 | 91571 | 75166 | 0 |
+| _Rounds played_ |  | 97907 | 91571 | 75160 | 0 |
 
 ## Iconic preference
 
@@ -346,15 +346,15 @@ one can be dealt within the band; otherwise the whole deck is used before any
 other relaxation. These rows cover only rounds inside that window. A high
 fallback rate means the deck is short of iconic players at the opening band.
 
-| Measure | friendly | endless | ranked |
-|---|---|---|---|
-| Window | rounds 1–5 | rounds 1–5 | rounds 1–5 |
-| Rounds dealt in window | 97907 | 97907 | 97907 |
-| Iconic challenger | 100.0% | 100.0% | 100.0% |
-| Fell back | 0.0% | 0.0% | 0.0% |
-| … to the whole deck | 0.0% | 0.0% | 0.0% |
-| … and widened the band | 0.0% | 0.0% | 0.0% |
-| … and ignored the seen queue | 0.0% | 0.0% | 0.0% |
+| Measure | friendly | endless |
+|---|---|---|
+| Window | rounds 1–5 | rounds 1–5 |
+| Rounds dealt in window | 97907 | 97907 |
+| Iconic challenger | 100.0% | 100.0% |
+| Fell back | 0.0% | 0.0% |
+| … to the whole deck | 0.0% | 0.0% |
+| … and widened the band | 0.0% | 0.0% |
+| … and ignored the seen queue | 0.0% | 0.0% |
 
 ## Relaxation
 
@@ -364,33 +364,107 @@ the pool was too sparse and the band had to be widened — the deck is thin in t
 tails. `seen` means the band was fine but every eligible opponent was recently
 used — the deck is simply too small. They need different fixes.
 
-| Cause | friendly | endless | ranked |
-|---|---|---|---|
-| none | 98.2% | 94.7% | 100.0% |
-| iconic | 0.0% | 0.0% | 0.0% |
-| band | 1.8% | 5.3% | 0.0% |
-| seen | 0.0% | 0.0% | 0.0% |
+| Cause | friendly | endless |
+|---|---|---|
+| none | 98.2% | 94.7% |
+| iconic | 0.0% | 0.0% |
+| band | 1.8% | 5.3% |
+| seen | 0.0% | 0.0% |
 
 Any relaxation, by round:
 
-| Rounds | friendly | endless | ranked |
-|---|---|---|---|
-| 1–10 | 0.0% | 0.7% | 0.0% |
-| 11–20 | 6.3% | 21.8% | 0.0% |
-| 21–30 | — | 40.1% | 0.0% |
-| 31–40 | — | 46.6% | 0.1% |
-| 41–50 | — | — | 1.9% |
-| 51–60 | — | — | 0.9% |
+| Rounds | friendly | endless |
+|---|---|---|
+| 1–10 | 0.0% | 0.7% |
+| 11–20 | 6.3% | 21.9% |
+| 21–30 | — | 39.8% |
+| 31–40 | — | 46.9% |
 
 ## Engine reach
 
-| Measure | friendly | endless | ranked |
-|---|---|---|---|
-| Longest constructible run | 20 rounds | 150 rounds | 60 rounds |
-| Runs the engine ran out on | 0.0% | 0.0% | 0.0% |
+| Measure | friendly | endless |
+|---|---|---|
+| Longest constructible run | 20 rounds | 150 rounds |
+| Runs the engine ran out on | 0.0% | 0.0% |
 
 The second row counts runs that ended because the engine could not deal another
 pair, rather than because the modelled player failed.
+
+## Daily Ranked: twenty questions and the bonus
+
+20,000 games, each a different day's seed, played by the `fan` model. Every one of the twenty is answered whatever happened before; a perfect twenty goes on into the bonus rounds until the first miss. The ramp is Endless's (`BAND_SCHEDULES.ranked`), with three iconic rounds. Reported, not tuned.
+
+### Right answers out of twenty
+
+| Measure | Correct |
+|---|---|
+| Mean | 17.0 |
+| Median | 17 |
+| 10th percentile | 15 |
+| 25th percentile | 16 |
+| 75th percentile | 18 |
+| 90th percentile | 19 |
+| **20/20** | **3.7%** |
+
+| Correct | Games |
+|---|---|
+| 20 | 3.7% |
+| 19 | 13.3% |
+| 18 | 22.9% |
+| 17 | 24.7% |
+| 16 | 19.2% |
+| 15 | 10.2% |
+| 14 | 4.3% |
+| 13 | 1.4% |
+| 12 | 0.3% |
+| 11 | 0.1% |
+| 10 | 0.0% |
+
+### The bonus rounds
+
+Of the 734 perfect games: how many bonus rounds they answered right before the first miss (the score is twenty plus these).
+
+| Measure | Bonus |
+|---|---|
+| Median | 2 |
+| 90th percentile | 8 |
+| Best | 29 |
+
+| Bonus | Perfect games |
+|---|---|
+| 0 | 22.9% |
+| 1–2 | 31.2% |
+| 3–5 | 24.4% |
+| 6–10 | 15.5% |
+| 11–20 | 5.2% |
+| 21+ | 0.8% |
+
+### By question
+
+Every game answers all twenty, so each question is the share of games right on it.
+
+| Question | Band | Correct |
+|---|---|---|
+| 1 | ≥0.45 | 98.6% |
+| 2 | ≥0.45 | 98.9% |
+| 3 | ≥0.45 | 98.8% |
+| 4 | ≥0.45 | 98.9% |
+| 5 | ≥0.45 | 98.9% |
+| 6 | 0.12–0.25 | 89.5% |
+| 7 | 0.12–0.25 | 89.1% |
+| 8 | 0.12–0.25 | 89.2% |
+| 9 | 0.12–0.25 | 89.4% |
+| 10 | 0.12–0.25 | 89.4% |
+| 11 | 0.03–0.1 | 76.8% |
+| 12 | 0.03–0.1 | 75.9% |
+| 13 | 0.03–0.1 | 76.4% |
+| 14 | 0.03–0.1 | 75.9% |
+| 15 | 0.03–0.1 | 76.0% |
+| 16 | 0.02–0.04, ≥10% apart; narrow by value | 77.2% |
+| 17 | 0.02–0.04, ≥10% apart; narrow by value | 75.3% |
+| 18 | 0.02–0.04, ≥10% apart; narrow by value | 75.4% |
+| 19 | 0.02–0.04, ≥10% apart; narrow by value | 75.2% |
+| 20 | 0.02–0.04, ≥10% apart; narrow by value | 75.1% |
 
 ## Clear the squad
 
@@ -399,7 +473,7 @@ pair, rather than because the modelled player failed.
 | Theme | Players | Cleared | Short deals | Followers under 2× | Median progress | 90th percentile | Relaxed |
 |---|---|---|---|---|---|---|---|
 | Barcelona | 35 | 3.9% | 0.0% | 0 | 17/34 | 28/34 | 0.5% |
-| AC Milan | 27 | 4.9% | 0.0% | 0 | 12/26 | 22/26 | 0.9% |
+| AC Milan | 27 | 4.8% | 0.0% | 0 | 12/26 | 22/26 | 0.9% |
 | Juventus | 27 | 4.9% | 0.0% | 0 | 12/26 | 22/26 | 1.0% |
 | Real Madrid | 26 | 4.8% | 0.0% | 0 | 12/25 | 21/25 | 0.9% |
 | Manchester United | 23 | 7.0% | 0.0% | 0 | 10/22 | 18/22 | 2.7% |
@@ -410,7 +484,7 @@ pair, rather than because the modelled player failed.
 | Manchester City | 10 | 13.2% | 0.0% | 0 | 2/9 | 9/9 | 31.7% |
 | La Liga | 69 | 2.6% | 0.0% | 0 | 35/68 | 58/68 | 0.0% |
 | Premier League | 66 | 2.8% | 0.0% | 0 | 33/65 | 55/65 | 0.1% |
-| Serie A | 65 | 2.7% | 0.0% | 0 | 32/64 | 54/64 | 0.0% |
+| Serie A | 65 | 2.6% | 0.0% | 0 | 32/64 | 54/64 | 0.0% |
 | Ligue 1 | 35 | 3.5% | 0.0% | 0 | 17/34 | 28/34 | 0.3% |
 | Bundesliga | 22 | 6.1% | 0.0% | 0 | 9/21 | 17/21 | 2.5% |
 | 2000s | 51 | 3.5% | 0.0% | 0 | 25/50 | 43/50 | 0.2% |
@@ -424,20 +498,20 @@ Short deals are runs the dealer ended before the last player because the players
 
 | Theme | first 20% | to 45% | to 70% | to 85% | last 15% |
 |---|---|---|---|---|---|
-| Barcelona | 98.2% | 96.2% | 89.7% | 85.7% | 81.8% |
-| AC Milan | 97.7% | 94.1% | 86.8% | 81.2% | 82.6% |
-| Juventus | 97.9% | 94.0% | 86.8% | 81.3% | 82.8% |
-| Real Madrid | 97.6% | 93.7% | 86.2% | 81.3% | 81.1% |
-| Manchester United | 97.8% | 92.4% | 84.5% | 81.1% | 86.8% |
+| Barcelona | 98.2% | 96.2% | 89.7% | 85.8% | 81.8% |
+| AC Milan | 97.7% | 94.1% | 86.8% | 81.3% | 82.4% |
+| Juventus | 97.9% | 94.0% | 86.9% | 81.3% | 82.5% |
+| Real Madrid | 97.6% | 93.7% | 86.1% | 81.3% | 81.1% |
+| Manchester United | 97.8% | 92.4% | 84.5% | 81.1% | 86.9% |
 | Inter | 97.6% | 92.1% | 83.6% | 77.6% | 80.5% |
 | Chelsea | 97.4% | 91.0% | 82.0% | 77.4% | 83.9% |
 | Bayern Munich | 95.6% | 79.0% | 67.7% | 82.4% | 87.3% |
-| Arsenal | 91.8% | 67.9% | 68.4% | 84.9% | 91.3% |
+| Arsenal | 91.8% | 67.9% | 68.4% | 84.9% | 91.4% |
 | Manchester City | 89.6% | 69.5% | 77.2% | 89.1% | 91.8% |
 | La Liga | 98.9% | 98.4% | 95.1% | 91.9% | 86.9% |
-| Premier League | 98.9% | 98.3% | 94.8% | 91.1% | 86.7% |
-| Serie A | 98.8% | 98.2% | 94.8% | 91.2% | 86.6% |
-| Ligue 1 | 98.2% | 96.1% | 89.8% | 85.0% | 81.1% |
+| Premier League | 98.9% | 98.3% | 94.8% | 91.2% | 86.7% |
+| Serie A | 98.8% | 98.2% | 94.8% | 91.1% | 86.6% |
+| Ligue 1 | 98.2% | 96.1% | 89.8% | 85.0% | 81.2% |
 | Bundesliga | 97.0% | 91.9% | 83.5% | 78.9% | 84.7% |
 | 2000s | 98.6% | 97.6% | 93.3% | 89.9% | 84.8% |
 | 2010s | 98.1% | 96.0% | 90.3% | 86.0% | 81.2% |
@@ -450,9 +524,9 @@ Every pair dealt in a run's last three questions, whether or not the player got 
 
 | Theme | Median distance | Closest ratio | Median ratio | Under 1.25× |
 |---|---|---|---|---|
-| Barcelona | 0.108 | 1.10× | 1.48× | 31.2% |
-| AC Milan | 0.093 | 1.10× | 1.44× | 27.5% |
-| Juventus | 0.112 | 1.10× | 1.46× | 29.6% |
+| Barcelona | 0.108 | 1.10× | 1.48× | 31.1% |
+| AC Milan | 0.092 | 1.10× | 1.44× | 27.6% |
+| Juventus | 0.112 | 1.10× | 1.45× | 29.8% |
 | Real Madrid | 0.088 | 1.10× | 1.33× | 41.0% |
 | Manchester United | 0.228 | 1.10× | 1.56× | 28.6% |
 | Inter | 0.106 | 1.10× | 1.40× | 31.1% |
@@ -461,11 +535,11 @@ Every pair dealt in a run's last three questions, whether or not the player got 
 | Arsenal | 0.196 | 1.10× | 1.50× | 28.6% |
 | Manchester City | 0.257 | 1.10× | 1.45× | 28.5% |
 | La Liga | 0.154 | 1.10× | 1.46× | 28.1% |
-| Premier League | 0.154 | 1.10× | 1.44× | 31.4% |
-| Serie A | 0.154 | 1.10× | 1.35× | 35.6% |
+| Premier League | 0.154 | 1.10× | 1.44× | 31.5% |
+| Serie A | 0.154 | 1.10× | 1.35× | 35.7% |
 | Ligue 1 | 0.102 | 1.10× | 1.33× | 33.6% |
 | Bundesliga | 0.203 | 1.10× | 1.67× | 15.6% |
-| 2000s | 0.138 | 1.10× | 1.44× | 31.1% |
+| 2000s | 0.138 | 1.10× | 1.44× | 31.2% |
 | 2010s | 0.108 | 1.10× | 1.43× | 31.4% |
-| 1990s | 0.092 | 1.10× | 1.35× | 33.4% |
+| 1990s | 0.092 | 1.10× | 1.35× | 33.3% |
 | Classic Era | 0.232 | 1.10× | 2.00× | 17.2% |

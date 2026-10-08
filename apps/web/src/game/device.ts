@@ -73,6 +73,17 @@ export function deviceId(storage: StorageAccess, mint: () => string): string {
   return id;
 }
 
+/** This device's id if it has one already, without minting one; null otherwise. */
+export function storedDeviceId(storage: StorageAccess): string | null {
+  try {
+    const stored = storage()?.getItem(DEVICE_KEY);
+    if (stored !== null && stored !== undefined && UUID.test(stored)) return stored;
+  } catch {
+    // Unreadable: as if there were none.
+  }
+  return visitId;
+}
+
 /** One run on the local board. */
 export interface LocalRun {
   readonly score: number;

@@ -1,3 +1,5 @@
+import { DAILY_QUESTIONS } from "@bt/core";
+import { dailySection, simulateDaily } from "../simulate-daily.js";
 import { describe, expect, it } from "vitest";
 import {
   REPORT_BANDS,
@@ -83,7 +85,7 @@ describe("statViability", () => {
 
   it("reports fewer pairs as the band tightens", () => {
     const v = statViability(players, "club_goals", NOW);
-    expect(v.pairsByBand["opening"]!).toBeGreaterThan(v.pairsByBand["knife edge"]!);
+    expect(v.pairsByBand["opening"]!).toBeGreaterThan(v.pairsByBand["Endless 11–15"]!);
   });
 
   it("applies Instagram's volatility floor, exactly as the engine does", () => {
@@ -373,7 +375,8 @@ describe("simulating Friendly's twenty-question challenge", () => {
     expect(md).toContain(`| 1 | ${bandText(1, "friendly")} | 100.0% |`);
     expect(bandText(17, "friendly")).not.toContain("apart");
     expect(bandText(18, "friendly")).toMatch(/, ≥10% apart$/);
-    expect(bandText(20, "ranked")).not.toContain("apart");
+    // Daily Ranked plays Endless's ramp, pair rules and all.
+    expect(bandText(20, "ranked")).toBe(bandText(20, "endless"));
   });
 
   it("compares the models side by side when Friendly carried more than one", () => {
@@ -411,9 +414,9 @@ describe("the report's bands", () => {
   });
 
   it("say where each band falls in every schedule", () => {
-    expect(REPORT_BANDS[0]!.rounds).toBe("1–10; Friendly 1–5; Endless 1–5");
-    const knifeEdge = REPORT_BANDS.find((b) => b.label === "knife edge")!;
-    expect(roundsWith("ranked", knifeEdge.band)).toBe("43+");
+    expect(REPORT_BANDS[0]!.rounds).toBe("Friendly 1–5; Endless and Daily 1–5");
+    const last = REPORT_BANDS.at(-1)!;
+    expect(roundsWith("ranked", last.band)).toBe("31+");
     // Friendly shares only the opening band; the rest of its ramp is its own.
     expect(REPORT_BANDS.filter((b) => b.mode === "friendly").map((b) => b.rounds)).toEqual([
       "Friendly 6–10",
@@ -425,12 +428,14 @@ describe("the report's bands", () => {
   });
 
   it("give Endless's own rows, those under its pair rules counted apart even when a band repeats", () => {
-    expect(REPORT_BANDS.filter((b) => b.mode === "endless").map((b) => b.rounds)).toEqual([
-      "Endless 6–10",
-      "Endless 11–15",
-      "Endless 16–20, pair rules",
-      "Endless 21–30, pair rules",
-      "Endless 31+, pair rules",
+    expect(
+      REPORT_BANDS.filter((b) => b.mode === "endless" && b.round > 1).map((b) => b.rounds),
+    ).toEqual([
+      "Endless and Daily 6–10",
+      "Endless and Daily 11–15",
+      "Endless and Daily 16–20, pair rules",
+      "Endless and Daily 21–30, pair rules",
+      "Endless and Daily 31+, pair rules",
     ]);
   });
 
@@ -625,5 +630,31 @@ describe("Instagram Endless in the simulation", () => {
     const lines = closestPairsText(r);
     expect(lines[0]).toMatch(/^ {2}question 10: \d+ pair\(s\) dealt; closest:$/);
     expect(lines.some((l) => /Ig \d+ [\d.]+[mk] v Ig \d+/.test(l))).toBe(true);
+  });
+});
+
+describe("simulating Daily Ranked", () => {
+  it("answers all twenty whatever happens, and plays the bonus only after a perfect twenty", () => {
+    const r = simulateDaily({ deck: players, now: NOW, runs: 60 });
+    expect(r.correct).toHaveLength(60);
+    expect(r.correct.every((n) => n >= 0 && n <= DAILY_QUESTIONS)).toBe(true);
+    expect(r.bonus).toHaveLength(r.correct.filter((n) => n === DAILY_QUESTIONS).length);
+    // A miss doesn't end the game: every question is answered by every game.
+    expect(r.rightAt.every((n) => n <= 60)).toBe(true);
+    expect(r.rightAt.reduce((a, b) => a + b, 0)).toBe(r.correct.reduce((a, b) => a + b, 0));
+  });
+
+  it("is the same for the same seeds", () => {
+    const a = simulateDaily({ deck: players, now: NOW, runs: 30 });
+    const b = simulateDaily({ deck: players, now: NOW, runs: 30 });
+    expect(a).toEqual(b);
+  });
+
+  it("reports the spread, the 20/20 rate, the bonus and each question", () => {
+    const md = dailySection(simulateDaily({ deck: players, now: NOW, runs: 40 })).join("\n");
+    expect(md).toContain("## Daily Ranked: twenty questions and the bonus");
+    expect(md).toContain("| **20/20** |");
+    expect(md).toContain("### The bonus rounds");
+    expect(md).toMatch(/\| 20 \| 0\.02–0\.04/);
   });
 });

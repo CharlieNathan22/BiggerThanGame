@@ -108,7 +108,13 @@ export const en = {
   // On the Legends page's Instagram Endless card, from this device's best; {best} is filled in there
   "mode.yourBest": "Your best: {best}",
   "mode.ranked.name": "Daily Ranked",
-  "mode.ranked.body": "One run a day, the same for everyone, on a global leaderboard.",
+  "mode.ranked.body":
+    "Twenty questions a day, the same for everyone, on a global leaderboard. One go.",
+  // The Daily Ranked card: Play, or this device's result today ("15/20 · 312th of 2,400")
+  "mode.ranked.play": "Play today's game",
+  "mode.ranked.result": "{score} · {rank}",
+  // The Daily card once today's game is played, in the button's place: status text, not a button
+  "daily.cardDone": "Today's game completed — come back tomorrow",
   "mode.soon": "Coming soon",
   // The Legends page's "Clear the squad" sections, a card per theme
   "themes.club": "Clubs",
@@ -147,6 +153,57 @@ export const en = {
   "squad.note.club": "Whole career, not just {name}",
   "squad.note.league": "Whole career, every league",
   "squad.note.era": "Whole career, not just the {name}",
+
+  // The Daily Ranked game page (/football-higher-or-lower/legends/daily). Drafts.
+  "daily.title": "Daily Football Legends Quiz — Bigger Than",
+  "daily.description":
+    "Twenty football legends questions a day, the same for everyone. Higher or lower against a 10-second clock, one go, and a daily leaderboard. Free to play.",
+  "daily.subtitle": "Daily Ranked",
+  "daily.game": "Game {game}",
+  "daily.nextGame": "Next game in {time}",
+  "daily.firstGame": "Game 1 starts in {time}",
+  "daily.intro":
+    "Twenty questions on football legends, the same for everyone today. A wrong answer doesn't end the run. Get all twenty right and keep going in sudden-death bonus rounds.",
+  "daily.clock": "15 seconds for the first question, 10 for the rest. One go a day.",
+  "daily.nameLabel": "Your name",
+  "daily.leaderboardLine": "Your name and score will appear on today's leaderboard.",
+  "daily.play": "Play",
+  "daily.nameTaken": "That name is taken today — try another",
+  "daily.played": "You've already played today's game on this device.",
+  "daily.notStarted": "Game 1 hasn't started yet.",
+  "daily.loading": "Checking today's game…",
+  "daily.lookupFailed": "Couldn't reach the server. Check your connection and try again.",
+  "daily.retry": "Try again",
+  "daily.resumeHeading": "Your run is still going",
+  "daily.resumeBody": "Pick up where you left off. The clock kept running while you were away.",
+  "daily.resume": "Carry on",
+  "daily.resuming": "Picking up…",
+  "daily.resumeFailed": "Couldn't pick up your run. Check your connection and try again.",
+  "daily.playedHeading": "Today's result",
+  "daily.rank": "{rank} of {total}",
+  "daily.unranked": "Your score will be on the leaderboard in a moment.",
+  // Under a perfect run's score ("25"): "20/20 +5 bonus"
+  "daily.bonusLine": "{target}/{target} +{bonus} bonus",
+  // The title bar during the bonus rounds: "20/20 +3"
+  "daily.titleBonus": "{target}/{target} +{bonus}",
+  // The title bar's bonus, beside "20 / 20" and smaller: "+3", read as "+3 bonus"
+  "daily.titleBonusPart": "+{bonus}",
+  "daily.titleBonusSpoken": "bonus",
+  // The chip at the top of the pitch during the bonus rounds
+  "daily.bonusChip": "+{bonus} bonus",
+  "daily.bonusLabel": "Bonus rounds",
+  "daily.caption": "right out of {target}",
+  "daily.captionPerfect": "a perfect twenty, then the bonus",
+  // A perfect run's score on the board, for screen readers
+  "daily.perfectSpoken": "{score}: twenty out of twenty and {bonus} bonus",
+  "daily.leaderboard": "See today's leaderboard",
+  // The share: spoiler-free, no player and no figure
+  "daily.shareHeading": "Bigger Than #{game} — {score}/{target} 🔥",
+  "daily.shareBonus": "⭐ +{bonus} bonus",
+  "daily.shareImageHeading": "Bigger Than #{game}",
+  "daily.fileName": "bigger-than-daily-{game}.png",
+  "daily.gridLabel": "Your game: {right} of {target} right.",
+  "daily.gridBonus": "Your game: all {target} right, then {bonus} bonus rounds.",
 
   // The Endless game page (/football-higher-or-lower/legends/endless). Drafts.
   "endless.title": "Endless Football Legends Higher or Lower | Bigger Than Game",
@@ -205,6 +262,23 @@ export const en = {
   "leaderboard.deviceEmpty": "No Endless runs on this device yet.",
   "leaderboard.col.date": "Date",
   "leaderboard.noscript": "The leaderboard needs JavaScript to load.",
+  // The two boards' switch, on both leaderboard pages
+  "board.switch": "Leaderboards",
+  "board.switch.daily": "Daily Ranked",
+  "board.switch.endless": "Endless",
+
+  // The Daily Ranked leaderboard page. Drafts.
+  "dailyBoard.title": "Daily Leaderboard: Football Legends Quiz | Bigger Than Game",
+  "dailyBoard.description":
+    "Today's Daily Ranked scores on Football Legends higher or lower: the same twenty questions for everyone, one go each, ties broken by thinking time.",
+  "dailyBoard.headingMode": "Daily Ranked",
+  "dailyBoard.framing": "Everyone plays the same questions. Most right answers wins.",
+  "dailyBoard.play": "Play today's game",
+  "dailyBoard.caption": "Today's Daily Ranked scores",
+  "dailyBoard.col.score": "Score",
+  "dailyBoard.winnerLine": "{name} got {score} in {game}",
+  "dailyBoard.empty": "Nobody has finished today's game yet. Play it to be first.",
+  "dailyBoard.notStarted": "Game 1 starts in {time}.",
   "time.days.one": "1 day",
   "time.days.other": "{n} days",
   "time.hours.one": "1 hour",
@@ -260,6 +334,8 @@ export const en = {
 
   // The progress track, in a mode with a win target
   "progress.label": "Progress",
+  // The landmark round the progress track
+  "progress.region": "Your run",
   "progress.question": "Question {round} of {target}",
   "progress.final": "Final question — question {round} of {target}",
   // On the plaque while round one's cards slide in, before the wheel spins
@@ -285,6 +361,10 @@ export const en = {
   "live.won": "{challenger}: {value}. Correct — that's all {score}. You won!",
   "live.squadCleared": "{challenger}: {value}. Correct. You've cleared the {squad} squad!",
   "live.wrong": "{challenger}: {value}. Wrong. The run is over.",
+  // Daily Ranked, where a wrong answer or a timeout doesn't end the run
+  "live.wrongOn": "{challenger}: {value}. Wrong. On to the next question.",
+  "live.timeoutOn": "{challenger}: {value}. Out of time. On to the next question.",
+  "live.dailyDone": "{challenger}: {value}. That's the game: {score}.",
   "live.timeout": "{challenger}: {value}. Out of time. The run is over.",
   "live.newHighScore": "New high score!",
   "live.matchedBest": "You matched your best.",

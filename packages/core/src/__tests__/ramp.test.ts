@@ -31,47 +31,12 @@ const forward = (id: string, caps: number, extra: Partial<Player> = {}): Player 
   ...extra,
 });
 
-describe("bandForRound, the long schedule (Ranked)", () => {
-  const band = (round: number) => bandForRound(round, "ranked");
-
-  it("is Ranked's alone: Endless has its own", () => {
-    expect(BAND_SCHEDULES.endless).not.toBe(BAND_SCHEDULES.ranked);
-  });
-
-  it("opens uncapped so blowouts can be dealt", () => {
-    expect(band(1).ceiling).toBeNull();
-    expect(band(10).ceiling).toBeNull();
-  });
-
-  it("opens at least 45% of the deck apart", () => {
-    expect(band(1).floor).toBe(0.45);
-  });
-
-  it("caps from round 11", () => {
-    expect(band(11).ceiling).toBe(0.7);
-  });
-
-  it("tightens monotonically across every boundary", () => {
-    const rounds = [1, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 100];
-    const floors = rounds.map((r) => band(r).floor);
-    const ceilings = rounds.map((r) => band(r).ceiling ?? 1);
-    for (let i = 1; i < rounds.length; i++) {
-      expect(floors[i]!).toBeLessThanOrEqual(floors[i - 1]!);
-      expect(ceilings[i]!).toBeLessThanOrEqual(ceilings[i - 1]!);
+describe("bandForRound, Daily Ranked", () => {
+  it("plays Endless's ramp: its twenty questions, then the later rows as bonus rounds", () => {
+    expect(BAND_SCHEDULES.ranked).toBe(BAND_SCHEDULES.endless);
+    for (const r of [1, 5, 6, 10, 11, 16, 20, 21, 30, 31, 150]) {
+      expect(bandForRound(r, "ranked")).toEqual(bandForRound(r, "endless"));
     }
-  });
-
-  it("stays within the 0–1 scale of rank distance", () => {
-    for (const r of [1, 11, 19, 27, 35, 43]) {
-      const b = band(r);
-      expect(b.floor).toBeGreaterThanOrEqual(0);
-      expect(b.ceiling ?? 1).toBeLessThanOrEqual(1);
-    }
-  });
-
-  it("reaches the knife edge and stays there", () => {
-    expect(band(43)).toEqual({ floor: 0.02, ceiling: 0.12 });
-    expect(band(500)).toEqual({ floor: 0.02, ceiling: 0.12 });
   });
 });
 
@@ -79,8 +44,9 @@ describe("bandForRound, Friendly's twenty rounds", () => {
   const rounds = Array.from({ length: WIN_ROUNDS.friendly! }, (_, i) => i + 1);
   const band = (round: number) => bandForRound(round, "friendly");
 
-  it("opens as generously as the long schedule", () => {
+  it("opens as generously as Endless and Daily Ranked", () => {
     expect(band(1)).toEqual(bandForRound(1, "ranked"));
+    expect(band(1)).toEqual(bandForRound(1, "endless"));
   });
 
   it("keeps rounds 1–5 on the opening band and 6–10 uncapped", () => {
@@ -135,8 +101,9 @@ describe("the final stretch", () => {
     });
   });
 
-  it("never touches Endless or Ranked", () => {
-    for (const r of [1, 18, 19, 20, 43]) {
+  it("never touches Endless or Daily Ranked", () => {
+    // Their late rounds have their own rules (PAIR_RULES), tested below.
+    for (const r of [1, 5, 10, 15]) {
       expect(bandFor("caps", r, "ranked")).toEqual(bandForRound(r, "ranked"));
       expect(bandFor("ig", r, "ranked")).toEqual({
         ...bandForRound(r, "ranked"),
@@ -206,7 +173,8 @@ describe("Endless's pair rules", () => {
       clubs: { kind: "difference", min: 1, max: 2 },
     });
     expect(PAIR_RULES.friendly).toBeNull();
-    expect(PAIR_RULES.ranked).toBeNull();
+    // Daily Ranked plays Endless's ramp, rules and all.
+    expect(PAIR_RULES.ranked).toBe(rules);
   });
 
   it("pair a narrow stat by value in place of the band from round 16, and not before", () => {
@@ -288,8 +256,8 @@ describe("value rules", () => {
 });
 
 describe("relaxation ladders", () => {
-  it("are coarse for Friendly and Ranked, fine for Endless", () => {
-    expect(RELAXATION_LADDERS).toEqual({ friendly: "coarse", endless: "fine", ranked: "coarse" });
+  it("are coarse for Friendly, fine for Endless and Daily Ranked", () => {
+    expect(RELAXATION_LADDERS).toEqual({ friendly: "coarse", endless: "fine", ranked: "fine" });
   });
 
   it("fine lifts the ceiling by half again at each step up to 1, then drops it, then the floor", () => {
@@ -325,7 +293,7 @@ describe("relaxation ladders", () => {
 describe("bandFor", () => {
   it("bands every stat, the former band-exempt ones included", () => {
     for (const stat of ["it", "clubs", "age"] as const) {
-      expect(bandFor(stat, 30, "ranked")).toEqual(bandForRound(30, "ranked"));
+      expect(bandFor(stat, 15, "ranked")).toEqual(bandForRound(15, "ranked"));
       expect(bandFor(stat, 15, "friendly")).toEqual(bandForRound(15, "friendly"));
     }
   });

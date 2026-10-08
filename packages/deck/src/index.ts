@@ -95,5 +95,5 @@ export type { StatViability } from "./viability.js";
 export { HALF_GAP, SKILL_CEILING, pCorrect, simulate, simulationReport } from "./simulate.js";
 export type { SimOptions, SimResult } from "./simulate.js";
 
-export { requirePrivateError, runBuild } from "./build.js";
+export { dailyEpochError, requirePrivateError, runBuild } from "./build.js";
 export type { BuildOptions } from "./build.js";

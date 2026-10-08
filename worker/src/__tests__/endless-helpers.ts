@@ -16,6 +16,8 @@ import type {
 } from "@bt/core";
 import type { GameEvent } from "../analytics.js";
 import type { RunNamespace } from "../app.js";
+import type { DailyStub } from "../daily.js";
+import { DailyLedger, memoryDailyStore } from "../daily-ledger.js";
 import { handleGuess, handleRunStart } from "../run.js";
 import type { RunContext, RunResult, RunStub } from "../run.js";
 import { RunLedger, memoryStore } from "../run-ledger.js";
@@ -168,6 +170,7 @@ export function fakeRuns(): RunNamespace {
     if (l === undefined) ledgers.set(key, (l = new RunLedger(memoryStore())));
     return l;
   };
+  const daily = fakeDailyRuns();
   return {
     idFromName: (name) => name,
     get: (id: never) => ({
@@ -176,6 +179,45 @@ export function fakeRuns(): RunNamespace {
       claimForSubmit: async (claim) =>
         structuredClone(ledger(id as string).claimForSubmit(structuredClone(claim))),
       markSubmitted: async () => ledger(id as string).markSubmitted(),
+      ...daily.stub(id as string),
     }),
+  };
+}
+
+/** Daily Ranked's side of a run's object: memory ledgers, one per run key, copying across the "RPC". */
+export function fakeDailyRuns(): {
+  stub(key: string): DailyStub;
+  ledger(key: string): DailyLedger;
+} {
+  const ledgers = new Map<string, DailyLedger>();
+  const ledger = (key: string): DailyLedger => {
+    let l = ledgers.get(key);
+    if (l === undefined) ledgers.set(key, (l = new DailyLedger(memoryDailyStore())));
+    return l;
+  };
+  return {
+    ledger,
+    stub: (key) => ({
+      dailyBegin: async (first) => structuredClone(ledger(key).begin(structuredClone(first))),
+      dailyAdvance: async (step) => structuredClone(ledger(key).advance(structuredClone(step))),
+      dailyResume: async ({ deviceHash, now, nonce }) =>
+        structuredClone(ledger(key).resume(deviceHash, now, nonce)),
+      dailyPosted: async () => ledger(key).markPosted(),
+      dailyPostFailed: async (now) => ledger(key).postFailed(now),
+    }),
+  };
+}
+
+/** A Daily side that no Endless test should ever reach. */
+export function noDaily(): DailyStub {
+  const never = async (): Promise<never> => {
+    throw new Error("not a Daily run");
+  };
+  return {
+    dailyBegin: never,
+    dailyAdvance: never,
+    dailyResume: never,
+    dailyPosted: never,
+    dailyPostFailed: never,
   };
 }

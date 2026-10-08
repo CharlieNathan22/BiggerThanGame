@@ -1,5 +1,6 @@
 <!--
-  The Endless leaderboard (client:load, on its own static page): tabs for
+  A leaderboard (client:load, on its own static page): Daily Ranked's
+  (`mode="ranked"`), today's game's top 50, or Endless's, with tabs for
   today, this week and this month, each the top 50, ten rows to a page, with
   the player's own row highlighted, the total, the countdown to the reset and
   the previous period's winner; then this device's own 10 best runs, which
@@ -14,18 +15,35 @@
   published) is pinned above the table, apart from it; in the top 50 it is a
   button to its page. The table keeps ten rows' height on every page, so the
   page controls under it never move.
+
+  Daily Ranked's board is one board, no tabs: the game's number and the
+  countdown to the next game, the previous game's winner, and the same table,
+  pages and pinned row, a perfect run's score starred. Its pinned row comes
+  from `POST /api/board/daily/me`, asked once when this device has an id. It
+  has no "On this device" list.
 -->
 <script lang="ts">
-  import type { BoardPeriod, BoardResponse } from "@bt/core";
+  import type { BoardPeriod, BoardResponse, DailyBoardResponse, DailyMineResponse } from "@bt/core";
   import { onMount, tick } from "svelte";
   import { formatDate, t } from "../i18n";
   import { browserStorage } from "../game/best";
-  import { deviceId, publishedKey, readRuns, readStandings, runsKey } from "../game/device";
+  import {
+    deviceId,
+    publishedKey,
+    readRuns,
+    readStandings,
+    runsKey,
+    storedDeviceId,
+  } from "../game/device";
+  import { fetchDailyBoard, fetchDailyMine, gameLabel, nextGameText } from "../game/daily";
   import type { LocalRun, Standing } from "../game/device";
   import {
     boardView,
     clampPage,
     countdownText,
+    dailyBoardView,
+    dailyOwnPosition,
+    dailyWinnerLine,
     fetchBoard,
     goToPage,
     loadMine,
@@ -44,8 +62,24 @@
   import { formatThink } from "../game/flags";
   import Flag from "./Flag.svelte";
 
+  interface Props {
+    /** Which board: Daily Ranked's, or Endless's (the default). */
+    mode?: "endless" | "ranked";
+  }
+
+  let { mode = "endless" }: Props = $props();
+  const daily = $derived(mode === "ranked");
+
   const PERIODS: readonly BoardPeriod[] = ["day", "week", "month"];
   const uid = $props.id();
+
+  type DailyLoad =
+    | { readonly status: "loading" }
+    | { readonly status: "failed" }
+    | { readonly status: "ok"; readonly board: DailyBoardResponse };
+  let dailyLoad = $state<DailyLoad>({ status: "loading" });
+  let dailyMine = $state<DailyMineResponse | null>(null);
+  const dailyBoard = $derived(dailyLoad.status === "ok" ? dailyLoad.board : null);
 
   type Load =
     | { readonly status: "loading" }
@@ -67,11 +101,38 @@
   let panel: HTMLDivElement | undefined = $state();
 
   const period = $derived(paging.period);
-  const load = $derived(loads[period]);
-  const board = $derived(load?.status === "ok" ? load.board : null);
-  const own = $derived(board === null ? null : ownPosition(period, board.key, mine, standings));
-  const view = $derived(board === null ? null : boardView(board, own));
-  const winner = $derived(board === null ? null : winnerLine(board.previous, period));
+  /** Endless's panel is the tabs' tabpanel, focusable; Daily's has no tabs, and is neither. */
+  const panelRole = $derived(
+    daily ? {} : { role: "tabpanel", "aria-labelledby": `${uid}-tab-${period}`, tabindex: 0 },
+  );
+  const endlessLoad = $derived(loads[period]);
+  const load = $derived(daily ? dailyLoad : endlessLoad);
+  const board = $derived(!daily && endlessLoad?.status === "ok" ? endlessLoad.board : null);
+  const own = $derived(
+    daily
+      ? dailyOwnPosition(dailyMine)
+      : board === null
+        ? null
+        : ownPosition(period, board.key, mine, standings),
+  );
+  const view = $derived(
+    daily
+      ? dailyBoard === null
+        ? null
+        : dailyBoardView(dailyBoard, own)
+      : board === null
+        ? null
+        : boardView(board, own),
+  );
+  const winner = $derived(
+    daily
+      ? dailyBoard === null
+        ? null
+        : dailyWinnerLine(dailyBoard.previous)
+      : board === null
+        ? null
+        : winnerLine(board.previous, period),
+  );
   const rows = $derived(view?.rows ?? []);
   const page = $derived(clampPage(paging.page, rows.length));
   const pages = $derived(pageCount(rows.length));
@@ -89,7 +150,30 @@
     };
   }
 
+  async function openDaily(): Promise<void> {
+    dailyLoad = { status: "loading" };
+    const fetched = await fetchDailyBoard((input, init) => fetch(input, init));
+    dailyLoad = fetched === null ? { status: "failed" } : { status: "ok", board: fetched };
+  }
+
   onMount(() => {
+    if (daily) {
+      void openDaily();
+      // Where this device stands today: only a device that has played has an id.
+      const id = storedDeviceId(browserStorage);
+      if (id !== null) {
+        void fetchDailyMine((input, init) => fetch(input, init), id).then(
+          (response) => (dailyMine = response),
+        );
+      }
+      const timer = setInterval(() => {
+        now = Date.now();
+        // Past midnight, the board is the next game's.
+        if (dailyBoard !== null && now >= dailyBoard.nextGameAt) void openDaily();
+      }, 30_000);
+      ready = true;
+      return () => clearInterval(timer);
+    }
     standings = readStandings(browserStorage, publishedKey("legends", "endless"), Date.now());
     runs = readRuns(browserStorage, runsKey("legends", "endless"));
     ready = true;
@@ -160,45 +244,55 @@
 </script>
 
 <section class="boards glass" aria-labelledby="{uid}-tabs-label">
-  <h2 class="sr" id="{uid}-tabs-label">{t("leaderboard.tabs")}</h2>
-  <div class="tabs" role="tablist" aria-label={t("leaderboard.tabs")}>
-    {#each PERIODS as p, i (p)}
-      <button
-        bind:this={tabs[i]}
-        type="button"
-        role="tab"
-        id="{uid}-tab-{p}"
-        aria-selected={period === p}
-        aria-controls="{uid}-panel"
-        tabindex={period === p ? 0 : -1}
-        onclick={() => select(p)}
-        onkeydown={(e) => onTabKey(e, i)}
-      >
-        {t(`leaderboard.tab.${p}`)}
-      </button>
-    {/each}
-  </div>
+  <h2 class="sr" id="{uid}-tabs-label">
+    {daily ? t("dailyBoard.caption") : t("leaderboard.tabs")}
+  </h2>
+  {#if !daily}
+    <div class="tabs" role="tablist" aria-label={t("leaderboard.tabs")}>
+      {#each PERIODS as p, i (p)}
+        <button
+          bind:this={tabs[i]}
+          type="button"
+          role="tab"
+          id="{uid}-tab-{p}"
+          aria-selected={period === p}
+          aria-controls="{uid}-panel"
+          tabindex={period === p ? 0 : -1}
+          onclick={() => select(p)}
+          onkeydown={(e) => onTabKey(e, i)}
+        >
+          {t(`leaderboard.tab.${p}`)}
+        </button>
+      {/each}
+    </div>
+  {/if}
 
-  <div
-    class="panel"
-    role="tabpanel"
-    id="{uid}-panel"
-    aria-labelledby="{uid}-tab-{period}"
-    tabindex="0"
-    bind:this={panel}
-  >
+  <div class="panel" id="{uid}-panel" {...panelRole} bind:this={panel}>
     <!-- Each board, and each state of it, fades in as the game's cards' text does. -->
-    {#key `${period}:${load?.status ?? "loading"}`}
+    {#key `${daily ? "daily" : period}:${load?.status ?? "loading"}`}
       <div class="develop">
-        {#if board !== null && view !== null}
+        {#if daily && dailyBoard !== null && dailyBoard.gameNo < 1}
+          <!-- Before launch day: the countdown to Game 1, and nothing else. -->
+          <p class="empty">
+            {t("dailyBoard.notStarted", { time: countdownText(dailyBoard.nextGameAt, now) })}
+          </p>
+        {:else if view !== null && (daily ? dailyBoard !== null : board !== null)}
           <p class="meta">
-            <span>{totalText(view.total)}</span>
-            <span aria-hidden="true">{t("over.separator")}</span>
-            <span
-              >{t(`leaderboard.resets.${period}`, {
-                time: countdownText(board.resetsAt, now),
-              })}</span
-            >
+            {#if daily && dailyBoard !== null}
+              <span class="game">{gameLabel(dailyBoard.gameNo)}</span>
+              <span aria-hidden="true">{t("over.separator")}</span>
+              <span>{totalText(view.total)}</span>
+              <span aria-hidden="true">{t("over.separator")}</span>
+              <span>{nextGameText(dailyBoard.gameNo, dailyBoard.nextGameAt, now)}</span>
+            {:else if board !== null}
+              <span>{totalText(view.total)}</span>
+              <span aria-hidden="true">{t("over.separator")}</span>
+              <span
+                >{t(`leaderboard.resets.${period}`, {
+                  time: countdownText(board.resetsAt, now),
+                })}</span
+              >
+            {/if}
           </p>
           {#if winner !== null}
             <!-- "HardyOffside889 got a 23 streak yesterday": the name and number in gold. -->
@@ -210,7 +304,7 @@
             </p>
           {/if}
           {#if rows.length === 0 && pinned === null}
-            <p class="empty">{t("leaderboard.empty")}</p>
+            <p class="empty">{daily ? t("dailyBoard.empty") : t("leaderboard.empty")}</p>
           {:else}
             <!-- Ten rows' height on every page (and room for the pinned row
                  when the player has one), so the controls under it stay put. -->
@@ -236,7 +330,8 @@
                       <span class="sub">{pinnedText(pinned)}</span>
                     </span>
                     <span class="streak num"
-                      >{pinned.streak}{#if pinned.tied && pinned.thinkMs !== null}<span class="time"
+                      >{@render score(pinned)}{#if pinned.tied && pinned.thinkMs !== null}<span
+                          class="time"
                           ><span class="dot" aria-hidden="true">{t("over.separator")}</span
                           >{formatThink(pinned.thinkMs)}</span
                         >{/if}</span
@@ -254,7 +349,8 @@
                       <span class="sub">{pinnedText(pinned)}</span>
                     </span>
                     <span class="streak num"
-                      >{pinned.streak}{#if pinned.tied && pinned.thinkMs !== null}<span class="time"
+                      >{@render score(pinned)}{#if pinned.tied && pinned.thinkMs !== null}<span
+                          class="time"
                           ><span class="dot" aria-hidden="true">{t("over.separator")}</span
                           >{formatThink(pinned.thinkMs)}</span
                         >{/if}</span
@@ -263,12 +359,16 @@
                 {/if}
               {/if}
               <table>
-                <caption class="sr">{t(`leaderboard.caption.${period}`)}</caption>
+                <caption class="sr"
+                  >{daily ? t("dailyBoard.caption") : t(`leaderboard.caption.${period}`)}</caption
+                >
                 <thead>
                   <tr>
                     <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
                     <th scope="col">{t("leaderboard.col.name")}</th>
-                    <th scope="col" class="streak">{t("leaderboard.col.streak")}</th>
+                    <th scope="col" class="streak"
+                      >{daily ? t("dailyBoard.col.score") : t("leaderboard.col.streak")}</th
+                    >
                   </tr>
                 </thead>
                 {#key page}
@@ -288,7 +388,8 @@
                           </span>
                         </td>
                         <td class="streak num"
-                          >{row.streak}{#if row.tied && row.thinkMs !== null}<span class="time"
+                          >{@render score(row)}{#if row.tied && row.thinkMs !== null}<span
+                              class="time"
                               ><span class="dot" aria-hidden="true">{t("over.separator")}</span
                               >{formatThink(row.thinkMs)}</span
                             >{/if}</td
@@ -350,7 +451,11 @@
         {:else if load?.status === "failed"}
           <p class="empty" role="alert">{t("leaderboard.failed")}</p>
           <p class="retryrow">
-            <button type="button" class="secondary" onclick={() => open(period, true)}>
+            <button
+              type="button"
+              class="secondary"
+              onclick={() => (daily ? openDaily() : open(period, true))}
+            >
               {t("leaderboard.retry")}
             </button>
           </p>
@@ -363,35 +468,44 @@
   </div>
 </section>
 
-<section class="device" aria-labelledby="{uid}-device">
-  <h2 id="{uid}-device">{t("leaderboard.device")}</h2>
-  <p>{t("leaderboard.deviceIntro")}</p>
-  {#if ready && runs.length > 0}
-    <div class="glass develop">
-      <table>
-        <caption class="sr">{t("leaderboard.device")}</caption>
-        <thead>
-          <tr>
-            <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
-            <th scope="col">{t("leaderboard.col.date")}</th>
-            <th scope="col" class="streak">{t("leaderboard.col.streak")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each runs as run, i (i)}
+{#snippet score(row: { streak: number; perfect?: boolean; spoken?: string })}
+  {#if row.perfect === true}<span aria-hidden="true">{row.streak}</span><span
+      class="star"
+      aria-hidden="true">★</span
+    ><span class="sr">{row.spoken ?? row.streak}</span>{:else}{row.streak}{/if}
+{/snippet}
+
+{#if !daily}
+  <section class="device" aria-labelledby="{uid}-device">
+    <h2 id="{uid}-device">{t("leaderboard.device")}</h2>
+    <p>{t("leaderboard.deviceIntro")}</p>
+    {#if ready && runs.length > 0}
+      <div class="glass develop">
+        <table>
+          <caption class="sr">{t("leaderboard.device")}</caption>
+          <thead>
             <tr>
-              <td class="rank num">{i + 1}</td>
-              <td>{formatDate(run.date)}</td>
-              <td class="streak num">{run.score}</td>
+              <th scope="col" class="rank">{t("leaderboard.col.rank")}</th>
+              <th scope="col">{t("leaderboard.col.date")}</th>
+              <th scope="col" class="streak">{t("leaderboard.col.streak")}</th>
             </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  {:else if ready}
-    <p class="empty">{t("leaderboard.deviceEmpty")}</p>
-  {/if}
-</section>
+          </thead>
+          <tbody>
+            {#each runs as run, i (i)}
+              <tr>
+                <td class="rank num">{i + 1}</td>
+                <td>{formatDate(run.date)}</td>
+                <td class="streak num">{run.score}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else if ready}
+      <p class="empty">{t("leaderboard.deviceEmpty")}</p>
+    {/if}
+  </section>
+{/if}
 
 <style>
   /* The boards in the cards' glass (Card.astro): the same surface, edge,
@@ -415,6 +529,16 @@
   }
   .boards {
     margin-top: var(--board-top);
+  }
+  /* A perfect Daily run: a small gold star after its score. */
+  .star {
+    margin-left: var(--board-star-gap);
+    color: var(--gold);
+    font-size: var(--board-star-size);
+    text-shadow: var(--glow);
+  }
+  .game {
+    color: var(--gold);
   }
   .device .glass {
     margin-top: var(--board-inner-gap);
