@@ -371,6 +371,14 @@ describe("siteExpectations", () => {
     expect(expect_.structuredData[LEADERBOARD]).toEqual(["BreadcrumbList"]);
     expect(expect_.previewImages?.[LEADERBOARD]).toBeUndefined();
   });
+
+  it("indexes Daily Ranked as a game page, and its board with a breadcrumb", () => {
+    const DAILY = "/football-higher-or-lower/legends/daily";
+    const expect_ = siteExpectations(["/og-image.png"]);
+    expect(expect_.structuredData[DAILY]).toEqual(["BreadcrumbList", "VideoGame"]);
+    expect(expect_.structuredData[`${DAILY}/leaderboard`]).toEqual(["BreadcrumbList"]);
+    expect(expect_.previewImages?.[DAILY]).toBeUndefined();
+  });
 });
 
 describe("the themes' pages", () => {

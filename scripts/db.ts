@@ -5,7 +5,8 @@
  * under .wrangler/), never the real database:
  *
  *   pnpm db:migrate:local           apply migrations/ locally (pnpm dev does it first)
- *   pnpm db:seed:local [--date D]   a few hundred fake scores around day D (default today)
+ *   pnpm db:seed:local [--date D]   a few hundred fake scores around day D (default today),
+ *                                   and Daily Ranked entries for D's game and the one before
  *   pnpm db:reset:local             wipe the local database and migrate it again
  *
  * For the owner only, against production, each asking first:
@@ -17,6 +18,9 @@
  *   pnpm db:owner unshadow <id>
  *   pnpm db:owner find <nickname>   list scores under a nickname, to find the id
  *
+ * Each acts on Endless's scores and Daily Ranked's entries alike: ids are
+ * uuids, never shared between the two.
+ *
  * `db:owner` takes `--local` to try it on the local database instead.
  */
 
@@ -26,10 +30,15 @@ import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
+  DAILY_QUESTIONS,
   DAY_MS,
   createRng,
+  dailyEpochMs,
   dayKey,
+  gameNoAt,
+  gameStartsAt,
   generateNickname,
+  isGame,
   normaliseNickname,
   periodOf,
   startOfDay,
@@ -89,9 +98,12 @@ const sqlString = (text: string): string => `'${text.replace(/'/g, "''")}'`;
 /** The one statement an owner action runs. Refuses anything that isn't a score id (or, for find, a name). */
 export function ownerSql(action: OwnerAction, arg: string): string {
   if (action === "find") {
+    const name = sqlString(normaliseNickname(arg));
     return (
       "SELECT id, nickname, streak, day_key, name_flagged, shadow, shadow_reason FROM scores " +
-      `WHERE nickname_normalised = ${sqlString(normaliseNickname(arg))} ORDER BY created_at DESC LIMIT 50`
+      `WHERE nickname_normalised = ${name} ORDER BY created_at DESC LIMIT 50; ` +
+      "SELECT id, nickname, score, game_no, name_flagged, shadow, shadow_reason FROM daily_entries " +
+      `WHERE nickname_normalised = ${name} ORDER BY started_at DESC LIMIT 50`
     );
   }
   if (!SCORE_ID.test(arg)) throw new Error(`not a score id: ${arg}`);
@@ -101,7 +113,11 @@ export function ownerSql(action: OwnerAction, arg: string): string {
     shadow: "shadow = 1, shadow_reason = COALESCE(shadow_reason, 'owner')",
     unshadow: "shadow = 0, shadow_reason = NULL",
   }[action];
-  return `UPDATE scores SET ${set} WHERE id = ${sqlString(arg)}`;
+  // An id is in one table or the other; the update finds it wherever it is.
+  return (
+    `UPDATE scores SET ${set} WHERE id = ${sqlString(arg)}; ` +
+    `UPDATE daily_entries SET ${set} WHERE id = ${sqlString(arg)}`
+  );
 }
 
 /** Where seeded players publish from, roughly as a football crowd would; null: no flag. */
@@ -265,6 +281,110 @@ export function seedSql(today: Date, count = 320): string {
   ].join("\n");
 }
 
+/** The seeded name taken in today's Daily game, to try "That name is taken today". */
+export const SEED_TAKEN_NAME = "TakenName";
+
+/** The seeded winner of the game before today's: "BraveFreekick35 got 23 in Game 11". */
+export const SEED_WINNER = "BraveFreekick35";
+
+/**
+ * Daily Ranked entries for the game in play on `today` and the one before,
+ * every one finished, so the board, its pinned row, ties, flags, a retired
+ * name, shadowed runs and the winner line can all be tried locally — after
+ * firing the midnight cron, the previous game's snapshot too. The game before
+ * has about a hundred and forty players, its winner `SEED_WINNER` on 23
+ * (20/20 and 3 bonus rounds), ties at ranks 10–11 and 50–51; today's has
+ * thirty, `SEED_TAKEN_NAME` among them. Run keys start `seed-`, and a seed
+ * replaces an earlier one. Nothing before Game 1.
+ *
+ * No frozen game is seeded: the first real start freezes today's from the
+ * deck and the local secret, as in production.
+ */
+export function dailySeedSql(today: Date, epoch = dailyEpochMs()): string {
+  const gameNo = gameNoAt(today.getTime(), epoch);
+  const statements = ["DELETE FROM daily_entries WHERE run_key LIKE 'seed-%';"];
+  if (!isGame(gameNo)) return statements.join("\n") + "\n";
+  const rng = createRng(`seed:daily:${gameNo}`);
+  const rows: string[] = [];
+  const country = (): string => {
+    const c = SEED_COUNTRIES[rng.int(SEED_COUNTRIES.length)] ?? null;
+    return c === null ? "NULL" : sqlString(c);
+  };
+  const entries = (game: number, scores: readonly number[], named: Map<number, string>): void => {
+    if (!isGame(game)) return;
+    const used = new Set<string>([...named.values()].map((n) => normaliseNickname(n)));
+    const starts = gameStartsAt(game, epoch);
+    scores.forEach((score, i) => {
+      let nickname = named.get(i);
+      while (nickname === undefined || (!named.has(i) && used.has(normaliseNickname(nickname)))) {
+        nickname = generateNickname(() => rng.next());
+      }
+      used.add(normaliseNickname(nickname));
+      const correct = Math.min(DAILY_QUESTIONS, score);
+      const bonus = score - correct;
+      // Which of the twenty were right, then the bonus run and its miss.
+      const marks = Array.from({ length: DAILY_QUESTIONS }, (_, q) => q < correct);
+      for (let q = marks.length - 1; q > 0 && correct < DAILY_QUESTIONS; q -= 1) {
+        const j = rng.int(q + 1);
+        [marks[q], marks[j]] = [marks[j] ?? false, marks[q] ?? false];
+      }
+      const results =
+        marks.map((m) => (m ? "1" : "0")).join("") +
+        (correct === DAILY_QUESTIONS ? "1".repeat(bonus) + "0" : "");
+      const started = starts + 60_000 + rng.int(DAY_MS - 2 * 3_600_000);
+      const shadow = i > 5 && rng.next() < 0.04;
+      rows.push(
+        "(" +
+          [
+            sqlString(
+              `5eed0000-0000-4000-a000-${String(game).padStart(4, "0")}${String(i).padStart(8, "0")}`,
+            ),
+            game,
+            sqlString(`seed-${game}-${i}`),
+            sqlString(`seed-daily-${game}-${i}`),
+            sqlString(nickname),
+            sqlString(normaliseNickname(nickname)),
+            country(),
+            started,
+            started + 180_000 + rng.int(240_000),
+            score,
+            correct,
+            bonus,
+            // Within a tie, the one ranked first thought for less.
+            40_000 + i * 731 + rng.int(500),
+            sqlString(results),
+            sqlString(correct === DAILY_QUESTIONS ? "wrong" : "finished"),
+            i > 5 && rng.next() < 0.03 ? 1 : 0,
+            shadow ? 1 : 0,
+            shadow ? "'seed'" : "NULL",
+          ].join(", ") +
+          ")",
+      );
+    });
+  };
+
+  // The game before: a winner on 23, a few more perfect runs, then the spread.
+  const before = [23, 22, 21, 21, 20, 19, 19, 18, 18, 17, 17];
+  while (before.length < 140)
+    before.push(Math.max(0, 16 - Math.floor(-Math.log(1 - rng.next() * 0.999) * 3)));
+  before.sort((a, b) => b - a);
+  before[50] = before[49] ?? 0;
+  entries(gameNo - 1, before, new Map([[0, SEED_WINNER]]));
+
+  const todays = Array.from({ length: 30 }, () => 6 + rng.int(15));
+  todays[0] = 24;
+  todays.sort((a, b) => b - a);
+  entries(gameNo, todays, new Map([[3, SEED_TAKEN_NAME]]));
+
+  statements.push(
+    "INSERT INTO daily_entries (id, game_no, run_key, device_hash, nickname, nickname_normalised, " +
+      "country, started_at, finished_at, score, correct, bonus, think_ms, results, end_reason, " +
+      "name_flagged, shadow, shadow_reason) VALUES",
+    rows.join(",\n") + ";",
+  );
+  return statements.join("\n") + "\n";
+}
+
 // ---------------------------------------------------------------- the commands
 
 /**
@@ -344,10 +464,16 @@ function seedLocal(args: readonly string[]): number {
   const dir = join(root, ".wrangler");
   mkdirSync(dir, { recursive: true });
   const file = join(dir, "seed.sql");
-  writeFileSync(file, seedSql(date));
+  writeFileSync(file, seedSql(date) + dailySeedSql(date));
   const code = wrangler(localArgs("seed", relative(root, file)));
   if (code === 0) {
     console.log(`\nSeeded the local database around ${date.toISOString().slice(0, 10)}.`);
+    const game = gameNoAt(date.getTime(), dailyEpochMs());
+    if (isGame(game)) {
+      console.log(
+        `Daily Ranked: Game ${game} and Game ${game - 1}; "${SEED_TAKEN_NAME}" is taken in Game ${game}.`,
+      );
+    }
   }
   return code;
 }
