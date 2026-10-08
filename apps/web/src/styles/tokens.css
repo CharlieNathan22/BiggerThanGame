@@ -24,6 +24,12 @@
   --rule: rgba(238, 243, 241, 0.13);
   --gold: #ffb020;
   --gold-rule: rgba(255, 176, 32, 0.28);
+  /* Polished chrome: the light and dark steps of the silver band. */
+  --silver-hi: #fbfcfd;
+  --silver: #d3d9dc;
+  --silver-mid: #a2abb0;
+  --silver-lo: #66707a;
+  --silver-sheen: rgba(255, 255, 255, 0.95);
   --monogram: rgba(255, 176, 32, 0.052);
   --flare: #e2453c;
   --hit: #1f7a45;
@@ -140,6 +146,27 @@
   --btn2-icon: 1.05em;
   --btn2-icon-gap: 8px;
   --btn2-icon-stroke: 2;
+  /* Try other modes, the last button: Play again's, in a band of chrome, with
+     a sheen that sweeps across the band on hover. */
+  --chrome-band-w: 2px;
+  --chrome-band: linear-gradient(
+    135deg,
+    var(--silver-hi) 0%,
+    var(--silver-mid) 16%,
+    var(--silver) 30%,
+    var(--silver-lo) 46%,
+    var(--silver-hi) 58%,
+    var(--silver-mid) 74%,
+    var(--silver-lo) 88%,
+    var(--silver) 100%
+  );
+  --chrome-sheen: linear-gradient(
+    105deg,
+    transparent 44%,
+    var(--silver-sheen) 50%,
+    transparent 56%
+  );
+  --dur-chrome-sheen: 700ms;
   --veil-pad: 26px;
   --over-cap-top: 5px;
   --over-title-top: 10px;

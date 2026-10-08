@@ -27,6 +27,7 @@
     DAILY_PATH,
     ENDLESS_LEADERBOARD_PATH,
     FRIENDLY_PATH,
+    LEGENDS_PATH,
     isLegendsPath,
   } from "../../lib/paths";
   import { TIER_COLOUR } from "../../lib/tiers";
@@ -1410,6 +1411,7 @@
                 >{copyByHand}</textarea
               >
             {/if}
+            <a class="cta othermodes" href={LEGENDS_PATH}>{t("over.otherModes")}</a>
           </div>
           <div class="feedback">
             {#if report}
@@ -1564,6 +1566,7 @@
             >{copyByHand}</textarea
           >
         {/if}
+        <a class="cta othermodes" href={LEGENDS_PATH}>{t("over.otherModes")}</a>
         <p class="nextgame">{nextGameText(result.gameNo, daily.nextGameAt, wallNow)}</p>
       </div>
       <div class="feedback">
@@ -2187,6 +2190,51 @@
   }
   .cta:disabled {
     cursor: default;
+  }
+  /* Try other modes, the last button on every game-over panel: Play again
+     (size, fill, type, glow, hover, press and focus) in a band of chrome. The
+     band is a border filled by the silver gradient (border-box) under the gold
+     (padding-box), so the corners stay crisp; the padding gives back its
+     width. On hover a sheen sweeps across the band; with reduced motion
+     (base.css drops the animation), it stays off the band. */
+  .actions > a.cta.othermodes {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    max-width: 100%;
+    /* The share note's reserved line above is its gap. */
+    margin: 0 auto;
+    padding: 0 calc(var(--cta-pad-x) - var(--chrome-band-w));
+    border: var(--chrome-band-w) solid transparent;
+    background:
+      linear-gradient(var(--gold), var(--gold)) padding-box,
+      var(--chrome-sheen) border-box 100% 0 / 300% 100% no-repeat,
+      var(--chrome-band) border-box;
+    text-decoration: none;
+    text-align: center;
+  }
+  .actions > a.cta.othermodes:hover {
+    animation: chrome-sheen var(--dur-chrome-sheen) var(--ease) 1;
+  }
+  @keyframes chrome-sheen {
+    from {
+      background-position:
+        0 0,
+        100% 0,
+        0 0;
+    }
+    to {
+      background-position:
+        0 0,
+        0% 0,
+        0 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .actions > a.cta.othermodes:hover {
+      animation: none;
+    }
   }
   /* Endless's start panel: the clock, Friendly for anyone who'd rather play
      without one, and the leaderboard. */

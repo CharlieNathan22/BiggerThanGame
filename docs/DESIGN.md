@@ -1325,6 +1325,10 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   open yet is a "Coming soon" card: not a link, not focusable, visibly dimmed, with "Coming soon"
   written out rather than carried by tint alone, and every piece of text still at WCAG AA. No mode
   on the Legends page is coming soon today.
+- **Back to the modes.** Every game-over panel, in every mode (the wins, and Daily Ranked's
+  result, too), ends with "Try other modes": a link to the deck's page, Play again's gold button in
+  a band of chrome, the last of the panel's actions (below Share on Daily Ranked), above the
+  feedback links.
 - **Daily Ranked's page** has its own title ("Daily Football Legends Quiz — Bigger Than"),
   description, canonical, preview tags, JSON-LD and breadcrumb, and a sitemap entry; so does its
   board. Its start panel shows "Game 12" and the countdown in gold, the rules in two lines, the
