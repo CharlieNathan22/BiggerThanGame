@@ -15,6 +15,7 @@ const source = (path: string) =>
 const page = source("../../pages/football-higher-or-lower/legends.astro");
 const card = source("../../components/Card.astro");
 const cardsList = source("../../components/Cards.astro");
+const dailyStatus = source("../../components/DailyCardStatus.svelte");
 
 /** Each `<Card …/>` or `<Card …>` on the page, in order, as its attribute text. */
 const cards = [...page.matchAll(/<Card\b([^>]*?)\/?>/g)].map((m) => m[1] ?? "");
@@ -87,6 +88,60 @@ describe("the Legends page's modes", () => {
     expect(instagram).toMatch(/accent="instagram"/);
     expect(instagram).not.toMatch(/extra=/);
     expect(cards[1]).toMatch(/extra=/);
+  });
+});
+
+describe("the Daily card's button place", () => {
+  const markup = dailyStatus.slice(
+    dailyStatus.indexOf('<div class="status">'),
+    dailyStatus.indexOf("<style>"),
+  );
+  const style = dailyStatus.slice(dailyStatus.indexOf("<style>"));
+  const action = markup.slice(markup.indexOf('<div class="action">'));
+  const rule = (selector: string) =>
+    new RegExp(`(^|\\n)\\s*${selector.replace(/[.()]/g, (c) => `\\${c}`)} \\{([^}]*)\\}`).exec(
+      style,
+    )?.[2] ?? "";
+
+  it("puts every state in the one action area: the placeholder, Play, Carry on, and done", () => {
+    expect(markup.match(/<div class="action">/g)).toHaveLength(1);
+    expect(action).toMatch(/class="pill pending"/);
+    expect(action).toMatch(/class="pill play"/);
+    expect(action).toMatch(/t\("daily\.resume"\)/);
+    expect(action).toMatch(/t\("mode\.ranked\.play"\)/);
+    expect(action).toMatch(/class="result"/);
+    expect(action).toMatch(/class="done" role="status"/);
+  });
+
+  it("never collapses: it keeps one height, at least the 44px target, in every state", () => {
+    expect(rule(".action")).toMatch(/min-height: var\(--daily-card-action-h\);/);
+    const tokens = source("../../styles/tokens.css");
+    const h = Number(/--daily-card-action-h: (\d+)px;/.exec(tokens)?.[1]);
+    expect(h).toBeGreaterThanOrEqual(44);
+    // The lines above it keep their height while they're still empty, before mount.
+    expect(rule(".game")).toMatch(/min-height: 1lh;/);
+    expect(rule(".next")).toMatch(/min-height: 1lh;/);
+    // The placeholder is Play's size: the same pill, with Play's words, hidden.
+    expect(action).toMatch(
+      /class="pill pending" aria-hidden="true"\s*><span class="ghost">\{t\("mode\.ranked\.play"\)\}/,
+    );
+    expect(rule(".ghost")).toMatch(/visibility: hidden;/);
+  });
+
+  it("starts out asking, never showing Play before the server has answered", () => {
+    expect(dailyStatus).toMatch(/let action = \$state<CardAction>\(\{ kind: "pending" \}\);/);
+  });
+
+  it("glows on Play and Carry on only: the placeholder and the done line never do", () => {
+    expect(rule(".play")).toMatch(/box-shadow: var\(--glow\);/);
+    expect(style).toMatch(/:global\(\.card\.open:hover\) \.play,/);
+    expect(style).toMatch(
+      /:global\(\.card\.open:active\) \.play \{\s*box-shadow: var\(--glow-strong\);/,
+    );
+    expect(rule(".done")).not.toMatch(/box-shadow|transform|cursor/);
+    expect(rule(".pending")).not.toMatch(/box-shadow/);
+    // No hover, focus or press rule reaches the done line or the placeholder.
+    expect(style).not.toMatch(/\)\s*\.(done|pending)\b/);
   });
 });
 

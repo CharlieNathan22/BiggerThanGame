@@ -113,6 +113,8 @@ export const en = {
   // The Daily Ranked card: Play, or this device's result today ("15/20 · 312th of 2,400")
   "mode.ranked.play": "Play today's game",
   "mode.ranked.result": "{score} · {rank}",
+  // The Daily card once today's game is played, in the button's place: status text, not a button
+  "daily.cardDone": "Today's game completed — come back tomorrow",
   "mode.soon": "Coming soon",
   // The Legends page's "Clear the squad" sections, a card per theme
   "themes.club": "Clubs",
@@ -184,6 +186,9 @@ export const en = {
   "daily.bonusLine": "{target}/{target} +{bonus} bonus",
   // The title bar during the bonus rounds: "20/20 +3"
   "daily.titleBonus": "{target}/{target} +{bonus}",
+  // The title bar's bonus, beside "20 / 20" and smaller: "+3", read as "+3 bonus"
+  "daily.titleBonusPart": "+{bonus}",
+  "daily.titleBonusSpoken": "bonus",
   // The chip at the top of the pitch during the bonus rounds
   "daily.bonusChip": "+{bonus} bonus",
   "daily.bonusLabel": "Bonus rounds",

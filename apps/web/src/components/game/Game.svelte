@@ -46,7 +46,7 @@
     resultTrack,
     rememberedRun,
     tally,
-    titleScore,
+    titleTally,
   } from "../../game/daily";
   import type { DailyApi } from "../../game/daily";
   import {
@@ -949,7 +949,7 @@
       best: game.best,
       target,
       rising: onNewBest(game),
-      ...(ranked ? { daily: titleScore(dailyResults) } : {}),
+      ...(ranked ? { daily: titleTally(dailyResults) } : {}),
     }}
     legends={isLegendsPath(path)}
     current={path}
@@ -2032,7 +2032,10 @@
       min-height: var(--cta-top);
     }
   }
-  .start .brand {
+  /* Daily Ranked's own panel (checking, Carry on, today's result) carries the
+     start panel's head, so "Bigger Than Game" is the same single line. */
+  .start .brand,
+  .daily .brand {
     font-size: var(--fs-start-brand);
     white-space: nowrap;
     text-shadow: var(--heading-glow);
@@ -2740,12 +2743,17 @@
   }
 
   /* Daily Ranked's own panel: today's result (the game-over panel's score,
-     caption and grid), the run to carry on, or the wait for Game 1. Not the
-     start panel, which also carries .daily: it keeps --start-w like
-     Endless's, so "Bigger Than Game" (one line, never wrapped) has the room
-     to centre. */
+     caption and grid), the run to carry on, or the wait for Game 1. As wide
+     as the start panel (which also carries .daily), so "Bigger Than Game",
+     one line and never wrapped, has the same room to centre in every state. */
   .panel.daily:not(.start) {
+    max-width: var(--start-w);
+  }
+  /* Its head is the start panel's width; what follows keeps the game-over
+     panel's. */
+  .panel.daily:not(.start) > :not(.head) {
     max-width: var(--over-w);
+    margin-inline: auto;
   }
   /* Play and Carry on: the gold glow on hover and focus, as every .cta, and
      a stronger one on press. With reduced motion, no press scale: the glow

@@ -9,6 +9,9 @@ import type { DailyBoardResponse, DailyMineResponse, DailyResult } from "@bt/cor
 import {
   DAILY_RUN_KEY,
   bonusChip,
+  cardAction,
+  cardNeedsLookup,
+  cardResultText,
   bonusLine,
   boardScore,
   dailyGridLabel,
@@ -22,7 +25,7 @@ import {
   rememberedRun,
   resultTrack,
   tally,
-  titleScore,
+  titleTally,
 } from "../daily";
 import { dailyBoardView, dailyOwnPosition, dailyWinnerLine } from "../leaderboard";
 import { initialState, reduce } from "../machine";
@@ -235,8 +238,11 @@ describe("the Daily words", () => {
 
   it("tally the marks, and show the bonus only after a perfect twenty", () => {
     expect(tally([...marks(20, 0), true, true, false])).toEqual({ correct: 20, bonus: 2 });
-    expect(titleScore(marks(7, 3))).toBe("7/20");
-    expect(titleScore([...marks(20, 0), true, true, true])).toBe("20/20 +3");
+    // The title bar: the right answers, and the bonus apart, only once in the bonus rounds.
+    expect(titleTally(marks(7, 3))).toEqual({ correct: 7, bonus: null });
+    expect(titleTally(marks(20, 0))).toEqual({ correct: 20, bonus: null });
+    expect(titleTally([...marks(20, 0), true, true, true])).toEqual({ correct: 20, bonus: 3 });
+    expect(titleTally([...marks(20, 0), false])).toEqual({ correct: 20, bonus: 0 });
     expect(bonusChip(marks(19, 1))).toBe("");
     expect(bonusChip([...marks(20, 0), true])).toBe("+1 bonus");
   });
@@ -271,6 +277,73 @@ describe("the Daily words", () => {
     const perfect = boardScore({ score: 25, perfect: true, bonus: 5 });
     expect(perfect.star).toBe(true);
     expect(perfect.spoken).toMatch(/twenty out of twenty/);
+  });
+});
+
+describe("the Legends card's button place", () => {
+  const result: DailyResult = {
+    gameNo: 8,
+    score: 13,
+    correct: 13,
+    bonus: 0,
+    results: marks(13),
+    end: "finished",
+    nickname: "BrowserCheck",
+    rank: 19,
+    total: 30,
+  };
+  const mine = (state: "none" | "playing" | "finished", gameNo = 8): DailyMineResponse =>
+    state === "finished"
+      ? {
+          gameNo,
+          nextGameAt: 0,
+          country: null,
+          state,
+          result,
+          standing: {
+            id: "x",
+            rank: 19,
+            nickname: "BrowserCheck",
+            score: 13,
+            perfect: false,
+            bonus: 0,
+            tied: false,
+            thinkMs: null,
+            country: null,
+          },
+        }
+      : state === "playing"
+        ? { gameNo, nextGameAt: 0, country: null, state, nickname: "BrowserCheck" }
+        : { gameNo, nextGameAt: 0, country: null, state };
+
+  it("asks the server only for a device with an id, from Game 1", () => {
+    expect(cardNeedsLookup(8, "00000000-0000-4000-8000-000000000000")).toBe(true);
+    // A fresh device, or storage blocked: Play at once, nothing to ask.
+    expect(cardNeedsLookup(8, null)).toBe(false);
+    // Before launch day there is nothing to look up.
+    expect(cardNeedsLookup(0, "00000000-0000-4000-8000-000000000000")).toBe(false);
+  });
+
+  it("holds a placeholder while the answer is out, never a guess", () => {
+    expect(cardAction(8, undefined)).toEqual({ kind: "pending" });
+  });
+
+  it("offers Play with nothing played today, or when the answer can't be had", () => {
+    expect(cardAction(8, mine("none"))).toEqual({ kind: "play" });
+    expect(cardAction(8, null)).toEqual({ kind: "play" });
+    // Yesterday's answer, overtaken by midnight, says nothing about today.
+    expect(cardAction(8, mine("finished", 7))).toEqual({ kind: "play" });
+  });
+
+  it("offers Carry on for a run still going", () => {
+    expect(cardAction(8, mine("playing"))).toEqual({ kind: "resume" });
+  });
+
+  it("shows today's result once the game is done", () => {
+    expect(cardAction(8, mine("finished"))).toEqual({ kind: "done", result });
+    expect(cardResultText(result)).toBe("13/20 · 19th of 30");
+    expect(cardResultText({ ...result, rank: null, total: null })).toBe("13/20");
+    expect(cardResultText({ ...result, correct: 20, bonus: 5 })).toBe("25 · 19th of 30");
   });
 });
 

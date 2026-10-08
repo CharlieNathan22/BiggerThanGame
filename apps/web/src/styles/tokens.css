@@ -228,6 +228,8 @@
   --fs-legends: 19px;
   --fs-score-label: 10.5px;
   --fs-score: 18px;
+  /* Daily Ranked's bonus beside the score in the title bar ("+3"): smaller than it. */
+  --fs-score-bonus: 13px;
 
   /* Cards. */
   --fs-name: clamp(22px, 4.1vh, 36px);
@@ -651,7 +653,7 @@
      a gold-leaf band along the top, a warm glow from the top behind the text
      (dark enough under it that the body text keeps AA), and a deeper gold
      glow when lifted. Its live lines: the game in gold leaf, the countdown,
-     and the result or a Play pill, in --daily-card-status-h kept for them. */
+     and the result or a Play pill in the button's place (--daily-card-action-h). */
   --daily-card-edge: rgba(var(--glow-rgb), 0.62);
   --daily-card-surface:
     radial-gradient(ellipse 80% 70% at 50% 0%, rgba(var(--glow-rgb), 0.16), transparent 70%),
@@ -666,7 +668,16 @@
   --fs-daily-card-name: 30px;
   --fs-daily-card-game: 20px;
   --daily-card-status-gap: 4px;
-  --daily-card-status-h: 104px;
+  /* The button's place, the same height in every state: the result line and
+     the "come back tomorrow" pill (two lines on a narrow phone) fit in it,
+     and Play sits in its middle. */
+  --daily-card-action-h: 76px;
+  /* While the card asks the server: Play's size, a faint gold and no words. */
+  --daily-card-pending-bg: rgba(var(--glow-rgb), 0.14);
+  /* "Today's game completed": status text in a muted pill, not a button. */
+  --daily-card-done-bg: rgba(255, 255, 255, 0.06);
+  --daily-card-done-pad: 6px 16px;
+  --daily-card-done-lh: 1.35;
 
   /* "Clear the squad"'s theme cards (ThemeCard.astro), each in colours of its own,
      by theme id: -1 and -2 its two colours, for the edge's gradient; -rgb the

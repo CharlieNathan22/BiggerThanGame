@@ -34,8 +34,12 @@
       best: number;
       target: number | null;
       rising?: boolean;
-      /** Daily Ranked: the score as it reads ("14/20", "20/20 +3"), and no Best. */
-      daily?: string;
+      /**
+       * Daily Ranked: the right answers, shown out of `target` exactly as
+       * Friendly's score is ("14 / 20"), and the bonus beside it, smaller
+       * ("+3"), null before the bonus rounds. No Best.
+       */
+      daily?: { correct: number; bonus: number | null };
     };
     /** Add "— Football Legends": /football-higher-or-lower/legends and the pages under it. */
     legends?: boolean;
@@ -86,7 +90,13 @@
       <div class="scores">
         {#if scores.daily !== undefined}
           <div class="score">
-            <span class="sr">{t("scores.score")}</span><strong class="num">{scores.daily}</strong>
+            <span class="sr">{t("scores.score")}</span><strong class="num"
+              >{t("scores.of", { score: scores.daily.correct, target: scores.target ?? 0 })}</strong
+            >{#if scores.daily.bonus !== null}<span class="bonus num"
+                >{t("daily.titleBonusPart", { bonus: scores.daily.bonus })}<span class="sr"
+                  >&nbsp;{t("daily.titleBonusSpoken")}</span
+                ></span
+              >{/if}
           </div>
         {:else if scores.target === null}
           <div class="score">
@@ -276,6 +286,12 @@
     transition:
       color var(--dur-tint) var(--ease),
       text-shadow var(--dur-tint) var(--ease);
+  }
+  /* Daily Ranked's bonus beside its score: smaller than it, in gold. */
+  .score .bonus {
+    font-size: var(--fs-score-bonus);
+    color: var(--gold);
+    font-variation-settings: var(--fv-num);
   }
   /* On a new best, mid-run: Best turns gold and glows as it counts. */
   .score.rising strong {

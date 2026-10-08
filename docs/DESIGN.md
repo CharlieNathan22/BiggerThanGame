@@ -1331,7 +1331,8 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   name field (with a button for a new generated name), "Show my country flag", "Your name and score
   will appear on today's leaderboard." and Play. A device that has played sees today's result
   instead: the score, "312th of 2,400", the twenty squares, the shares, the countdown and the
-  board; one with a run still going sees "Carry on".
+  board; one with a run still going sees "Carry on". The title bar carries the score as Friendly's
+  does ("14 / 20"), and in the bonus rounds the bonus beside it, smaller ("+3").
 - **Canonical rule.** Every page is canonical to itself, with its own title and meta description;
   the 404 has none and is `noindex`. The sitemap lists exactly the canonical pages.
 - **Breadcrumb.** The Legends page shows "Football › Legends" above its heading, in a `nav`
@@ -1353,11 +1354,16 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   on the Legends page's cards), and below 360px GitHub, so it still fits.
 - **The Legends page's modes**, each on a full row of its own: **Daily Ranked** first, the premium
   card — a gold edge, a gold-leaf band along its top and across its name, and a warm glow behind
-  it — showing "Game 12", the countdown to the next game, and either this device's result today
-  ("15/20 · 312th of 2,400") or a gold "Play today's game" pill ("Carry on" for a run still going;
-  before launch day only "Game 1 starts in …"), with a "See today's leaderboard" button beside it as
-  Endless's has. Its lines are drawn in the browser, never at build time, so the static page is never
-  a day stale. Then Endless, with a "See
+  it — showing "Game 12" and the countdown to the next game, then, in the button's place: a gold
+  "Play today's game" pill, or "Carry on" for a run still going, each glowing on hover, focus and
+  press; or, once today's game is done, the result ("15/20 · 312th of 2,400") and a muted pill,
+  "Today's game completed — come back tomorrow", which is status text, not a button, and never
+  glows. While the card asks the server where this device stands, the button's place holds a
+  dimmed placeholder of Play's size, so nothing swaps or jumps when it answers; a device that has
+  never played is shown Play at once, as is one whose lookup fails. That place keeps one height in
+  every state. Before launch day it shows only "Game 1 starts in …". A "See today's leaderboard"
+  button sits beside it as Endless's has. Its lines are drawn in the browser, never at build time,
+  so the static page is never a day stale. Then Endless, with a "See
   leaderboards" button on the right of its card from 900px wide (under its text below that, so the
   text stays centred like the other cards') — a second link beside the card's own, never inside
   it; then **Instagram Endless**, in the Endless card's style with its own deep-pink accent (the

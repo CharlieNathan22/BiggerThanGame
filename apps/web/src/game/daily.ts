@@ -198,12 +198,17 @@ export function resultTrack(results: readonly boolean[]): TrackStep[] {
   }));
 }
 
-/** The title bar's score mid-run: "14/20", and in the bonus "20/20 +3". */
-export function titleScore(results: readonly boolean[]): string {
+/**
+ * The title bar's score mid-run, in parts: the right answers, shown out of
+ * twenty as Friendly's are ("14 / 20"), and the bonus ("+3"), shown smaller,
+ * null until a bonus round has been answered.
+ */
+export function titleTally(results: readonly boolean[]): {
+  readonly correct: number;
+  readonly bonus: number | null;
+} {
   const { correct, bonus } = tally(results);
-  return results.length > DAILY_QUESTIONS
-    ? t("daily.titleBonus", { target: DAILY_QUESTIONS, bonus })
-    : t("score.of", { score: correct, target: DAILY_QUESTIONS });
+  return { correct, bonus: results.length > DAILY_QUESTIONS ? bonus : null };
 }
 
 /** The chip in the bonus rounds: "+3 bonus". Empty before them. */
@@ -231,6 +236,52 @@ export function boardScore(entry: Pick<DailyBoardEntry, "score" | "perfect" | "b
       ? t("daily.perfectSpoken", { score: entry.score, bonus: entry.bonus })
       : String(entry.score),
   };
+}
+
+// ------------------------------------------------------- the Legends card
+
+/**
+ * What the Legends page's Daily card shows in its button's place:
+ *
+ * - `pending` while the server is asked (a dimmed placeholder of Play's size);
+ * - `play` with nothing played today, or when the answer can't be had;
+ * - `resume` for a run still going ("Carry on");
+ * - `done` once today's game is finished: the result, and a muted "come
+ *   back tomorrow" in the button's place.
+ */
+export type CardAction =
+  | { readonly kind: "pending" }
+  | { readonly kind: "play" }
+  | { readonly kind: "resume" }
+  | { readonly kind: "done"; readonly result: DailyResult };
+
+/**
+ * Whether the card asks the server before it can say: only from Game 1, and
+ * only for a device with an id (one that has started or published a run).
+ * Any other device, storage blocked included, is shown Play at once.
+ */
+export function cardNeedsLookup(gameNo: number, deviceId: string | null): boolean {
+  return gameNo >= 1 && deviceId !== null;
+}
+
+/**
+ * The card's action for game `gameNo` from this device's lookup: `undefined`
+ * while it is out, `null` when it failed (Play, so nothing is ever stuck).
+ */
+export function cardAction(gameNo: number, mine: DailyMineResponse | null | undefined): CardAction {
+  if (mine === undefined) return { kind: "pending" };
+  if (mine === null || mine.gameNo !== gameNo) return { kind: "play" };
+  if (mine.state === "finished") return { kind: "done", result: mine.result };
+  return mine.state === "playing" ? { kind: "resume" } : { kind: "play" };
+}
+
+/** A finished run on the card: "13/20 · 19th of 30", or the score alone before it is ranked. */
+export function cardResultText(
+  result: Pick<DailyResult, "correct" | "bonus" | "rank" | "total">,
+): string {
+  const score = dailyScoreText(result.correct, result.bonus);
+  const rank = rankLine(result);
+  return rank === "" ? score : t("mode.ranked.result", { score, rank });
 }
 
 // ----------------------------------------------------------------- share
