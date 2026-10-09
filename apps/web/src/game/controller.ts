@@ -20,7 +20,7 @@
  * timer from an abandoned run is ignored.
  */
 
-import type { CardImage, Guess, NamedVariant, RoundPayload } from "@bt/core";
+import type { CardImage, Guess, NamedVariant, RoundPayload, StartResponse } from "@bt/core";
 import { classifyFailure } from "./api";
 import type { GameApi } from "./api";
 import {
@@ -37,7 +37,8 @@ import {
   spinDelay,
   verdictAt,
 } from "./machine";
-import type { Challenge, GameEvent, GameMode, GameState } from "./machine";
+import type { Challenge, GameEvent, GameMode, GameState, StreamSettings } from "./machine";
+import type { StreamStarted } from "./stream/api";
 import type { Timings } from "./timing";
 
 export interface ControllerDeps {
@@ -68,6 +69,14 @@ export interface ControllerDeps {
 }
 
 type Listener = (state: GameState) => void;
+
+/** A match's settings, when the start was Twitch Mode's (stream/api.ts adds the pool). */
+function streamOf(res: StartResponse): { readonly stream?: StreamSettings } {
+  const r = res as Partial<StreamStarted>;
+  return r.pool !== undefined && r.questions !== undefined && r.limit !== undefined
+    ? { stream: { pool: r.pool, questions: r.questions, limit: r.limit } }
+    : {};
+}
 
 export class GameController {
   #state: GameState;
@@ -107,8 +116,14 @@ export class GameController {
     this.#dispatch({ type: "start" });
   }
 
+  /** A pick: the answer, or in Twitch Mode the streamer's pick, locked in until voting closes. */
   guess(guess: Guess): void {
     this.#dispatch({ type: "guess", guess, at: this.#deps.now() });
+  }
+
+  /** Twitch Mode's "End voting": closes the window early, once the rules allow (`canEndVoting`). */
+  endVoting(): void {
+    this.#dispatch({ type: "close", at: this.#deps.now() });
   }
 
   /**
@@ -189,6 +204,7 @@ export class GameController {
               runId: res.runId,
               round: res.round,
               ...(res.challenge !== undefined ? { challenge: res.challenge } : {}),
+              ...streamOf(res),
             }),
           (err: unknown) =>
             current() &&

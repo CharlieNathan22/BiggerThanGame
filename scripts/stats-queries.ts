@@ -8,7 +8,9 @@
  * correct, double3 streak, double4 relaxation step, double5 rank distance; for
  * an end blob6 end reason and double1 final score; for an Endless answer also
  * double6 the server-measured answer time in ms; for a leave blob6 phase,
- * blob7 trigger, blob8 stat and double1 round. Counts are
+ * blob7 trigger, blob8 stat and double1 round; for a Twitch Mode end (blob2
+ * `stream`) blob11 the pool, double1 the streamer's score, double2 the
+ * questions, double3 the limit, double4 chat's score, double5 the peak voters. Counts are
  * `SUM(_sample_interval)`, never `count()`, so they stay right if Analytics
  * Engine samples.
  *
@@ -416,6 +418,30 @@ ORDER BY game DESC`,
         `repeat connections ${pct(total("repeat_connection"), players)} of starts`
       );
     },
+  },
+  stream: {
+    title: "Twitch Mode: matches",
+    about:
+      "Per pool, length and timer: matches finished, the streamer's and chat's mean scores, " +
+      "how often the streamer beat chat or drew, the mean peak voters on one question, and " +
+      "matches closed by the alarm (the page went away). Counts only: nothing from chat.",
+    sql: (o) => `SELECT
+  blob11 AS pool,
+  double2 AS questions,
+  double3 AS limit_s,
+  sum(_sample_interval) AS matches,
+  round(sum(_sample_interval * double1) / sum(_sample_interval), 1) AS streamer_mean,
+  round(sum(_sample_interval * double4) / sum(_sample_interval), 1) AS chat_mean,
+  sumIf(_sample_interval, double1 > double4) AS streamer_won,
+  sumIf(_sample_interval, double1 = double4) AS draws,
+  round(sum(_sample_interval * double5) / sum(_sample_interval), 1) AS mean_peak_voters,
+  sumIf(_sample_interval, blob6 = 'disconnected') AS disconnected
+FROM ${DATASET}
+WHERE blob2 = 'stream'
+  AND blob1 = 'end'
+  AND ${timeWindow(o)}
+GROUP BY pool, questions, limit_s
+ORDER BY matches DESC`,
   },
   latest: {
     title: "Latest 50 starts and ends",

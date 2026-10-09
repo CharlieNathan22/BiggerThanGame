@@ -46,6 +46,16 @@
  *   blob10  theme        "Clear the squad" only, on every event: the theme id
  *                        ("club-barcelona"); absent (so "") for every other mode. The
  *                        events' own blobs above are padded to reach it.
+ *   Twitch Mode ("stream" in blob2, whatever its pool) adds, on every event, blob10 the
+ *           theme id for a squad pool ("" otherwise) and blob11 the pool
+ *           ("endless" | "endless-instagram" | "squad:<theme id>"); start double1 the
+ *           questions, double2 the limit in seconds; answer blob12 chat's outcome
+ *           ("right" | "wrong" | "split" | "none"; "" when the page sent none),
+ *           double3 the streamer's right answers so far, double7 0, double8 that
+ *           question's voters; end blob6 "finished" | "deck-exhausted" |
+ *           "disconnected", double1 the streamer's score, double2 the questions,
+ *           double3 the limit, double4 chat's score, double5 the peak voters on one
+ *           question. Counts only: never a message, a name or an id from chat.
  *
  * Privacy (§19): nothing personal — no IP (Daily's repeat-connection figure is
  * a count; the salted hash behind it stays in D1 for 48 hours), no user agent, no
@@ -85,6 +95,8 @@ import type {
   Round,
   RunEnd,
   StatKey,
+  StreamLimit,
+  StreamPool,
   Tier,
   TimedGuess,
 } from "@bt/core";
@@ -108,9 +120,20 @@ export const UNKNOWN_COUNTRY = "XX";
  */
 export type RunKind = "fresh" | "challenge" | "replay";
 
+/** A Twitch Mode match's settings, on every one of its events. */
+export interface StreamFacts {
+  readonly pool: StreamPool;
+  readonly questions: number;
+  readonly limit: StreamLimit;
+}
+
+/** What chat did on a question, as the streamer's page counted it. */
+export type ChatOutcome = "right" | "wrong" | "split" | "none";
+
 /** What every event knows about its run. */
 interface RunFacts {
-  readonly mode: Mode;
+  /** The sequence mode, or `stream` for a Twitch Mode match (with `stream`). */
+  readonly mode: Mode | "stream";
   /**
    * An Endless run's variant, when not general Endless (variants.ts in
    * @bt/core). Written as the mode column, and as `variant` on log lines.
@@ -121,6 +144,8 @@ interface RunFacts {
   readonly runKind: RunKind;
   /** Daily Ranked: the game the run belongs to. */
   readonly gameNo?: number;
+  /** Twitch Mode: the match's pool and settings. */
+  readonly stream?: StreamFacts;
 }
 
 export interface StartEvent extends RunFacts {
@@ -162,6 +187,9 @@ export interface AnswerEvent extends RunFacts {
    * Friendly, whose band is the mode's own.
    */
   readonly band?: string;
+  /** Twitch Mode: how chat did on this question, and how many voted. Counts only. */
+  readonly chat?: ChatOutcome;
+  readonly voters?: number;
 }
 
 export interface EndEvent extends RunFacts {
@@ -171,6 +199,9 @@ export interface EndEvent extends RunFacts {
   /** Daily Ranked: right answers out of twenty, and bonus rounds answered right. */
   readonly correct?: number;
   readonly bonus?: number;
+  /** Twitch Mode: chat's score, and the most voters on any one question. */
+  readonly chatScore?: number;
+  readonly peakVoters?: number;
   /** The answered round that ended the run, for its log line. Not in the data point. */
   readonly final?: FinalRound;
   /**
@@ -296,29 +327,42 @@ export function bandLabel(round: number, mode: Mode, rules?: BandRules): string 
   return formatBand(bandForRound(round, mode, rules));
 }
 
-/** The mode column: the mode, an Endless variant's id, or `squad` for any theme. */
+/**
+ * The mode column: the mode, an Endless variant's id, or `squad` for any
+ * theme; `stream` for every Twitch Mode match, whatever its pool.
+ */
 export function modeColumn(event: Pick<RunFacts, "mode" | "variant">): string {
   const { variant } = event;
+  if (event.mode === "stream") return "stream";
   if (variant === undefined) return event.mode;
   return isSquadVariantId(variant) ? "squad" : variant;
 }
 
-/** A "Clear the squad" run's theme id, or undefined. */
-export function themeOf(event: Pick<RunFacts, "variant">): string | undefined {
-  return event.variant !== undefined && isSquadVariantId(event.variant)
-    ? themeIdOf(event.variant)
-    : undefined;
+/** A "Clear the squad" run's theme id, or a Twitch Mode match's on a squad; else undefined. */
+export function themeOf(event: Pick<RunFacts, "variant" | "stream">): string | undefined {
+  const named = event.stream?.pool ?? event.variant;
+  return named !== undefined && isSquadVariantId(named) ? themeIdOf(named) : undefined;
 }
 
 /** Where the theme goes: blob10, the events' own blobs padded to reach it. */
 const THEME_BLOB = 10;
 
 function withTheme(point: DataPoint, event: GameEvent): DataPoint {
+  if (event.stream !== undefined) return withStream(point, event, event.stream);
   const theme = themeOf(event);
   if (theme === undefined) return point;
   const blobs = [...point.blobs];
   while (blobs.length < THEME_BLOB - 1) blobs.push("");
   blobs.push(theme);
+  return { ...point, blobs };
+}
+
+/** Where a match's pool and chat's outcome go: after the theme, padded to reach them. */
+function withStream(point: DataPoint, event: GameEvent, stream: StreamFacts): DataPoint {
+  const blobs = [...point.blobs];
+  while (blobs.length < THEME_BLOB - 1) blobs.push("");
+  blobs.push(themeOf(event) ?? "", stream.pool);
+  if (event.type === "answer") blobs.push(event.chat ?? "");
   return { ...point, blobs };
 }
 
@@ -389,6 +433,9 @@ function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
   const common = [event.type, modeColumn(event), event.runKind, ctx.deckVersion, ctx.country];
   const indexes: [string] = [event.run];
   const game = event.gameNo;
+  if (event.stream !== undefined) return streamPoint(event, event.stream, common, indexes);
+  if (event.mode === "stream") throw new Error("a stream event without its match's settings");
+  const mode = event.mode;
   switch (event.type) {
     case "start":
       return {
@@ -410,8 +457,8 @@ function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
           ...common,
           event.stat,
           tier,
-          event.band ?? bandLabel(event.round, event.mode),
-          isFinalQuestion(event.round, event.mode) ? "1" : "0",
+          event.band ?? bandLabel(event.round, mode),
+          isFinalQuestion(event.round, mode) ? "1" : "0",
         ],
         doubles: [
           event.round,
@@ -458,6 +505,62 @@ function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
   }
 }
 
+/** A Twitch Mode match's data point, before its pool and chat's outcome are added. */
+function streamPoint(
+  event: GameEvent,
+  stream: StreamFacts,
+  common: string[],
+  indexes: [string],
+): DataPoint {
+  switch (event.type) {
+    case "start":
+      return { indexes, blobs: common, doubles: [stream.questions, stream.limit] };
+    case "answer":
+      return {
+        indexes,
+        blobs: [
+          ...common,
+          event.stat,
+          STATS[event.stat].tier,
+          event.band ?? "",
+          event.round === stream.questions ? "1" : "0",
+        ],
+        doubles: [
+          event.round,
+          event.correct ? 1 : 0,
+          event.streak,
+          RELAXATION_STEP[event.relaxation],
+          event.rankDistance,
+          event.answerMs ?? 0,
+          0,
+          event.voters ?? 0,
+        ],
+      };
+    case "end":
+      return {
+        indexes,
+        blobs: [...common, event.end],
+        doubles: [
+          event.score,
+          stream.questions,
+          stream.limit,
+          event.chatScore ?? 0,
+          event.peakVoters ?? 0,
+        ],
+      };
+    case "submit":
+      // Always refused: a match has no boards.
+      return {
+        indexes,
+        blobs: [...common, "0", "0", "", event.refusal ?? ""],
+        doubles: [event.score],
+      };
+    default:
+      // A match sends no leave and has no resume.
+      return { indexes, blobs: common, doubles: [] };
+  }
+}
+
 /**
  * The `info` line for a run's start, end or leave, so runs can be watched live
  * in Workers Logs and `wrangler tail`. The end adds the round that ended the
@@ -466,10 +569,15 @@ function eventPoint(event: GameEvent, ctx: EventContext): DataPoint {
  * then (`shownRound`). Answers get no line: that's what the dataset is for.
  */
 export function toLogLine(event: GameEvent, ctx: EventContext, route: string): LogLine | undefined {
+  const { stream } = event;
   const common = {
     route,
-    // A squad's line says `squad` and its theme; any other variant's, its mode and variant.
-    mode: themeOf(event) !== undefined ? "squad" : event.mode,
+    // A squad's line says `squad` and its theme; any other variant's, its mode and
+    // variant; a Twitch Mode match's, `stream` and its pool (and theme, on a squad).
+    mode: stream !== undefined ? "stream" : themeOf(event) !== undefined ? "squad" : event.mode,
+    ...(stream !== undefined
+      ? { pool: stream.pool, questions: stream.questions, limit: stream.limit }
+      : {}),
     ...(event.variant !== undefined && themeOf(event) === undefined
       ? { variant: event.variant }
       : {}),
@@ -509,6 +617,8 @@ export function toLogLine(event: GameEvent, ctx: EventContext, route: string): L
         score: event.score,
         ...(event.correct !== undefined ? { correct: event.correct } : {}),
         ...(event.bonus !== undefined ? { bonus: event.bonus } : {}),
+        ...(event.chatScore !== undefined ? { chatScore: event.chatScore } : {}),
+        ...(event.peakVoters !== undefined ? { peakVoters: event.peakVoters } : {}),
         ...(final !== undefined
           ? {
               endStat: { id: final.stat, label: STATS[final.stat].label },

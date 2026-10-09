@@ -42,6 +42,12 @@ export const DAILY_LEADERBOARD_PATH = "/football-higher-or-lower/legends/daily/l
 /** Endless's boards: today, this week and this month. */
 export const ENDLESS_LEADERBOARD_PATH = "/football-higher-or-lower/legends/endless/leaderboard";
 
+/** The Multiplayer hub: Twitch Mode, and the multiplayer modes to come. */
+export const MULTIPLAYER_PATH = "/football-higher-or-lower/legends/multiplayer";
+
+/** Twitch Mode ("Chat vs You"): a streamer against their own chat. */
+export const TWITCH_PATH = "/football-higher-or-lower/legends/multiplayer/twitch";
+
 /** Where the title bar's and the footer's "Leaderboards" go: Daily Ranked's, the headline board. */
 export const LEADERBOARD_PATH = DAILY_LEADERBOARD_PATH;
 

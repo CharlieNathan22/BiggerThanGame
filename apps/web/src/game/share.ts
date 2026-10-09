@@ -166,7 +166,10 @@ export function scoreText(score: number, play: PlayLike, end: EndReason | null =
 
 /** The streak title's words, or "" below the first. */
 export function titleText(score: number, play: PlayLike): string {
-  const title = streakTitle(score, asPlay(play).mode);
+  const { mode } = asPlay(play);
+  // A Twitch Mode match has no streak titles: it is scored for both sides.
+  if (mode === "stream") return "";
+  const title = streakTitle(score, mode);
   return title === undefined ? "" : t(`title.${title.id}`);
 }
 
@@ -277,7 +280,7 @@ export function challengeText(
   variant?: NamedVariant,
 ): string | null {
   const { mode, theme } = asPlay(play);
-  if (mode === "ranked" || !CHALLENGES[mode] || link === null) return null;
+  if (mode === "ranked" || mode === "stream" || !CHALLENGES[mode] || link === null) return null;
   return t("challenge.share", {
     heading: challengeHeading(link.score, play),
     url: challengeUrl(site, link, playPath(playId(mode, variant), theme)),
@@ -290,6 +293,12 @@ export interface SharedFigure {
   readonly display: string;
 }
 
+/** A labelled strip of squares on the share image: a Twitch Mode match's chat or streamer. */
+export interface ShareRow {
+  readonly label: string;
+  readonly cells: readonly GridCell[];
+}
+
 /** Everything the share image shows. Drawn by share-image.ts. */
 export interface ShareCard {
   /** As the mode shows it: "12", or "7/20". */
@@ -299,6 +308,8 @@ export interface ShareCard {
   readonly caption: string;
   readonly title: string;
   readonly cells: readonly GridCell[];
+  /** Labelled strips, drawn after `cells` (Twitch Mode: chat's, then the streamer's). */
+  readonly rows?: readonly ShareRow[];
   /** What ended it, e.g. "Club trophies", or a sentence when nothing did. */
   readonly ended: { readonly label: string; readonly stat: string; readonly tier: Tier } | null;
   readonly note: string;

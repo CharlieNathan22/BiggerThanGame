@@ -13,11 +13,23 @@
   Daily Ranked is twenty questions a day with Endless's clock and Friendly's
   track, a name on its start panel, mistakes that don't end the run, a
   resume after a refresh, and its result (already played today) in place of
-  Play again.
+  Play again. Twitch Mode (`stream`) is a match of 10 or 20 questions against
+  the streamer's own chat: its setup in the start panel's place, chat's votes
+  counted beside the game (game/stream), the streamer's pick locked in until
+  voting closes, a strip over the pitch with both scores, and a full-time
+  panel in the game-over panel's place.
 -->
 <script lang="ts">
-  import { CHALLENGES, NICKNAME_LIMITS, generateNickname } from "@bt/core";
-  import type { DailyResult, Guess, NamedVariant, SitePage } from "@bt/core";
+  import { CHALLENGES, NICKNAME_LIMITS, generateNickname, isNamedVariant } from "@bt/core";
+  import type {
+    DailyResult,
+    Guess,
+    NamedVariant,
+    SitePage,
+    StreamLength,
+    StreamLimit,
+    StreamPool,
+  } from "@bt/core";
   import type { PitchCard } from "../../game/view";
   import { onMount, tick } from "svelte";
   import { IMAGE_BASE, SITE_LABEL, SITE_URL, TURNSTILE_SITE_KEY } from "../../config";
@@ -28,6 +40,7 @@
     ENDLESS_LEADERBOARD_PATH,
     FRIENDLY_PATH,
     LEGENDS_PATH,
+    TWITCH_PATH,
     isLegendsPath,
   } from "../../lib/paths";
   import { TIER_COLOUR } from "../../lib/tiers";
@@ -94,13 +107,34 @@
   } from "../../game/feedback";
   import type { Draft, FeedbackKind, ReportedRound } from "../../game/feedback";
   import { createDraftStore, focusAfterClose } from "../../game/modal";
-  import { initialState, shouldSpin } from "../../game/machine";
+  import { initialState, shouldSpin, wheelOf } from "../../game/machine";
+  import { createStreamApi } from "../../game/stream/api";
+  import { normaliseChannel } from "../../game/stream/channel";
+  import type { ChatSource, ChatStatus } from "../../game/stream/chat-source";
+  import { parseVote } from "../../game/stream/commands";
+  import {
+    matchScore,
+    questionResult,
+    streamShareCard,
+    streamShareText,
+  } from "../../game/stream/match";
+  import type { QuestionResult } from "../../game/stream/match";
+  import {
+    STREAM_KEYS,
+    poolFromQuery,
+    poolOptions,
+    readSetup,
+    saveSetting,
+  } from "../../game/stream/settings";
+  import { browserTwitchChat } from "../../game/stream/twitch-anon";
+  import { endVotingShown, votingOpen } from "../../game/stream/view";
+  import { NO_VOTES, VoteBox } from "../../game/stream/votes";
+  import type { VoteCounts } from "../../game/stream/votes";
   import {
     hasBoards,
     modeSubtitle,
     playId,
     playOf,
-    spins,
     squadNoteText,
     startIntro,
     themeText,
@@ -177,6 +211,10 @@
   import PublishModal from "./PublishModal.svelte";
   import Side from "./Side.svelte";
   import Track from "./Track.svelte";
+  import DualTrack from "../stream/DualTrack.svelte";
+  import StreamHud from "../stream/StreamHud.svelte";
+  import StreamResult from "../stream/StreamResult.svelte";
+  import StreamSetup from "../stream/StreamSetup.svelte";
 
   interface Props {
     /**
@@ -202,13 +240,21 @@
     theme?: Theme;
     /** The game page's path, for the title bar: "Legends" under /legends, and the current page. */
     path: string;
+    /**
+     * Twitch Mode only: the themes its picker offers (themes.json, names and
+     * counts only), and each one's colours as its card's custom properties.
+     */
+    streamThemes?: readonly Theme[];
+    streamColours?: Readonly<Record<string, string>>;
   }
 
-  let { deck, mode, variant, theme, path }: Props = $props();
+  let { deck, mode, variant, theme, path, streamThemes = [], streamColours = {} }: Props = $props();
   /** The mode, or the Endless variant: what the local best is kept under. */
   const play = $derived(playId(mode, variant));
-  /** How the run scores and ends: the mode, its win target, a squad's theme. */
-  const rules = $derived(playOf(mode, theme));
+  /** How the run scores and ends: the mode, its win target, a squad's theme; a match's length. */
+  const rules = $derived.by(() =>
+    playOf(mode, theme, game.stream?.questions ?? streamSetup.length),
+  );
   /** Whether a finished run can be published: Endless's own boards only. */
   const boards = $derived(hasBoards(mode, variant));
 
@@ -266,6 +312,122 @@
   /** The share text, shown to copy by hand when the clipboard refused it. */
   let copyByHand: string | null = $state(null);
   let drawing = $state(false);
+
+  // ------------------------------------------------------------- Twitch Mode
+
+  const streaming = $derived(mode === "stream");
+  /** Every pool the picker offers. */
+  const streamPools = $derived(poolOptions(streamThemes));
+  /** The match's settings as chosen, remembered between visits (stream/settings.ts). */
+  let streamSetup = $state<{
+    pool: StreamPool;
+    length: StreamLength;
+    limit: StreamLimit;
+  }>({ pool: "endless", length: 10, limit: 30 });
+  /** The chat source: Twitch's anonymous one, or under `pnpm dev` with `?mockChat=1` a fake. */
+  let chatSource: ChatSource | null = null;
+  let chatStatus = $state<ChatStatus>({ kind: "idle" });
+  /** The channel field as typed, its problem, and the channel last connected. */
+  let channelInput = $state("");
+  let channelProblem = $state("");
+  let channel = $state("");
+  /** Chat's votes on the question on screen: plain data, read a few times a second. */
+  const votes = new VoteBox();
+  let voteCounts = $state<VoteCounts>(NO_VOTES);
+  /** The round the votes are open (or were last open) for. */
+  let votesFor = 0;
+  /** Each question as it ended, both sides; the one just revealed. */
+  let streamResults = $state<QuestionResult[]>([]);
+  let streamRevealed = $state<QuestionResult | null>(null);
+  /** The full-time panel has handed back to the setup: Change questions or Change channel. */
+  let streamEditing = $state(false);
+  const streamScore = $derived(matchScore(streamResults));
+  const streamOption = $derived(streamPools.find((o) => o.pool === streamSetup.pool));
+  /** The pool being played (from the match once started), as a variant for its labels. */
+  const streamPool = $derived(game.stream?.pool ?? streamSetup.pool);
+  const streamVariant = $derived(isNamedVariant(streamPool) ? streamPool : undefined);
+  const streamTheme = $derived(streamPools.find((o) => o.pool === streamPool)?.theme);
+  const showSetup = $derived.by(
+    () =>
+      streaming &&
+      (game.phase === "idle" ||
+        game.phase === "starting" ||
+        (game.phase === "over" && streamEditing)),
+  );
+
+  /** Joins the channel typed in, once it reads as one. */
+  function connectChat(): void {
+    const parsed = normaliseChannel(channelInput);
+    if (!parsed.ok) {
+      channelProblem =
+        parsed.problem === "empty" ? t("stream.channel.empty") : t("stream.channel.invalid");
+      return;
+    }
+    channelProblem = "";
+    channel = parsed.channel;
+    channelInput = parsed.channel;
+    saveSetting(browserStorage, STREAM_KEYS.channel, parsed.channel);
+    chatSource?.connect(parsed.channel);
+  }
+
+  function retryChat(): void {
+    if (channel !== "") chatSource?.connect(channel);
+  }
+
+  function choosePool(pool: StreamPool): void {
+    streamSetup = { ...streamSetup, pool };
+    saveSetting(browserStorage, STREAM_KEYS.pool, pool);
+  }
+  function chooseLength(length: StreamLength): void {
+    streamSetup = { ...streamSetup, length };
+    saveSetting(browserStorage, STREAM_KEYS.length, length);
+  }
+  function chooseLimit(limit: StreamLimit): void {
+    streamSetup = { ...streamSetup, limit };
+    saveSetting(browserStorage, STREAM_KEYS.timer, limit);
+  }
+
+  /** Back to the setup from full time; Change channel puts focus in the channel field. */
+  function editMatch(field: "questions" | "channel"): void {
+    streamEditing = true;
+    void tick().then(() => {
+      const target =
+        field === "channel"
+          ? document.getElementById("stream-channel")
+          : document.querySelector<HTMLElement>('input[name="stream-pool"]:checked');
+      target?.focus();
+    });
+  }
+
+  // The voting window: open from the question becoming answerable until it
+  // closes. The window's own close (the API reading the result as the answer
+  // goes) also closes the box, so no vote slips in after the pick is sent.
+  $effect(() => {
+    if (!streaming) return;
+    const index = game.round?.index ?? 0;
+    if (!votingOpen(game)) {
+      votes.close();
+    } else if (votesFor !== index) {
+      votes.open();
+      votesFor = index;
+    }
+  });
+
+  // At the reveal, both sides' result for the question, once.
+  $effect(() => {
+    if (!streaming) return;
+    const { round, reveal, guess } = game;
+    if (round === null || reveal === null || guess === null) {
+      if (phase === "dealing" || phase === "spinning" || phase === "awaiting") {
+        streamRevealed = null;
+      }
+      return;
+    }
+    if (streamResults.some((r) => r.index === round.index)) return;
+    const result = questionResult(round, reveal, guess, votes.counts());
+    streamResults = [...streamResults, result];
+    streamRevealed = result;
+  });
 
   // ------------------------------------------------------------ Daily Ranked
 
@@ -365,10 +527,14 @@
         // Telemetry only: a browser without beacons loses nothing.
       }
     });
+    // A Twitch Mode match sends none: its page is often hidden while it's streamed.
     const onVisibility = () => {
+      if (mode === "stream") return;
       if (document.visibilityState === "hidden") leaves.report(game, mode, "hidden");
     };
-    const onPageHide = () => leaves.report(game, mode, "pagehide");
+    const onPageHide = () => {
+      if (mode !== "stream") leaves.report(game, mode, "pagehide");
+    };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", onPageHide);
 
@@ -445,7 +611,63 @@
         },
       );
     }
-    const api: GameApi = endlessApi ?? dailyApi ?? createApi(fetchFn);
+    let streamApi: GameApi | null = null;
+    let tickVotes: ReturnType<typeof setInterval> | undefined;
+    if (mode === "stream") {
+      const remembered = readSetup(browserStorage, streamPools);
+      const linked = poolFromQuery(location.search, streamPools);
+      streamSetup = {
+        pool: linked ?? remembered.pool,
+        length: remembered.length,
+        limit: remembered.limit,
+      };
+      channelInput = remembered.channel;
+      streamApi = createStreamApi(
+        fetchFn,
+        (humanCheck = createHumanCheck(
+          loader,
+          () => turnstileBox ?? null,
+          TURNSTILE_SITE_KEY,
+          schedule,
+        )),
+        () => ({
+          pool: streamSetup.pool,
+          questions: streamSetup.length,
+          limit: streamSetup.limit,
+        }),
+        () => {
+          // Voting is over the moment the answer goes.
+          votes.close();
+          return votes.result();
+        },
+      );
+      const useSource = (source: ChatSource) => {
+        chatSource = source;
+        source.onStatus((status) => (chatStatus = status));
+        source.onMessage((message) => {
+          const pick = parseVote(message.text);
+          if (pick !== null) votes.add(message.userId, pick);
+        });
+        // The remembered channel is only filled in: chat connects when Connect is pressed.
+      };
+      // `pnpm dev` only: `?mockChat=1` swaps in a fake chat (game/stream/mock-chat.ts).
+      if (import.meta.env.DEV) {
+        void import("../../game/stream/mock-chat").then((m) => {
+          const options = m.mockChatOptions(location.search);
+          useSource(options !== null ? m.mountMockChat(options) : browserTwitchChat());
+        });
+      } else {
+        useSource(browserTwitchChat());
+      }
+      // The count on screen, a few times a second, never per message.
+      tickVotes = setInterval(() => {
+        const next = votes.counts();
+        if (next.voters !== voteCounts.voters || next.higher !== voteCounts.higher) {
+          voteCounts = next;
+        }
+      }, 250);
+    }
+    const api: GameApi = endlessApi ?? dailyApi ?? streamApi ?? createApi(fetchFn);
 
     const key = bestKey(deck, play);
     // A squad keeps how far it got and whether it was ever cleared (best.ts).
@@ -453,20 +675,22 @@
     const c = new GameController({
       api,
       mode,
-      ...(variant !== undefined ? { variant } : {}),
+      ...(variant !== undefined && mode !== "stream" ? { variant } : {}),
       preload: createPreloader(IMAGE_BASE, () => new Image()),
       timings,
       now: () => performance.now(),
       schedule,
       reducedMotion: () => reducedMotion,
-      // Daily Ranked keeps no best: its score is the day's, on the board.
-      best: ranked
-        ? 0
-        : squad
-          ? readSquadBest(browserStorage, key).best
-          : readBest(browserStorage, key),
+      // Daily Ranked keeps no best: its score is the day's, on the board. Nor
+      // does a Twitch Mode match: it is scored for both sides.
+      best:
+        ranked || mode === "stream"
+          ? 0
+          : squad
+            ? readSquadBest(browserStorage, key).best
+            : readBest(browserStorage, key),
       saveBest: (best) => {
-        if (ranked) return;
+        if (ranked || mode === "stream") return;
         void (squad
           ? saveSquadBest(browserStorage, key, { best, cleared: false })
           : saveBest(browserStorage, key, best));
@@ -486,6 +710,7 @@
               : { kind: "playing", gameNo, nextGameAt: nextAt() };
           return;
         }
+        if (mode === "stream") return;
         if (squad && over.end === "won") {
           saveSquadBest(browserStorage, key, { best: over.streak, cleared: true });
         }
@@ -524,6 +749,8 @@
       window.removeEventListener("pagehide", onPageHide);
       removeDevPanel?.();
       if (tick30 !== undefined) clearInterval(tick30);
+      if (tickVotes !== undefined) clearInterval(tickVotes);
+      chatSource?.close();
       unsubscribe();
       c.destroy();
       shareNotes.destroy();
@@ -547,7 +774,7 @@
       phase === "over",
   );
   const spinIndex = $derived(
-    round !== null && shouldSpin(round, spins(mode, variant)) && wheeling ? round.index : null,
+    round !== null && shouldSpin(round, wheelOf(game)) && wheeling ? round.index : null,
   );
   /** The title card at a run's start: "Question 1 of 20", or "Beat 7/20". */
   const titleCardText = $derived(titleCard(game, rules));
@@ -584,9 +811,10 @@
   /** Endless: the streak title the run holds so far, at the top of the pitch. */
   const chip = $derived(titleChip(game, rules));
   /** A squad's line under the plaque on a career stat: "Whole career, not just Barcelona". */
-  const plaqueNote = $derived(
-    theme !== undefined && game.plaque !== null ? squadNoteText(game.plaque.key, theme) : "",
-  );
+  const plaqueNote = $derived.by(() => {
+    const squad = streaming ? streamTheme : theme;
+    return squad !== undefined && game.plaque !== null ? squadNoteText(game.plaque.key, squad) : "";
+  });
 
   /**
    * `performance.now()`, every frame while a question's clock runs: the one
@@ -628,7 +856,7 @@
   /** A run banked after the connection dropped: "your streak of n is saved". */
   const banked = $derived(bankedText(game, rules));
   /** A signed challenge to share, in a mode with them, once the run is over. */
-  const canChallenge = $derived(CHALLENGES[mode] && game.link !== null);
+  const canChallenge = $derived(mode !== "stream" && CHALLENGES[mode] && game.link !== null);
 
   /** The small print under a card's figure. */
   function cardQualifier(card: PitchCard): string {
@@ -780,6 +1008,13 @@
   });
 
   function start(): void {
+    if (streaming) {
+      if (chatStatus.kind !== "connected") return;
+      streamResults = [];
+      streamRevealed = null;
+      streamEditing = false;
+      votesFor = 0;
+    }
     if (ranked) {
       // The name's form is checked here first; the server checks the rest.
       dailyTried = true;
@@ -808,6 +1043,12 @@
 
   async function onShareText(): Promise<void> {
     if (platform === null) return;
+    if (streaming) {
+      await shareOut(
+        streamShareText(streamScore, channel, streamOption, `${site()}${TWITCH_PATH}`),
+      );
+      return;
+    }
     if (ranked) {
       if (dailyResult !== null)
         await shareOut(dailyShareText(dailyResult, `${site()}${DAILY_PATH}`));
@@ -846,13 +1087,15 @@
     drawing = true;
     const show = shareNotes.begin();
     try {
-      const card =
-        ranked && dailyResult !== null
+      const card = streaming
+        ? streamShareCard(streamResults, channel, streamOption, SITE_LABEL)
+        : ranked && dailyResult !== null
           ? dailyShareCard(dailyResult, SITE_LABEL)
           : shareCard(game, SITE_LABEL, rules);
       const blob = await renderShareImage(card);
-      const name =
-        ranked && dailyResult !== null
+      const name = streaming
+        ? t("stream.fileName", { chat: streamScore.chat, streamer: streamScore.streamer })
+        : ranked && dailyResult !== null
           ? t("daily.fileName", { game: dailyResult.gameNo })
           : t("share.fileName", { score: game.streak });
       const outcome = await shareResultImage(blob, name, platform);
@@ -944,18 +1187,45 @@
 />
 
 <div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null || publishOpen}>
+  <!-- Twitch Mode's scores are on its own strip over the pitch, not in the bar. -->
   <TitleBar
-    scores={{
-      streak: game.streak,
-      best: game.best,
-      target,
-      rising: onNewBest(game),
-      ...(ranked ? { daily: titleTally(dailyResults) } : {}),
-    }}
+    {...streaming
+      ? {}
+      : {
+          scores: {
+            streak: game.streak,
+            best: game.best,
+            target,
+            rising: onNewBest(game),
+            ...(ranked ? { daily: titleTally(dailyResults) } : {}),
+          },
+        }}
     legends={isLegendsPath(path)}
     current={path}
   />
-  {#if target !== null}
+  {#if streaming}
+    {#if !showSetup}
+      <section class="progress" aria-label={t("progress.region")}>
+        <DualTrack
+          questions={target ?? streamSetup.length}
+          results={streamResults}
+          current={phase === "over" ? null : (round?.index ?? null)}
+          label={progressText(game, rules)}
+        />
+      </section>
+      <StreamHud
+        {channel}
+        score={streamScore}
+        counts={voteCounts}
+        voting={phase === "awaiting"}
+        revealed={phase === "verdict" || phase === "sliding" || phase === "over"
+          ? streamRevealed
+          : null}
+        status={chatStatus}
+        onretry={retryChat}
+      />
+    {/if}
+  {:else if target !== null}
     <!-- In a landmark of its own, so nothing on the page sits outside one. -->
     <section class="progress" aria-label={t("progress.region")}>
       <Track
@@ -1016,11 +1286,22 @@
           <!-- One slot for Higher / Lower, the connection note and the verdict
                label, kept whether they show or not, so the text above never moves. -->
           <div class="slot">
+            {#if streaming && game.locked !== null && phase === "awaiting"}
+              <!-- The streamer's pick, hidden from chat: only that it's in. -->
+              <p class="locked" role="status">
+                <svg class="lock" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" />
+                </svg>
+                {t("stream.lockedIn")}
+              </p>
+            {/if}
             <div
               class="picks"
               role="group"
-              aria-label={t("pick.group", { name: card.player.name })}
-              hidden={phase !== "awaiting"}
+              aria-label={streaming
+                ? `${t("stream.yourPick")}: ${t("pick.group", { name: card.player.name })}`
+                : t("pick.group", { name: card.player.name })}
+              hidden={phase !== "awaiting" || (streaming && game.locked !== null)}
             >
               <button class="pick" bind:this={higherButton} onclick={() => pick("higher")}>
                 <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
@@ -1076,7 +1357,7 @@
         stage={plaqueStage(game)}
         clock={game.clock}
         {now}
-        {variant}
+        variant={streaming ? streamVariant : variant}
         note={plaqueNote}
       />
     {/if}
@@ -1084,6 +1365,12 @@
     {#if mode !== "friendly"}
       <!-- The question's clock, big, at the top; it steps aside for the score badge. -->
       <Clock clock={clockTop} {reducedMotion} aside={badgeShowing} />
+    {/if}
+    {#if streaming && endVotingShown(game, now)}
+      <!-- Twitch Mode: close the window early, once 8 seconds have gone. -->
+      <button class="secondary endvote" onclick={() => controller?.endVoting()}>
+        {t("stream.endVoting")}
+      </button>
     {/if}
 
     {#if chip !== "" && phase !== "idle" && phase !== "starting" && phase !== "over"}
@@ -1106,9 +1393,9 @@
     {/if}
 
     <p class="sr" aria-live="polite">{announcement(game, rules)}</p>
-    {#if phase !== "idle" && phase !== "starting"}
+    {#if phase !== "idle" && phase !== "starting" && !showSetup}
       <!-- The start panel's heading, "Football Legends", goes with it; the page keeps one. -->
-      <h1 class="sr">{t("brand.heading")}</h1>
+      <h1 class="sr">{streaming ? t("stream.subtitle") : t("brand.heading")}</h1>
     {/if}
 
     {#if badge !== null}
@@ -1136,7 +1423,61 @@
       {phase === "idle" ? "" : notice}
     </p>
 
-    {#if ranked && (phase === "idle" || phase === "over") && daily.kind !== "open"}
+    {#if showSetup}
+      <!-- Twitch Mode's setup, in the start panel's place; again from full time. -->
+      <div class="veil stream setuppage">
+        <StreamSetup
+          status={chatStatus}
+          bind:channel={channelInput}
+          {channelProblem}
+          onconnect={connectChat}
+          onretry={retryChat}
+          options={streamPools}
+          colours={streamColours}
+          pool={streamSetup.pool}
+          onpool={choosePool}
+          length={streamSetup.length}
+          onlength={chooseLength}
+          limit={streamSetup.limit}
+          onlimit={chooseLimit}
+          cap={streamOption?.cap ?? null}
+          starting={phase === "starting"}
+          ready={controller !== null}
+          onstart={start}
+          problem={game.startFailed
+            ? game.checkFailed
+              ? t("start.checkFailed")
+              : t("start.failed")
+            : ""}
+          bind:startButton
+        >
+          {#snippet turnstile()}
+            <div class="turnstile" bind:this={turnstileBox} {@attach releaseCheck}></div>
+          {/snippet}
+        </StreamSetup>
+      </div>
+    {:else if streaming && phase === "over"}
+      <div class="veil stream">
+        <StreamResult
+          {channel}
+          score={streamScore}
+          results={streamResults}
+          questions={target ?? streamSetup.length}
+          end={game.end}
+          touch={platform?.touch ?? false}
+          {drawing}
+          note={shareNote.text}
+          noteFading={shareNote.fading}
+          {copyByHand}
+          onshare={onShareText}
+          onimage={onShareImage}
+          onagain={start}
+          onquestions={() => editMatch("questions")}
+          onchannel={() => editMatch("channel")}
+          bind:againButton
+        />
+      </div>
+    {:else if ranked && (phase === "idle" || phase === "over") && daily.kind !== "open"}
       <!-- Daily Ranked: today's game as this device stands in it, in the start
            panel's place, and after the run in the game-over panel's. -->
       <div class="veil">
@@ -1452,7 +1793,13 @@
     boardHref={ENDLESS_LEADERBOARD_PATH}
     onpublished={(response) => {
       boardLine = { text: panelText(response), beat: !response.periods.day.improved };
-      saveStandings(browserStorage, publishedKey(deck, mode), standingsOf(response), Date.now());
+      // Only Endless publishes.
+      saveStandings(
+        browserStorage,
+        publishedKey(deck, "endless"),
+        standingsOf(response),
+        Date.now(),
+      );
     }}
     ondraft={(nickname) => (publishDraft = nickname ?? undefined)}
     onclose={closePublish}
@@ -2898,5 +3245,47 @@
       padding-top: 0;
       border-top: 0;
     }
+  }
+  /* Twitch Mode: the streamer's pick, locked in and hidden from chat. */
+  .locked {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--target-min);
+    margin: 0;
+    padding: 0 var(--btn2-pad-x);
+    border: var(--btn2-border) solid var(--stream-locked-edge);
+    border-radius: var(--radius-pill);
+    background: var(--stream-locked-bg);
+    color: var(--gold);
+    font-variation-settings: var(--fv-caps);
+    text-shadow: var(--glow);
+    box-shadow: var(--glow);
+  }
+  .lock {
+    width: 1.1em;
+    height: 1.1em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  /* "End voting", under the clock. */
+  .endvote {
+    position: absolute;
+    z-index: 6;
+    top: var(--game-clock-under);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  /* The setup and full-time panels, centred over the pitch. */
+  .veil.stream {
+    align-items: center;
+    justify-content: center;
+  }
+  /* The setup is a page: from the top, scrolling, never clipped above. */
+  .veil.setuppage {
+    align-items: flex-start;
   }
 </style>

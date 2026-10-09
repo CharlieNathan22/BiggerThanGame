@@ -16,6 +16,7 @@ import { isEligible } from "./eligibility.js";
 import { candidates, remember, selectChallenger } from "./engine.js";
 import type { Match, MatchContext } from "./engine.js";
 import { RELAXATION_LADDERS, bandFor, pairFits, percentiles, relaxations } from "./ramp.js";
+import type { BandRules } from "./ramp.js";
 import { STATS, STAT_KEYS } from "./stats.js";
 import { resolveVariant, variantDeck } from "./variants.js";
 import type { EndlessVariant, EndlessVariantId } from "./variants.js";
@@ -37,6 +38,14 @@ export interface RunOptions {
    * when absent, and naming it changes nothing.
    */
   readonly variant?: EndlessVariantId;
+  /**
+   * Twitch Mode (stream.ts) only: the band rules a match is dealt by, in place
+   * of its pool's — its own schedule and pair rules, whose rows are fractions
+   * of the match's `questions` (which also cap it). The pool, its fixed stat
+   * and a squad's no-repeat rule are the variant's as ever. Absent, as in
+   * every other mode, it changes nothing.
+   */
+  readonly bands?: BandRules;
 }
 
 /**
@@ -320,7 +329,27 @@ function runVariant(opts: RunOptions): EndlessVariant | undefined {
   if (opts.mode !== "endless") throw new Error(`variant ${opts.variant} outside Endless`);
   const variant = resolveVariant(opts.variant, opts.deck);
   if (variant === undefined) throw new Error(`no theme for ${opts.variant} in this deck`);
-  return variant;
+  const { bands } = opts;
+  if (bands === undefined) return variant;
+  if (bands.questions === undefined) throw new Error(`bands for ${opts.variant} without questions`);
+  return {
+    ...variant,
+    schedule: bands.schedule,
+    pairRules: bands.pairRules,
+    volatileFloor: bands.volatileFloor,
+    questions: bands.questions,
+  };
+}
+
+/** A number per band schedule, so a squad's memo can tell a match's rules from its own. */
+const scheduleIds = new WeakMap<object, number>();
+let nextScheduleId = 1;
+function scheduleId(schedule: object): number {
+  const known = scheduleIds.get(schedule);
+  if (known !== undefined) return known;
+  const id = nextScheduleId++;
+  scheduleIds.set(schedule, id);
+  return id;
 }
 
 /**
@@ -397,7 +426,7 @@ function squadLinks(
     byKey = new Map();
     linksMemo.set(squad, byKey);
   }
-  const key = `${variant.id}@${now.getTime()}`;
+  const key = `${variant.id}@${now.getTime()}#${variant.questions ?? 0}#${scheduleId(variant.schedule)}`;
   const hit = byKey.get(key);
   if (hit !== undefined) return hit;
   const built = buildLinks(squad, deck, mode, now, variant);

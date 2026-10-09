@@ -7,7 +7,8 @@
  * token carries only what is already on screen — the round, the streak, the two
  * players' ids, the stat and the anchor's figure — plus the server's timing and
  * a nonce. The challenger's figure is never in it. The HMAC is over the encoded
- * payload under its own prefix (`"token:"`, `"result:"`), so no other use of
+ * payload under its own prefix (`"token:"`, `"daily:"`, `"stream-token:"`,
+ * `"result:"`), so no other use of
  * `RUN_SECRET` can produce a valid token, and one kind can't pass for the other.
  * Verification compares in constant time and parses strictly: a payload with a
  * missing, extra or mistyped field is not a token.
@@ -16,8 +17,8 @@
  * spends each nonce once (run-ledger.ts).
  */
 
-import { STAT_KEYS, isNamedVariant } from "@bt/core";
-import type { NamedVariant, RunEnd, StatKey } from "@bt/core";
+import { STAT_KEYS, isNamedVariant, isStreamLimit, isStreamPool } from "@bt/core";
+import type { NamedVariant, RunEnd, StatKey, StreamLimit, StreamPool } from "@bt/core";
 import { hmacSha256, timingSafeEqual, toBase64Url } from "./hmac.js";
 
 /** Far past a real token (about 450 characters); anything longer isn't one. */
@@ -97,8 +98,41 @@ export interface DailyPayload {
   readonly nonce: string;
 }
 
+/**
+ * One question of a Twitch Mode match (stream.ts), under its own prefix: no
+ * other token passes for one, nor one for another. Like Daily's it carries the
+ * right answers so far rather than a streak (a miss doesn't end a match), and
+ * the match's settings, so every question is judged and timed by what the
+ * server signed at the start.
+ */
+export interface StreamPayload {
+  readonly v: 1;
+  /** The signed match id. */
+  readonly runId: string;
+  readonly mode: "stream";
+  /** Where the questions come from: an Endless variant's id. */
+  readonly pool: StreamPool;
+  /** The match's questions, after the pool's cap. */
+  readonly questions: number;
+  /** The voting window, seconds: the limit on every question. */
+  readonly limit: StreamLimit;
+  /** The round this token answers, 1-based. */
+  readonly round: number;
+  /** The streamer's right answers before this round. */
+  readonly correct: number;
+  readonly anchorId: string;
+  readonly challengerId: string;
+  readonly stat: StatKey;
+  readonly anchorValue: number;
+  readonly issuedAt: number;
+  readonly deadline: number;
+  readonly nonce: string;
+}
+
 const PROGRESS_PREFIX = "token:";
 const DAILY_PREFIX = "daily:";
+/** Not `"stream:"`, which is the matches' seed domain (stream.ts in @bt/core). */
+const STREAM_PREFIX = "stream-token:";
 const RESULT_PREFIX = "result:";
 
 export function signToken(secret: string, payload: ProgressPayload): Promise<string> {
@@ -123,6 +157,18 @@ export async function verifyDailyToken(
 ): Promise<DailyPayload | undefined> {
   const json = await verify(secret, DAILY_PREFIX, token);
   return json === undefined ? undefined : parseDaily(json);
+}
+
+export function signStreamToken(secret: string, payload: StreamPayload): Promise<string> {
+  return sign(secret, STREAM_PREFIX, streamFields(payload));
+}
+
+export async function verifyStreamToken(
+  secret: string,
+  token: string,
+): Promise<StreamPayload | undefined> {
+  const json = await verify(secret, STREAM_PREFIX, token);
+  return json === undefined ? undefined : parseStream(json);
 }
 
 export function signResult(secret: string, payload: ResultPayload): Promise<string> {
@@ -164,6 +210,26 @@ function dailyFields(p: DailyPayload): DailyPayload {
     runId: p.runId,
     mode: p.mode,
     gameNo: p.gameNo,
+    round: p.round,
+    correct: p.correct,
+    anchorId: p.anchorId,
+    challengerId: p.challengerId,
+    stat: p.stat,
+    anchorValue: p.anchorValue,
+    issuedAt: p.issuedAt,
+    deadline: p.deadline,
+    nonce: p.nonce,
+  };
+}
+
+function streamFields(p: StreamPayload): StreamPayload {
+  return {
+    v: 1,
+    runId: p.runId,
+    mode: p.mode,
+    pool: p.pool,
+    questions: p.questions,
+    limit: p.limit,
     round: p.round,
     correct: p.correct,
     anchorId: p.anchorId,
@@ -249,6 +315,27 @@ const DAILY_KEYS = [
   "v",
 ];
 
+const STREAM_KEYS = [
+  "anchorId",
+  "anchorValue",
+  "challengerId",
+  "correct",
+  "deadline",
+  "issuedAt",
+  "limit",
+  "mode",
+  "nonce",
+  "pool",
+  "questions",
+  "round",
+  "runId",
+  "stat",
+  "v",
+];
+
+/** The longest match a token can name. */
+const STREAM_MAX_QUESTIONS = 20;
+
 const RESULT_KEYS = ["elapsedMs", "end", "endedAt", "mode", "runId", "score", "startedOn", "v"];
 
 const RUN_ENDS: readonly RunEnd[] = ["wrong", "deck-exhausted", "won", "timeout", "disconnected"];
@@ -330,6 +417,44 @@ function parseDaily(json: unknown): DailyPayload | undefined {
     runId,
     mode,
     gameNo,
+    round,
+    correct,
+    anchorId,
+    challengerId,
+    stat: stat as StatKey,
+    anchorValue,
+    issuedAt,
+    deadline,
+    nonce,
+  };
+}
+
+function parseStream(json: unknown): StreamPayload | undefined {
+  if (typeof json !== "object" || json === null || "variant" in json) return undefined;
+  const r = record(json, STREAM_KEYS);
+  if (r === undefined) return undefined;
+  const { runId, mode, pool, questions, limit, round, correct } = r;
+  const { anchorId, challengerId, stat, anchorValue, issuedAt, deadline, nonce } = r;
+  if (!isString(runId) || mode !== "stream" || !isStreamPool(pool)) return undefined;
+  if (!isCount(questions) || questions < 1 || questions > STREAM_MAX_QUESTIONS) return undefined;
+  if (!isStreamLimit(limit)) return undefined;
+  if (!isCount(round) || round < 1 || round > questions) return undefined;
+  if (!isCount(correct) || correct >= round) return undefined;
+  if (!isString(anchorId) || !isString(challengerId)) return undefined;
+  if (typeof stat !== "string" || !(STAT_KEYS as readonly string[]).includes(stat)) {
+    return undefined;
+  }
+  if (typeof anchorValue !== "number" || !Number.isFinite(anchorValue)) return undefined;
+  if (!isTime(issuedAt) || !isTime(deadline) || deadline < issuedAt || !isString(nonce)) {
+    return undefined;
+  }
+  return {
+    v: 1,
+    runId,
+    mode,
+    pool,
+    questions,
+    limit,
     round,
     correct,
     anchorId,

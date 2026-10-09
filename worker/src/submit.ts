@@ -60,13 +60,13 @@ import type { Logger } from "./log.js";
 import { moderate } from "./moderation.js";
 import type { RateDecision } from "./rate-limit.js";
 import type { ClaimRefusal, ClaimResult, SubmitClaim } from "./run-ledger.js";
-import { verifyRunId } from "./run-id.js";
+import { verifyRunId, verifyStreamRunId } from "./run-id.js";
 import { disconnectedEnd, named } from "./run.js";
 import { DuplicateRunError, insertScore, ownStanding } from "./scores.js";
 import type { D1Like, DayRange } from "./scores.js";
 import { endlessSeed } from "./seed.js";
 import { shadowReasons, thinkMs } from "./shadow.js";
-import { MAX_TOKEN_CHARS, verifyResult, verifyToken } from "./token.js";
+import { MAX_TOKEN_CHARS, verifyResult, verifyStreamToken, verifyToken } from "./token.js";
 import type { TurnstileOutcome } from "./turnstile.js";
 
 /** What submission needs of a run's Durable Object. */
@@ -146,7 +146,30 @@ export async function handleSubmit(body: unknown, ctx: SubmitContext): Promise<S
   }
 
   const token = await readToken(ctx.secret, req.token);
-  if (token === undefined) return badRequest("token is not one this server issued");
+  if (token === undefined) {
+    // A Twitch Mode match has no boards: refused like any variant without them,
+    // before its Durable Object, Turnstile or the database are touched.
+    const match = await verifyStreamToken(ctx.secret, req.token);
+    const matchRun =
+      match === undefined
+        ? undefined
+        : await verifyStreamRunId(match.runId, ctx.secret, match.pool);
+    if (match !== undefined && matchRun !== undefined) {
+      ctx.record?.({
+        type: "submit",
+        mode: "stream",
+        stream: { pool: match.pool, questions: match.questions, limit: match.limit },
+        run: matchRun.body,
+        runKind: "fresh",
+        score: match.correct,
+        published: false,
+        shadowed: false,
+        refusal: "no_boards",
+      });
+      return badRequest("no_boards");
+    }
+    return badRequest("token is not one this server issued");
+  }
   const run = await verifyRunId(token.runId, ctx.secret, token.variant);
   if (run === undefined || run.replay) return badRequest("token names no fresh Endless run");
   // A variant without boards (Instagram Endless, every "Clear the squad"

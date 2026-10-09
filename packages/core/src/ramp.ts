@@ -264,6 +264,53 @@ export const PAIR_RULES: Readonly<Record<Mode, PairRules | null>> = {
 };
 
 /**
+ * Twitch Mode's ramp (stream.ts, DESIGN.md §8): a match is a contest, so after
+ * a friendly opening (`STREAM_OPENING`, built per match) it is hard all the way,
+ * by **progress through the match**: `upTo` is the share of its questions
+ * answered. Tuned with the `fan` model to a mean of about 12–15 right out of
+ * 20 and 6–8 out of 10 on every pool, so a match swings and draws are as rare
+ * as two evenly matched sides allow. Its own rows, never another mode's:
+ * changing them changes only matches, and the stream goldens.
+ *
+ * All legends: a light ratio floor (5%) from a third of the way, so the
+ * hardest questions are close, never a coin flip.
+ */
+export const STREAM_SCHEDULE: readonly BandRow[] = [
+  { upTo: 0.35, band: { floor: 0.015, ceiling: 0.05 } },
+  { upTo: 0.65, band: { floor: 0.01, ceiling: 0.03, strictMinRatio: 0.05 } },
+  { upTo: Infinity, band: { floor: 0.005, ceiling: 0.02, strictMinRatio: 0.05 } },
+];
+
+/**
+ * A squad's match: harder bands and no ratio floor, since a squad runs short
+ * of close pairs as it is used up and relaxes towards easier ones anyway.
+ * Distance is measured over the whole deck, as in "Clear the squad".
+ */
+export const STREAM_SQUAD_SCHEDULE: readonly BandRow[] = [
+  { upTo: 0.35, band: { floor: 0.01, ceiling: 0.04 } },
+  { upTo: 0.65, band: { floor: 0.005, ceiling: 0.02 } },
+  { upTo: Infinity, band: { floor: 0.005, ceiling: 0.015 } },
+];
+
+/**
+ * Instagram's match: its closeness floor tightening from 1.3× to 1.15×, never
+ * relaxed, as Instagram Endless's does (`INSTAGRAM_SCHEDULE`).
+ */
+export const STREAM_INSTAGRAM_SCHEDULE: readonly BandRow[] = [
+  { upTo: 0.35, band: { floor: 0.02, ceiling: 0.07, strictMinRatio: 0.3 } },
+  { upTo: 0.65, band: { floor: 0.01, ceiling: 0.04, strictMinRatio: 0.2 } },
+  { upTo: Infinity, band: { floor: 0.005, ceiling: 0.03, strictMinRatio: 0.15 } },
+];
+
+/** A match's friendly opening: an uncapped band; Instagram's keeps its 2× floor. */
+export const STREAM_OPENING_BAND: Band = { floor: 0.45, ceiling: null };
+export const STREAM_INSTAGRAM_OPENING_BAND: Band = {
+  floor: 0.45,
+  ceiling: null,
+  strictMinRatio: 1.0,
+};
+
+/**
  * "Clear the squad"'s pair rules: from 70% of the way through the squad (its
  * `from` is a fraction of the run, like its schedule's rows), every pair at
  * least 10% apart as a ratio, as in Endless's late rounds. Unlike Endless no

@@ -3,8 +3,9 @@
 // the few lines on each open mode's card that show this device's "Your best",
 // and Daily Ranked's game, countdown and result, drawn in the browser. Where
 // "Play" goes. Daily Ranked first, full width in gold, then the other modes,
-// then "Clear the squad"'s themes in a section per type (Clubs, Leagues,
-// Eras), generated from the deck build's themes.json. Below the cards, a long read about this deck: who's
+// then "Clear the squad"'s themes in a section per type (Clubs, Leagues, Eras),
+// generated from the deck build's themes.json, then a Multiplayer section (one
+// card, to the Multiplayer hub). Below the cards, a long read about this deck: who's
 // in it, what it asks and how to play it; nothing from the football page's.
 // Names only, and no digits anywhere near them, so the leak scan has nothing
 // to weigh (dist-scan.ts). Draft copy.
@@ -34,6 +35,7 @@ import {
   INSTAGRAM_PATH,
   ENDLESS_LEADERBOARD_PATH,
   LEGENDS_PATH,
+  MULTIPLAYER_PATH,
   themePagePath,
 } from "../../lib/paths";
 import { breadcrumbLd, breadcrumbTrail, gameLd } from "../../lib/seo";
@@ -145,6 +147,20 @@ const tiers =
     </section>
   ))}
 
+  <section class="themes" aria-labelledby="multiplayer">
+    <h2 class="themes-heading" id="multiplayer">
+      {t("legends.multiplayer.heading")}
+    </h2>
+    <Cards label={t("legends.multiplayer.heading")} stack>
+      <Card
+        name={t("legends.multiplayer.name")}
+        body={t("legends.multiplayer.body")}
+        href={MULTIPLAYER_PATH}
+        wide
+      />
+    </Cards>
+  </section>
+
   <article class="reading">
     <h2>A football legends quiz, one question at a time</h2>
     <p>
@@ -196,7 +212,8 @@ const tiers =
       leaderboard. <strong>Endless</strong> gives you as many runs as you like against the same
       clock, until your first wrong answer, with leaderboards for the best runs.
       <strong>Friendly</strong> is twenty questions with no clock, and a win if you get every one
-      right. It's the best way to learn the deck.
+      right. It's the best way to learn the deck. And if you stream on Twitch,
+      <strong>Twitch Mode</strong> puts you against your own chat, who vote on every question.
     </p>
 
     <p class="next">

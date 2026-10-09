@@ -1,0 +1,61 @@
+---
+// The Multiplayer hub (DESIGN.md §17): the multiplayer modes as cards in the
+// site's glass. A live mode is a link to its page; one still to come is a
+// "Coming soon" card, not a link. Which is which is config (lib/multiplayer.ts),
+// never this markup. Static, no JS. Draft copy.
+import Page from "../../../layouts/Page.astro";
+import Breadcrumb from "../../../components/Breadcrumb.astro";
+import Card from "../../../components/Card.astro";
+import Cards from "../../../components/Cards.astro";
+import ChatVsYouIcon from "../../../components/ChatVsYouIcon.astro";
+import { t } from "../../../i18n";
+import { MULTIPLAYER_MODES } from "../../../lib/multiplayer";
+import { MULTIPLAYER_PATH, TWITCH_PATH } from "../../../lib/paths";
+import { breadcrumbLd, breadcrumbTrail } from "../../../lib/seo";
+
+const trail = breadcrumbTrail(MULTIPLAYER_PATH);
+---
+
+<Page
+  title={t("multiplayer.title")}
+  description={t("multiplayer.description")}
+  legendsLights
+  structuredData={[breadcrumbLd(trail)]}
+>
+  <!-- The trail without its first step: the brand in the title bar is the way home. -->
+  <Breadcrumb items={trail.slice(1).map((crumb) => ({ label: crumb.name, href: crumb.path }))} />
+  <h1 class="glow">{t("multiplayer.heading")}</h1>
+  <p class="centred">{t("multiplayer.intro")}</p>
+
+  <Cards label={t("multiplayer.modes")} stack>
+    {MULTIPLAYER_MODES.map((mode, i) => (
+      <Card
+        name={t(mode.name)}
+        body={t(mode.body)}
+        {...(mode.href !== null ? { href: mode.href } : {})}
+        wide={i === 0}
+      >
+        {mode.icon === "chat-vs-player" && <ChatVsYouIcon />}
+      </Card>
+    ))}
+  </Cards>
+
+  <article class="reading">
+    <h2>{t("multiplayer.reading.heading")}</h2>
+    <p>{t("multiplayer.reading.body")}</p>
+    <p class="next">
+      <a class="cta" href={TWITCH_PATH}>
+        {t("multiplayer.twitch.name")}
+      </a>
+    </p>
+  </article>
+</Page>
+
+<style>
+  /* The heading, and the read under the cards, centred like the Legends page's. */
+  h1,
+  .reading h2,
+  .reading p {
+    text-align: center;
+  }
+</style>

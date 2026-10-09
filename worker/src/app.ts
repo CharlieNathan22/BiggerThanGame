@@ -53,8 +53,10 @@ import { handleNextRound } from "./round.js";
 import { handleGuess, handleRunStart, parseGuess } from "./run.js";
 import type { RunContext, RunResult, RunStub } from "./run.js";
 import type { D1Like } from "./scores.js";
+import { handleStreamGuess, handleStreamStart, isStreamStart, parseStreamGuess } from "./stream.js";
+import type { StreamContext, StreamStub } from "./stream.js";
 import { SUBMIT_PATH, handleSubmit } from "./submit.js";
-import { verifyDailyToken } from "./token.js";
+import { verifyDailyToken, verifyStreamToken } from "./token.js";
 import type { SubmitStub } from "./submit.js";
 import { verifyTurnstile } from "./turnstile.js";
 import type { FetchLike } from "./turnstile.js";
@@ -110,7 +112,7 @@ export interface WaitContext {
 /** The `RUNS` Durable Object namespace, typed structurally for Node tests. */
 export interface RunNamespace {
   idFromName(name: string): unknown;
-  get(id: never): RunStub & SubmitStub & DailyStub;
+  get(id: never): RunStub & SubmitStub & DailyStub & StreamStub;
 }
 
 export interface AppDeps {
@@ -459,6 +461,50 @@ export function createApp(deps: AppDeps): {
       body = JSON.parse(text);
     } catch {
       return refuse(route, 400, "bad_request", { detail: "body must be JSON" });
+    }
+
+    // Twitch Mode: a start that says so, or a guess carrying a match's token.
+    let streamGuess: Awaited<ReturnType<typeof verifyStreamToken>>;
+    const streamParsed = starting ? undefined : parseStreamGuess(body);
+    if (streamParsed?.ok === true) {
+      streamGuess = await verifyStreamToken(secret, streamParsed.value.token);
+    }
+    if ((starting && isStreamStart(body)) || streamGuess !== undefined) {
+      const ctx: StreamContext = {
+        deck: deps.deck,
+        images: deps.images,
+        secret,
+        clock,
+        uuid,
+        verifyTurnstile: (token) => verifyTurnstile(token, turnstileSecret ?? "", fetchFn),
+        runs: (key) => runStub(runs, key),
+        limits: {
+          start: () => checkRateLimit(limiters, "starts", ip),
+          answer: (run) => checkRateLimit(limiters, "answers", run),
+        },
+        record: recorder(request, env, route),
+        country: countryOf(request),
+        deckVersion,
+      };
+      try {
+        const result =
+          streamGuess !== undefined && streamParsed?.ok === true
+            ? await handleStreamGuess(streamGuess, streamParsed.value, ctx)
+            : await handleStreamStart(body, ctx);
+        if (result.status === 200) return json(200, result.body);
+        if (result.status === 429) return rateLimited(route, result.retryAfter, result.limit);
+        return refuse(
+          route,
+          result.status,
+          result.body.error,
+          result.body.detail !== undefined ? { detail: result.body.detail } : {},
+        );
+      } catch (err) {
+        if (err instanceof RunStoreError) {
+          return refuse(route, 503, "unavailable", { reason: "run_store", cause: err.message });
+        }
+        return refuse(route, 500, "internal", describeError(err));
+      }
     }
 
     // Daily Ranked: a start that says so, or a guess carrying a Daily token.
@@ -1075,8 +1121,11 @@ export function createApp(deps: AppDeps): {
  * The Durable Object for the run with this key. A failure reaching it (a
  * throw, or a rejected call) becomes a `RunStoreError`, answered with 503.
  */
-function runStub(namespace: RunNamespace, key: string): RunStub & SubmitStub & DailyStub {
-  type Stub = RunStub & SubmitStub & DailyStub;
+function runStub(
+  namespace: RunNamespace,
+  key: string,
+): RunStub & SubmitStub & DailyStub & StreamStub {
+  type Stub = RunStub & SubmitStub & DailyStub & StreamStub;
   const stub = (): Stub => namespace.get(namespace.idFromName(key) as never);
   const guarded =
     <A, R>(call: (s: Stub, arg: A) => Promise<R>) =>
@@ -1097,6 +1146,8 @@ function runStub(namespace: RunNamespace, key: string): RunStub & SubmitStub & D
     dailyResume: guarded((s, args) => s.dailyResume(args)),
     dailyPosted: () => guarded((s) => s.dailyPosted())(undefined),
     dailyPostFailed: guarded((s, now: number) => s.dailyPostFailed(now)),
+    streamBegin: guarded((s, first) => s.streamBegin(first)),
+    streamAdvance: guarded((s, step) => s.streamAdvance(step)),
   };
 }
 

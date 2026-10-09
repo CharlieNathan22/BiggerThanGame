@@ -125,6 +125,11 @@ export interface SiteExpectations {
   readonly previewImage: string;
   /** …but for the pages that have their own. */
   readonly previewImages?: Readonly<Record<string, string>>;
+  /**
+   * The VideoGame's `playMode` per page, when not `SinglePlayer`: Twitch
+   * Mode, a streamer against their chat, is `MultiPlayer`.
+   */
+  readonly playModes?: Readonly<Record<string, "SinglePlayer" | "MultiPlayer">>;
 }
 
 const FOOTBALL = "/football-higher-or-lower";
@@ -135,6 +140,8 @@ const INSTAGRAM = `${ENDLESS}/instagram`;
 const LEADERBOARD = `${ENDLESS}/leaderboard`;
 const DAILY = `${LEGENDS}/daily`;
 const DAILY_LEADERBOARD = `${DAILY}/leaderboard`;
+const MULTIPLAYER = `${LEGENDS}/multiplayer`;
+const TWITCH = `${MULTIPLAYER}/twitch`;
 
 /**
  * What the built site must be, given its non-page files. The Endless page is a
@@ -143,7 +150,9 @@ const DAILY_LEADERBOARD = `${DAILY}/leaderboard`;
  * Instagram Endless is a game page under Endless, like Endless itself. Daily
  * Ranked is a game page under the Legends page, its board a page under it. Each
  * "Clear the squad" theme (`themePaths`, from the deck build's themes.json) is
- * a game page too, under the Legends page.
+ * a game page too, under the Legends page. The Multiplayer hub is an ordinary
+ * page under the Legends page, with a breadcrumb; Twitch Mode is a game page
+ * under it, a game of its own whose VideoGame is `MultiPlayer`.
  */
 export function siteExpectations(
   files: readonly string[],
@@ -163,11 +172,14 @@ export function siteExpectations(
       [LEADERBOARD]: ["BreadcrumbList"],
       [DAILY]: game,
       [DAILY_LEADERBOARD]: ["BreadcrumbList"],
+      [MULTIPLAYER]: ["BreadcrumbList"],
+      [TWITCH]: game,
       ...Object.fromEntries(themePaths.map((path) => [path, game])),
     },
     files,
     previewImage: "/og-image.png",
     previewImages: { [FRIENDLY]: "/og-friendly.png" },
+    playModes: { [TWITCH]: "MultiPlayer" },
   };
 }
 
@@ -301,7 +313,7 @@ function checkStructuredData(path: string, head: PageHead, expect: SiteExpectati
   return problems;
 }
 
-function checkGame(game: Record<string, unknown>, _path: string, expect: SiteExpectations) {
+function checkGame(game: Record<string, unknown>, path: string, expect: SiteExpectations) {
   const problems: string[] = [];
   for (const key of ["name", "description", "url", "image", "genre", "gamePlatform"]) {
     if (typeof game[key] !== "string" || game[key] === "") problems.push(`VideoGame has no ${key}`);
@@ -312,8 +324,9 @@ function checkGame(game: Record<string, unknown>, _path: string, expect: SiteExp
       problems.push(`VideoGame ${key} isn't on ${expect.origin}`);
     }
   }
-  if (typeof game.playMode !== "string" || !game.playMode.endsWith("SinglePlayer")) {
-    problems.push("VideoGame playMode isn't SinglePlayer");
+  const playMode = expect.playModes?.[path] ?? "SinglePlayer";
+  if (typeof game.playMode !== "string" || !game.playMode.endsWith(`/${playMode}`)) {
+    problems.push(`VideoGame playMode isn't ${playMode}`);
   }
   const offer = game.offers as Record<string, unknown> | undefined;
   if (offer?.["@type"] !== "Offer" || Number(offer.price) !== 0 || offer.priceCurrency !== "GBP") {

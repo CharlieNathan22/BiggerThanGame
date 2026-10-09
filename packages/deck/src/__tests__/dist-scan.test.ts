@@ -122,4 +122,12 @@ describe("the dev tools check", () => {
     expect(devToolsIn([{ path: "index.html", text: "<p>clean</p>" }])).toEqual([]);
     expect(DEV_TOOL_MARKERS).toContain("mockEnd");
   });
+
+  it("finds Twitch Mode's fake chat, ?mockChat=1, anywhere in the built site", () => {
+    expect(DEV_TOOL_MARKERS).toContain("mockChat");
+    const files = [
+      { path: "_astro/twitch.js", text: 'if(new URLSearchParams(s).get("mockChat")==="1")' },
+    ];
+    expect(devToolsIn(files)).toEqual(['_astro/twitch.js contains "mockChat", a pnpm dev tool']);
+  });
 });

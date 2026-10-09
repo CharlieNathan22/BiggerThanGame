@@ -57,7 +57,8 @@ can include Pirlo, Casillas and Cannavaro without apology.
 - **Football only.** The name allows expansion to other sports later; v1 does not attempt it.
 - **Legends only.** Retired players have frozen data — caps, goals, trophies and transfer fees
   never change again. This removes almost the entire data-refresh burden.
-- **Single player.** Multiplayer is on the roadmap but not until single-player retention is proven.
+- **Single player**, and Twitch Mode (§3): a streamer against their own chat. Other multiplayer
+  (1v1, Last Man Standing) waits until single-player retention is proven.
 - **Two modes**, both with one life. See section 3.
 - **Player photography ships in v1.** Stats are facts and not copyrightable; photos are. Every
   image must be freely licensed (Wikimedia Commons or equivalent), verified per image, and
@@ -264,6 +265,86 @@ Note what this deliberately does _not_ claim. Hiding values buys very little aga
 because the stats are public facts — a bot scraping Wikipedia reaches near-perfect accuracy anyway.
 What protects the leaderboards is the token chain, replay prevention, server-owned timing,
 one-attempt enforcement and timing heuristics. None of those depend on the values being secret.
+
+### Multiplayer
+
+The Legends deck's multiplayer modes live on their own hub, **Multiplayer**
+(`/football-higher-or-lower/legends/multiplayer`, §17): one card per mode in the site's glass
+cards. **Twitch Mode** is the first and the only live one. **1v1** ("Play a friend head to head")
+and **Last Man Standing** ("Up to 10 players, one mistake and you're out") are "Coming soon"
+cards, not links, and nothing behind them is built (§16). Which modes are live is config
+(`MULTIPLAYER_MODES`, `lib/multiplayer.ts`): a mode goes live by being given its page, never by
+changing the hub's markup.
+
+### Twitch Mode ("Chat vs You")
+
+A Twitch streamer plays a fixed-length **match** against their own chat, who vote with chat
+commands. No login, no leaderboards, no challenge links and no local best.
+
+- **Chat is read in the streamer's browser**, anonymously and read only, from Twitch's public chat
+  (ARCHITECTURE.md §14). Chat never reaches our server: nothing anyone types, and no viewer's name
+  or id, is stored, logged or sent. Votes live in memory for the question on screen only.
+- **The channel** is typed as `name`, `#name` or a pasted `twitch.tv/name` link, normalised to
+  lower case and checked against Twitch's channel-name form (letters, digits and underscores, 3
+  to 25, never starting with an underscore; the 3 allows old short names). The status shows all
+  through setup and play: connecting, "Connected to #name" with a live "n votes this question",
+  a dropped connection reconnecting by itself (with backoff) and a Retry button, or, when it can't
+  connect at all, why, plainly.
+- **Votes.** Exactly six commands, in any case, and the whole message (trimmed) must be one:
+  `!h`, `!higher` and `higher` for higher, `!l`, `!lower` and `lower` for lower. A bare `h` or
+  `l` doesn't count, nor does a command inside a longer message. They match the game's own Higher
+  and Lower buttons, and live in one config (`VOTE_COMMANDS`) so another language can add its own.
+  One vote per viewer per question, keyed on Twitch's user id: a later vote replaces an earlier
+  one. Only votes received while voting is open count. **Chat's answer is the majority**; a tie
+  is a miss ("Chat split 50/50"), and so are no votes ("No votes"). While voting is open the
+  screen shows how many have voted, never the split, so chat can't follow the majority; the split
+  (a bar and percentages) shows at the reveal.
+- **The setup** is a page of its own over the pitch, centred and scrolling, not a panel: "Twitch
+  Mode" with "Chat vs You" under it, a big Start, the channel (Connect inside its field), the
+  settings (questions, then voting time, a row each), the questions as cards (All legends and
+  Instagram on the first row, then clubs, leagues and eras), and Start again under them.
+- **Pools.** The streamer picks the questions: **All legends** (Endless's pool), **Instagram**
+  (Instagram Endless's: followers on every question, with its closeness floor), or **any club,
+  league or era** (the theme's squad: no repeats, the career labels and notes). Every pool is
+  played on Twitch Mode's own ramp (§8): a friendly opening, then hard all the way through the
+  match. **Not Daily Ranked**: streaming it would show the day's answers to every viewer.
+- **Length**: 10 or 20 questions. A squad is capped at its size less one, and its tile says so
+  ("Up to 14 questions"); with 20 chosen, the settings say so too ("This squad has 14
+  questions"). The picker offers only squads that can make a full 10-question match:
+  a squad of 10 players (9 questions, Manchester City today) isn't shown, though the server would
+  still deal it.
+- **Every question is scored for both sides**, and play goes on to the last one: a wrong answer
+  or a timeout is a point not won, as in Daily Ranked's twenty. No bonus rounds. The scoreboard
+  reads "Chat 7 – 9 shroud".
+- **The timer is the voting window**, chosen at setup: 10 s, 20 s, 30 s (the default) or 1
+  minute, the same on every question, question 1 included. Under 10 s the setup says "Only
+  recommended for low latency streaming due to chat delay." (chat sees each question a few
+  seconds late).
+- **The streamer's pick.** The streamer clicks Higher or Lower at any time while voting is open;
+  it shows only as "Locked in", so chat can't copy it, and can't be changed. On the 20 s, 30 s
+  and 1 minute timers "End voting" closes the window early once 8 seconds have gone (never on 10
+  s). When the window closes the pick goes to the server (or a timeout, with no pick), the reveal
+  comes back, and chat is scored against it.
+- **The round protocol is everyone's**: signed tokens, the run's Durable Object, the resend rule,
+  answers judged by the server, the server's deadline (ARCHITECTURE.md §8). A refused answer (a
+  second guess on a spent token, an old token) changes nothing and **never ends a match**: with
+  no leaderboard to protect, voiding it would only cut a live stream short.
+- **A refresh ends the match**, as in Endless; there's no resume. The setup is remembered
+  (`bt:stream:*`), the channel's name included, but never the connection: back on the page, chat
+  connects only when Connect is pressed. Play again starts a fresh match on the same
+  settings; Change questions and Change channel go back to the setup.
+- **On one page**, in steps: the channel; the settings; the questions, as small tiles, All
+  legends and Instagram, then Clubs, Leagues and Eras (from the same theme list as the squad
+  pages, so a new theme appears on its own); then play, with the scoreboard, the command hint ("Type !h or
+  !higher · !l or !lower in chat"), the voting countdown on the big clock, the vote count, the
+  streamer's buttons and "Locked in", the reveal with chat's split, and a track of 10 or 20
+  segments with both sides' results in each. Then full time: the score, who won (or a draw), the
+  question-by-question strip, Share, Play again, Change questions, Change channel and Try other
+  modes. `?pool=<theme slug>` (or `all`, `instagram`) preselects the questions.
+- **Built to be streamed**: it reads at 1280 × 720 and 1920 × 1080 (a large score and countdown,
+  high contrast, nothing important at the edges) and still works on a phone.
+- **The word "Twitch" only.** No Twitch logo, glitch mark or brand colours anywhere: the icon is
+  our own, a chat bubble facing a player, and chat's colour is a mint of our own.
 
 ### Launch order
 
@@ -674,6 +755,39 @@ smallest, is hardest in its middle (68% at 45–70%), since its last few questio
 whoever is left. `simulation.md` has the tables, and `pnpm simulate` prints the closest pairs of
 each theme's last three questions (names and figures, so never in the committed report).
 
+**Twitch Mode** (§3) has a ramp of its own (`streamBands`, `STREAM_SCHEDULE`,
+`STREAM_SQUAD_SCHEDULE`, `STREAM_INSTAGRAM_SCHEDULE`). A match is a contest between chat and the
+streamer, so it should swing and rarely end level: it is tuned with the `fan` model to a mean of
+about **12–15 right out of 20 and 6–8 out of 10 on every pool**. The first **2 questions** (3 in a
+match of 15 or more) are friendly, the opening's uncapped ≥0.45 band; after that it is hard all
+the way, by **progress through the match** (each row a share of its questions), and never gets
+easier:
+
+| Progress after the opening | All legends                   | A squad     | Instagram                  |
+| -------------------------- | ----------------------------- | ----------- | -------------------------- |
+| to 35%                     | 0.015–0.05                    | 0.01–0.04   | 0.02–0.07, at least 1.3×   |
+| to 65%                     | 0.01–0.03, at least 5% apart  | 0.005–0.02  | 0.01–0.04, at least 1.2×   |
+| the rest                   | 0.005–0.02, at least 5% apart | 0.005–0.015 | 0.005–0.03, at least 1.15× |
+
+The ratio floors are never relaxed (`strictMinRatio`), so the hardest questions are close but not a
+coin flip; Instagram's are its closeness floor, tightening as Instagram Endless's does, and its
+opening keeps the 2× floor. Elsewhere followers keep the general volatility floor. A squad's rows
+are harder and have no ratio floor, because a squad runs short of close pairs as it is used up
+and relaxes towards easier ones whatever its bands say. There are no pair rules: the rows carry
+their own floors. The match is dealt by Endless's engine under a seed of its own
+(`stream:<pool>:`) with these bands (`RunOptions.bands`), so no other mode's runs change.
+
+Under the `fan` model (5,000 matches per pool and length, two independent players per match;
+`simulation.md`, "Twitch Mode"), every pool lands in the target but the two smallest squads,
+whose last questions are dealt from whoever is left: Manchester City (10 players, so 9
+questions) and Bayern Munich's 14. The means are 13.2–14.9 out of 20 and 6.7–7.9 out of 10;
+Manchester City's 9 questions average 7.7 and Bayern Munich's 14 average 10.6. Draws are 13–16% of
+20-question matches and 20–24% of 10-question ones (31% for Manchester City's 9), near the floor
+for two evenly matched sides (roughly 1/√(πn) for n questions at these odds); fewer would need
+lopsided sides. Before this ramp, matches borrowed their pool's
+(Endless's rows 1–20, a squad's ramp over the match) and averaged 17–19 out of 20 and 8–9.5 out of
+10, with 19–44% drawn.
+
 **Friendly's twenty questions**: It opens
 on the same uncapped band for the five rounds that prefer iconic names, stays uncapped a little
 lower for five more, then tightens quickly and **never gets easier**: from round 5 each band is at
@@ -1012,6 +1126,12 @@ a number.
   the same: "Bigger Than #12", the score, the twenty squares and the bonus line, with no players.
   No challenge links.
 
+- **Twitch Mode's share is spoiler-free too**: no player, stat or figure. The text is one line and
+  the page: "Chat 12 – 14 shroud on Barcelona legends · Bigger Than Twitch Mode" (the pool reads
+  "Football Legends", "Instagram legends" or "<Theme> legends"), then the Twitch Mode page's
+  address. The image draws the score, who won, the pool, and chat's and the streamer's strips, a
+  square per question each, gold or mint for right and a crossed red one for a miss.
+
 - **Challenge links, Endless only** (`CHALLENGES`), Instagram Endless included, each variant's
   link opening its own page: "Challenge a friend" on the game-over panel shares "Beat <score>" and
   a link. The friend plays **a fresh run of their own** — new players,
@@ -1271,7 +1391,8 @@ error-report routing (email), and the Endless submission rate limit (set with th
 
 ## 16. Deliberately not building
 
-- **Multiplayer** — not until single-player retention is proven.
+- **Multiplayer**, beyond Twitch Mode — 1v1 and Last Man Standing show as "Coming soon" cards on
+  the Multiplayer hub and nothing more, until single-player retention is proven.
 - **Other sports** — not until the football deck is genuinely good. The name permits it; the
   roadmap doesn't yet.
 - **Current players** — they reintroduce the refresh burden that legends-only removes.
@@ -1302,6 +1423,9 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
         ├── /clubs/<slug>          "Clear the squad", one page per theme the deck has
         ├── /leagues/<slug>        (generated from themes.json): the Endless screen, with
         ├── /eras/<slug>           Friendly's progress track.
+        ├── /multiplayer           the Multiplayer hub: a card per multiplayer mode. Static, no JS.
+        │   └── /twitch            the game: Twitch Mode. The same screen, its setup in the start
+        │                          panel's place, a strip with both scores over the pitch.
         └── /endless               the game: Endless. The same screen, with a clock.
             ├── /instagram         the game: Instagram Endless. The same screen as Endless.
             └── /leaderboard       Endless's boards: today, this week, this month, and this
@@ -1352,13 +1476,16 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   very short landscape screens (500px tall or less) the game page's bar drops "— Football Legends"
   too, so it stays one row and the game fits.
 - **Navigation** is in the title bar on every page: the brand to `/`, then Play (the Legends
-  page), Leaderboards (Daily Ranked's; Endless's is a switch away), How to play and About, with the
-  current page marked. Play is marked current on the football hub and every page under it but the
-  two leaderboards, where Leaderboards is. Inline on desktop (from 860px); a "Menu" on phones, tablets and short
-  landscape screens, which opens over the page rather than pushing it down.
-  The footer keeps Leaderboards, Credits, Privacy, GitHub, "Suggest a legend" and "Report a
-  problem", on one row down to 320px: below 440px Leaderboards steps out (it is in the Menu and
-  on the Legends page's cards), and below 360px GitHub, so it still fits.
+  page), Leaderboards (Daily Ranked's; Endless's is a switch away), Multiplayer (the hub), How to
+  play and About, with the current page marked. Play is marked current on the football hub and
+  every page under it but the two leaderboards, where Leaderboards is, and the Multiplayer pages,
+  where Multiplayer is. Inline on desktop (from 1000px, where the game page's bar still holds its
+  scores and five links on one row); a "Menu" on phones, tablets and short landscape screens,
+  which opens over the page rather than pushing it down.
+  The footer keeps Leaderboards, Twitch Mode, Credits, Privacy, GitHub, "Suggest a legend" and
+  "Report a problem", on one row down to 320px: below 600px Twitch Mode steps out (it is one tap
+  away through the Menu's Multiplayer), below 440px Leaderboards (in the Menu and on the Legends
+  page's cards), and below 360px GitHub, so it still fits.
 - **The Legends page's modes**, each on a full row of its own: **Daily Ranked** first, the premium
   card — a gold edge, a gold-leaf band along its top and across its name, and a warm glow behind
   it — showing "Game 12" and the countdown to the next game, then, in the button's place: a gold
@@ -1379,7 +1506,9 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   in on hover (the word "Instagram" only, never its logo or marks), and no leaderboard button; then
   Friendly; then **Clubs**, **Leagues** and **Eras**, "Clear the squad"'s themes in a section
   each under a heading in gold Cinzel with its glow, centred (a type with no theme has no
-  section).
+  section); then, for now, **Multiplayer**, a section under the same heading style with one
+  full-width card to the Multiplayer hub ("Twitch Mode and more": Twitch Mode is live, more is
+  coming).
   Every open mode's card shows this device's best when there is one — "Your best: 23", Friendly's
   out of twenty ("Your best: 12/20") — in the card's accent, gold or pink; with storage blocked or
   no best yet, nothing.
@@ -1405,6 +1534,13 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   the trophy and "Squad cleared" in gold leaf. Each page is indexed, with its own title
   ("Barcelona Legends Higher or Lower"), description, canonical, preview tags, JSON-LD, a
   breadcrumb trail straight from the Legends page, and a sitemap entry.
+- **The Multiplayer hub** ("Multiplayer"; "Football Legends Multiplayer Quiz | Bigger Than Game")
+  and **Twitch Mode's page** ("Twitch Mode: Chat vs You"; "Twitch Football Quiz: Chat vs You |
+  Bigger Than Game") each have their own title, description, canonical, preview tags (the site's
+  default image), JSON-LD and a sitemap entry. The hub shows its breadcrumb (Football › Legends ›
+  Multiplayer) and lists the modes as cards, Twitch Mode with our own icon; Twitch Mode's page is a
+  game page, so its trail (Legends › Multiplayer › Twitch Mode) is in its structured data only, and
+  its `VideoGame` is `MultiPlayer`.
 - **Local best** is kept per deck and mode or Endless variant — `bt:best:<deck>:<mode>`:
   `bt:best:legends:friendly`, `bt:best:legends:endless`, `bt:best:legends:endless-instagram`,
   and a theme's `bt:best:legends:squad:<theme id>`, which holds the furthest through the squad and

@@ -6,7 +6,8 @@
 // row narrows — Leaderboards below 440px (on a phone it's in the title bar's
 // Menu and on the Legends page's Endless card), GitHub below 360px — so
 // Credits · Privacy and the forms still fit one row at 320px; with them the
-// row wraps and the game's Start button goes under the footer.
+// row wraps and the game's Start button goes under the footer. Twitch Mode
+// steps out first, below 600px: it's one tap from the Menu's Multiplayer.
 import { GITHUB_URL } from "../config";
 import { t } from "../i18n";
 import { currentPage } from "../lib/nav";
@@ -15,15 +16,17 @@ import {
   FRIENDLY_PATH,
   LEADERBOARD_PATH,
   PRIVACY_PATH,
+  TWITCH_PATH,
   servedPath,
 } from "../lib/paths";
 
 const path = servedPath(Astro.url.pathname);
 
 // `rel` only where the link leaves the site. `roomy`: only from 360px wide;
-// `wider`: only from 440px.
+// `wider`: only from 440px; `widest`: only from 600px.
 const links = [
   { href: LEADERBOARD_PATH, label: t("footer.leaderboards"), wider: true },
+  { href: TWITCH_PATH, label: t("footer.twitch"), widest: true },
   { href: CREDITS_PATH, label: t("footer.credits") },
   { href: PRIVACY_PATH, label: t("footer.privacy") },
   { href: GITHUB_URL, label: t("footer.github"), rel: "noopener", roomy: true },
@@ -41,7 +44,7 @@ const feedback = [
 <footer class="foot">
   <nav aria-label={t("footer.nav")}>
     {links.map((link, i) => (
-      <span class:list={{ roomy: link.roomy, wider: link.wider }}>
+      <span class:list={{ roomy: link.roomy, wider: link.wider, widest: link.widest }}>
         {i > 0 && (
           <span class="sep" aria-hidden="true">
             {" "}
@@ -101,10 +104,16 @@ const feedback = [
       display: none;
     }
   }
-  /* The first link out: the next one loses its separator with it. */
+  /* The first link out, Twitch Mode. */
+  @media (max-width: 599px) {
+    .widest {
+      display: none;
+    }
+  }
+  /* Then Leaderboards: the first link left (Credits) loses its separator with it. */
   @media (max-width: 439px) {
     .wider,
-    .wider + span > .sep {
+    .widest + span > .sep {
       display: none;
     }
   }

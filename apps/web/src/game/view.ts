@@ -3,9 +3,10 @@
  * and the edge cases are under test rather than buried in markup.
  */
 
-import { STREAK_TITLES, questionLimit, streakTitle } from "@bt/core";
+import { STREAK_TITLES, streakTitle } from "@bt/core";
 import type { PlayerCard, StatKey, Tier } from "@bt/core";
 import { formatDate, statLabel, t } from "../i18n";
+import { limitOf } from "./machine";
 import type { GameState, Hitch, QuestionClock, RoundRecord } from "./machine";
 import { asPlay } from "./variant";
 import type { PlayLike } from "./variant";
@@ -151,8 +152,8 @@ export function announcement(state: GameState, play: PlayLike): string {
   if (best !== null) return best === "new" ? t("live.newHighScore") : t("live.matchedBest");
   if ((state.phase === "verdict" || state.phase === "over") && reveal !== null) {
     const params = { challenger: round.challenger.name, value: reveal.display };
-    // Daily Ranked: a miss among the twenty goes on to the next question.
-    if (state.mode === "ranked") {
+    // Daily Ranked, and a Twitch Mode match: a miss goes on to the next question.
+    if (state.mode === "ranked" || state.mode === "stream") {
       if (state.end !== null) {
         return t("live.dailyDone", { ...params, score: scoreFigure(state.streak, play) });
       }
@@ -373,6 +374,8 @@ export interface ScoreBadge {
 
 export function scoreBadge(state: GameState, play: PlayLike): ScoreBadge | null {
   const { mode, target } = asPlay(play);
+  // Twitch Mode keeps both sides' score on its own scoreboard.
+  if (mode === "stream") return null;
   if (state.streak === 0 || state.end === "won") return null;
   const { phase } = state;
   if (
@@ -439,7 +442,7 @@ export function onNewBest(state: GameState): boolean {
  */
 export function titleChip(state: Pick<GameState, "streak">, play: PlayLike): string {
   const { mode, target } = asPlay(play);
-  if (target !== null) return "";
+  if (target !== null || mode === "stream") return "";
   const title = streakTitle(state.streak, mode);
   return title === undefined ? "" : t(`title.${title.id}`);
 }
@@ -529,7 +532,7 @@ export interface TopClock extends ClockState {
  */
 export function topClock(state: GameState, now: number): TopClock | null {
   const { phase, round } = state;
-  if (round === null || questionLimit(state.mode, round.index) === null) return null;
+  if (round === null || limitOf(state, round.index) === null) return null;
   if (phase === "idle" || phase === "starting" || phase === "title" || phase === "holding") {
     return null;
   }
@@ -540,7 +543,7 @@ export function topClock(state: GameState, now: number): TopClock | null {
   if (state.stopped !== null) {
     return { ...clockState(state.stopped.remainingMs), running: false, frozen: true };
   }
-  const limit = questionLimit(state.mode, round.index) ?? 0;
+  const limit = limitOf(state, round.index) ?? 0;
   // A Daily question picked up after a refresh: its clock never stopped, so
   // it counts down from what the server said was left, from the first frame.
   if (state.cap !== null) {

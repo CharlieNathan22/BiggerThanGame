@@ -1,6 +1,6 @@
 # Simulation
 
-20,000 runs per mode over 131 players, generated 2026-10-08. Every mode uses the same seeds, so the columns differ only by what the mode changes.
+20,000 runs per mode over 131 players, generated 2026-10-09. Every mode uses the same seeds, so the columns differ only by what the mode changes.
 
 > Streaks come from a **modelled** player, `fan`: a keen football fan, accurate 0.55 at 0, 0.65 at 0.03, 0.78 at 0.08, 0.88 at 0.15, 0.95 at 0.3, 0.99 at 0.5 (rank distance), linear in between and flat beyond the last point. **That model is an assumption** (see Player models below), to be replaced by the accuracy curve observed in real play.
 
@@ -543,3 +543,51 @@ Every pair dealt in a run's last three questions, whether or not the player got 
 | 2010s | 0.108 | 1.10× | 1.43× | 31.4% |
 | 1990s | 0.092 | 1.10× | 1.35× | 33.3% |
 | Classic Era | 0.232 | 1.10× | 2.00× | 17.2% |
+
+
+## Twitch Mode: matches by pool
+
+5,000 matches per pool and length, each its own seed, dealt by the match dealer (`buildStreamRun`) by the stream schedule (`streamBands`) and played by two independent `fan`-model players, every question answered whatever happened before. A squad's match is capped at its size less one. Tuned to a mean of about 12–15 out of 20 and 6–8 out of 10. A draw is the two players level at full time.
+
+| Pool | Questions | Mean | Median | 10th–90th | Last three right | Draws |
+| ---- | --------- | ---- | ------ | --------- | ---------------- | ----- |
+| All legends | 10 | 7.7 | 8 | 6–9 | 70.4% | 22.1% |
+| All legends | 20 | 14.9 | 15 | 12–17 | 70.5% | 14.7% |
+| Instagram | 10 | 7.2 | 7 | 5–9 | 64.6% | 21.3% |
+| Instagram | 20 | 14.4 | 14 | 12–17 | 65.4% | 14.4% |
+| Barcelona | 10 | 6.8 | 7 | 5–9 | 59.9% | 21.0% |
+| Barcelona | 20 | 13.5 | 14 | 11–16 | 64.0% | 14.0% |
+| AC Milan | 10 | 6.8 | 7 | 5–9 | 60.3% | 20.4% |
+| AC Milan | 20 | 13.7 | 14 | 11–16 | 67.3% | 14.3% |
+| Juventus | 10 | 6.9 | 7 | 5–9 | 61.5% | 21.0% |
+| Juventus | 20 | 14.0 | 14 | 11–17 | 71.8% | 14.7% |
+| Real Madrid | 10 | 6.9 | 7 | 5–9 | 62.1% | 20.2% |
+| Real Madrid | 20 | 13.9 | 14 | 11–16 | 70.6% | 14.7% |
+| Manchester United | 10 | 7.0 | 7 | 5–9 | 64.8% | 20.9% |
+| Manchester United | 20 | 14.6 | 15 | 12–17 | 79.9% | 14.9% |
+| Inter | 10 | 7.2 | 7 | 5–9 | 68.2% | 20.7% |
+| Inter | 20 | 14.8 | 15 | 12–17 | 82.7% | 15.1% |
+| Chelsea | 10 | 7.0 | 7 | 5–9 | 64.8% | 20.6% |
+| Chelsea | 20 | 14.9 | 15 | 12–17 | 84.5% | 15.8% |
+| Bayern Munich | 10 | 7.4 | 7 | 6–9 | 73.6% | 20.9% |
+| Bayern Munich | 14 | 10.6 | 11 | 9–12 | 83.2% | 18.7% |
+| Arsenal | 10 | 7.9 | 8 | 6–9 | 78.1% | 24.4% |
+| Manchester City | 9 | 7.7 | 8 | 6–9 | 87.7% | 31.0% |
+| La Liga | 10 | 6.7 | 7 | 5–8 | 58.5% | 20.2% |
+| La Liga | 20 | 13.2 | 13 | 11–16 | 58.6% | 13.6% |
+| Premier League | 10 | 6.8 | 7 | 5–9 | 58.6% | 20.1% |
+| Premier League | 20 | 13.2 | 13 | 11–16 | 59.0% | 14.1% |
+| Serie A | 10 | 6.8 | 7 | 5–9 | 59.0% | 19.6% |
+| Serie A | 20 | 13.2 | 13 | 11–16 | 58.6% | 13.2% |
+| Ligue 1 | 10 | 6.8 | 7 | 5–9 | 59.9% | 20.7% |
+| Ligue 1 | 20 | 13.5 | 13 | 11–16 | 63.0% | 14.0% |
+| Bundesliga | 10 | 7.1 | 7 | 5–9 | 65.3% | 20.6% |
+| Bundesliga | 20 | 14.7 | 15 | 12–17 | 79.7% | 15.7% |
+| 2000s | 10 | 6.8 | 7 | 5–9 | 59.1% | 19.8% |
+| 2000s | 20 | 13.3 | 13 | 11–16 | 59.7% | 13.7% |
+| 2010s | 10 | 6.8 | 7 | 5–9 | 59.9% | 20.7% |
+| 2010s | 20 | 13.4 | 13 | 11–16 | 62.4% | 13.6% |
+| 1990s | 10 | 6.8 | 7 | 5–9 | 60.6% | 19.7% |
+| 1990s | 20 | 13.7 | 14 | 11–16 | 66.1% | 13.9% |
+| Classic Era | 10 | 7.0 | 7 | 5–9 | 66.6% | 21.3% |
+| Classic Era | 13 | 9.3 | 9 | 7–11 | 75.7% | 18.9% |

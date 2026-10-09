@@ -378,7 +378,22 @@ export function drawShareCard(
     });
   }
   if (rows > 0) {
-    blocks.push({ h: gridH, draw: (top) => drawGrid(top) });
+    blocks.push({ h: gridH, draw: (top) => drawGrid(top, card.cells) });
+  }
+  for (const row of card.rows ?? []) {
+    // A labelled strip: its name in small caps, then its squares.
+    const lines = Math.ceil(row.cells.length / layout.columns);
+    const stripH = lines * layout.cell + Math.max(0, lines - 1) * layout.cellGap;
+    blocks.push({
+      h: layout.labelSize * 1.5 + stripH,
+      draw: (top) => {
+        face("caps", layout.labelSize);
+        ctx.fillStyle = palette.dim;
+        fit(row.label, layout.labelSize, W - pad * 2, (s) => face("caps", s));
+        ctx.fillText(row.label, centre, top + layout.labelSize);
+        drawGrid(top + layout.labelSize * 1.5, row.cells);
+      },
+    });
   }
   if (card.ended !== null) {
     const ended = card.ended;
@@ -451,11 +466,11 @@ export function drawShareCard(
   ctx.fillStyle = palette.gold;
   ctx.fillText(card.site, centre, H - pad);
 
-  function drawGrid(top: number): void {
+  function drawGrid(top: number, cells: readonly GridCell[]): void {
     const { cell, cellGap, columns, cellRadius } = layout;
-    card.cells.forEach((c: GridCell, i) => {
+    cells.forEach((c: GridCell, i) => {
       const row = Math.floor(i / columns);
-      const inRow = Math.min(columns, card.cells.length - row * columns);
+      const inRow = Math.min(columns, cells.length - row * columns);
       const rowW = inRow * cell + (inRow - 1) * cellGap;
       const cx = centre - rowW / 2 + (i % columns) * (cell + cellGap);
       const cy = top + row * (cell + cellGap);

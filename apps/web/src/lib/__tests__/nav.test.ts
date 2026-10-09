@@ -3,10 +3,11 @@ import { t } from "../../i18n";
 import { NAV_LINKS, currentPage, navCurrent } from "../nav";
 
 describe("the title bar's navigation", () => {
-  it("is Play, Leaderboards, How to play and About, in that order", () => {
+  it("is Play, Leaderboards, Multiplayer, How to play and About, in that order", () => {
     expect(NAV_LINKS.map((link) => [t(link.label), link.href])).toEqual([
       ["Play", "/football-higher-or-lower/legends"],
       ["Leaderboards", "/football-higher-or-lower/legends/daily/leaderboard"],
+      ["Multiplayer", "/football-higher-or-lower/legends/multiplayer"],
       ["How to play", "/about#how-to-play"],
       ["About", "/about"],
     ]);
@@ -30,6 +31,7 @@ describe("the title bar's navigation", () => {
     expect(marks("/football-higher-or-lower/legends/daily/leaderboard")).toEqual({
       Play: undefined,
       Leaderboards: "page",
+      Multiplayer: undefined,
       "How to play": undefined,
       About: undefined,
     });
@@ -37,6 +39,7 @@ describe("the title bar's navigation", () => {
     expect(marks("/football-higher-or-lower/legends/endless/leaderboard")).toEqual({
       Play: undefined,
       Leaderboards: "true",
+      Multiplayer: undefined,
       "How to play": undefined,
       About: undefined,
     });
@@ -48,11 +51,31 @@ describe("the title bar's navigation", () => {
     expect(marks("/football-higher-or-lower/legends/endless")).toEqual({
       Play: "true",
       Leaderboards: undefined,
+      Multiplayer: undefined,
       "How to play": undefined,
       About: undefined,
     });
     expect(marks("/football-higher-or-lower/legends")).toMatchObject({ Play: "page" });
     expect(marks("/about")).toMatchObject({ Play: undefined, About: "page" });
+  });
+
+  it("marks Multiplayer, and only Multiplayer, current on the hub and Twitch Mode", () => {
+    const marks = (path: string) =>
+      Object.fromEntries(NAV_LINKS.map((link) => [t(link.label), navCurrent(link, path)]));
+    expect(marks("/football-higher-or-lower/legends/multiplayer")).toEqual({
+      Play: undefined,
+      Leaderboards: undefined,
+      Multiplayer: "page",
+      "How to play": undefined,
+      About: undefined,
+    });
+    expect(marks("/football-higher-or-lower/legends/multiplayer/twitch")).toEqual({
+      Play: undefined,
+      Leaderboards: undefined,
+      Multiplayer: "true",
+      "How to play": undefined,
+      About: undefined,
+    });
   });
 });
 

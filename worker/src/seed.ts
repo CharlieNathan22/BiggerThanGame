@@ -8,6 +8,8 @@
  *   seed(squad:<theme id>, runId)
  *                         = HMAC-SHA256(RUN_SECRET, "squad:<theme id>:" + runId)
  *   seed(ranked, gameNo)  = HMAC-SHA256(RUN_SECRET, "ranked:" + gameNo)
+ *   seed(stream, pool, runId)
+ *                         = HMAC-SHA256(RUN_SECRET, "stream:<pool>:" + runId)
  *
  * Each Endless variant's domain is its `seedDomain` (variants.ts in @bt/core),
  * so no two variants' runs can share a seed even if they shared a run id.
@@ -20,8 +22,8 @@
  * are at most 2³² runs per mode. Kept on purpose: ARCHITECTURE.md §7.
  */
 
-import { seedDomainOf } from "@bt/core";
-import type { EndlessVariantId } from "@bt/core";
+import { seedDomainOf, streamSeedDomain } from "@bt/core";
+import type { EndlessVariantId, StreamPool } from "@bt/core";
 import { hmacSha256, toHex } from "./hmac.js";
 import type { RunMode } from "./run-id.js";
 
@@ -44,6 +46,14 @@ export async function endlessSeed(
  */
 export async function rankedSeed(secret: string, gameNo: number): Promise<string> {
   return toHex(await hmacSha256(secret, `ranked:${gameNo}`));
+}
+
+/**
+ * A Twitch Mode match's seed, under its pool's own domain (`streamSeedDomain`,
+ * @bt/core): never an Endless run's, so a match can't be learned from one.
+ */
+export async function streamSeed(secret: string, runId: string, pool: StreamPool): Promise<string> {
+  return toHex(await hmacSha256(secret, `${streamSeedDomain(pool)}${runId}`));
 }
 
 /** The seed for a run of `mode`. */

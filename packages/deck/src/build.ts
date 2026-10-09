@@ -37,6 +37,7 @@ import {
 import type { PlayerModel } from "./simulate.js";
 import { dailySection, simulateDaily } from "./simulate-daily.js";
 import { simulateSquads, squadPairsText, squadSection } from "./simulate-squad.js";
+import { simulateStream, streamSection } from "./simulate-stream.js";
 import { formatProblems, formatStaleInstagram, staleInstagram, validateDeck } from "./validate.js";
 import { viabilityReport } from "./viability.js";
 
@@ -265,6 +266,13 @@ export function runBuild(opts: BuildOptions = {}): number {
     });
     const squads = simulateSquads({ deck: loaded.players, now, runs, model });
     const daily = simulateDaily({ deck: loaded.players, now, runs, model });
+    // Twitch Mode: a quarter of the runs per pool and length, there being so many.
+    const stream = simulateStream({
+      deck: loaded.players,
+      now,
+      runs: Math.max(1, Math.round(runs / 4)),
+      model,
+    });
     console.log(`  ${((Date.now() - started) / 1000).toFixed(1)}s`);
     write(
       join(packageRoot, "simulation.md"),
@@ -272,6 +280,7 @@ export function runBuild(opts: BuildOptions = {}): number {
         simulationReport(results, loaded.players.length, now, instagram),
         ...dailySection(daily),
         ...squadSection(squads),
+        ...streamSection(stream),
       ].join("\n"),
     );
     // Names beside figures: for the terminal only, never the committed report.

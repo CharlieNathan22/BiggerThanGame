@@ -1,7 +1,8 @@
 /**
  * The Legends page's modes (DESIGN.md §17): their order — Daily Ranked, in
  * gold at the top, then Endless, Instagram Endless, Friendly, then "Clear the
- * squad"'s Clubs, Leagues and Eras — the theme sections' grid, and the cards'
+ * squad"'s Clubs, Leagues and Eras, then the Multiplayer section's one card —
+ * the theme sections' grid, and the cards'
  * "Your best" lines from this device. Read from the page and card sources: the built page is
  * checked by `pnpm check:site`.
  */
@@ -21,6 +22,7 @@ const dailyStatus = source("../../components/DailyCardStatus.svelte");
 const cards = [...page.matchAll(/<Card\b([^>]*?)\/?>/g)].map((m) => m[1] ?? "");
 const nameOf = (attrs: string) =>
   /name=\{t\("mode\.(\w+)\.name"\)\}/.exec(attrs)?.[1] ??
+  (/name=\{t\("legends\.multiplayer\.name"\)\}/.test(attrs) ? "multiplayer" : undefined) ??
   (/name=\{theme\.name\}/.test(attrs) ? "theme" : undefined);
 
 /** The card's inline scripts: the mode's best, and a squad's. */
@@ -29,9 +31,26 @@ const modeScript = scripts.find((s) => s.includes("data-best-key")) ?? "";
 const squadScript = scripts.find((s) => s.includes("data-squad-key")) ?? "";
 
 describe("the Legends page's modes", () => {
-  it("run Daily Ranked first, then Endless, Instagram Endless, Friendly and the themes", () => {
-    expect(cards.map(nameOf)).toEqual(["ranked", "endless", "instagram", "friendly", "theme"]);
-    for (const attrs of cards.slice(0, 4)) expect(attrs).toMatch(/\bwide\b/);
+  it("run Daily Ranked first, then Endless, Instagram Endless, Friendly, the themes and Multiplayer", () => {
+    expect(cards.map(nameOf)).toEqual([
+      "ranked",
+      "endless",
+      "instagram",
+      "friendly",
+      "theme",
+      "multiplayer",
+    ]);
+    for (const attrs of [...cards.slice(0, 4), cards[5]!]) expect(attrs).toMatch(/\bwide\b/);
+  });
+
+  it("put Multiplayer in a section of its own after the eras and before the read, to the hub", () => {
+    const at = (text: string) => page.indexOf(text);
+    expect(page).toMatch(
+      /<h2 class="themes-heading" id="multiplayer">\s*\{t\("legends\.multiplayer\.heading"\)\}\s*<\/h2>/,
+    );
+    expect(at('id="multiplayer"')).toBeGreaterThan(at("{sections.map"));
+    expect(at('id="multiplayer"')).toBeLessThan(at('<article class="reading">'));
+    expect(cards[5]).toMatch(/href=\{MULTIPLAYER_PATH\}/);
   });
 
   it("put the themes in a section per type, after the modes", () => {
@@ -71,6 +90,8 @@ describe("the Legends page's modes", () => {
     expect(cards[3]).toMatch(/bestOf=\{WIN_ROUNDS\.friendly \?\? undefined\}/);
     expect(cards[4]).toMatch(/bestKey=\{bestKey\("legends", squadVariantId\(theme\)\)\}/);
     expect(cards[4]).toMatch(/bestOf=\{squadQuestions\(theme\.players\)\}/);
+    // The Multiplayer card is a way in, not a mode: no best of its own.
+    expect(cards[5]).not.toMatch(/bestKey=/);
     // Daily Ranked shows today's result instead.
     expect(cards[0]).not.toMatch(/bestKey=/);
   });

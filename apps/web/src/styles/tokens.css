@@ -429,6 +429,55 @@
   --dur-game-clock-grow: 180ms;
   --dur-game-clock-aside: 220ms;
 
+  /* Twitch Mode (components/stream): the match's scoreboard, the command hint
+     and the vote count in a strip over the pitch, sized for a captured stream
+     (1280 × 720 and up) and still fitting a phone. Chat's side is a cool
+     mint, the streamer's the site's gold; never a platform's colours. */
+  --stream-chat: #7fd6c4;
+  --stream-chat-rgb: 127, 214, 196;
+  --stream-you: var(--gold);
+  --stream-hud-bg: rgba(6, 18, 26, 0.86);
+  --stream-hud-edge: var(--gold-rule);
+  --stream-hud-pad: 8px 16px;
+  --stream-hud-gap: 6px 20px;
+  --fs-stream-score: clamp(1.6rem, 1.1rem + 2.2vw, 3.6rem);
+  --fs-stream-side: clamp(0.8rem, 0.65rem + 0.6vw, 1.35rem);
+  --fs-stream-hint: clamp(0.85rem, 0.7rem + 0.7vw, 1.5rem);
+  --fs-stream-status: clamp(0.8rem, 0.7rem + 0.4vw, 1.1rem);
+  --stream-split-h: clamp(10px, 0.5rem + 0.6vw, 20px);
+  --stream-split-higher: var(--stream-chat);
+  --stream-split-lower: rgba(238, 243, 241, 0.32);
+  --stream-split-w: clamp(160px, 22vw, 420px);
+  --stream-locked-bg: rgba(var(--glow-rgb), 0.16);
+  --stream-locked-edge: var(--gold);
+  --stream-status-ok: #6fd38a;
+  --stream-status-warn: #ff9f43;
+  --stream-status-bad: #ff7a70;
+  --stream-tile-min-h: 64px;
+  --stream-tile-pad: 10px 12px;
+  --stream-tile-gap: 8px;
+  --stream-tile-w: 180px;
+  --stream-panel-w: min(980px, 100%);
+  --stream-panel-pad: 16px 18px 18px;
+  --stream-page-pad: 8px 0 24px;
+  --stream-section-gap: 28px;
+  --stream-head-gap: 16px;
+  --stream-choice-gap: 22px;
+  --stream-legend-gap: 10px;
+  --stream-field-w: 520px;
+  --stream-field-h: 56px;
+  --stream-connect-w: 116px;
+  --stream-connect-inset: 6px;
+  --stream-start-w: 440px;
+  --stream-start-h: clamp(56px, 2.8rem + 1.4vw, 76px);
+  --fs-stream-start: clamp(1.1rem, 0.9rem + 0.8vw, 1.7rem);
+  --dual-track-row: 4px;
+  --dual-track-gap: 2px;
+  --dur-stream-bar: 600ms;
+  --chatvs-w: 72px;
+  --stream-field-radius: 10px;
+  --stream-field-pad-x: 12px;
+
   /* Endless's title chip at the top of the pitch: the streak title the run
      holds so far, where Friendly has its progress track. */
   --chip-bg: rgba(6, 18, 26, 0.72);

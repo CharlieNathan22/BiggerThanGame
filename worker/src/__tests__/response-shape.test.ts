@@ -19,6 +19,8 @@ import type {
   RoundPayload,
   RunStartResponse,
   StartResponse,
+  StreamGuessResponse,
+  StreamStartResponse,
 } from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
 import {
@@ -32,6 +34,8 @@ import {
 } from "./helpers.js";
 import { begin, harness, readToken, walk } from "./endless-helpers.js";
 import type { Ending } from "./endless-helpers.js";
+import { playMatch, readStreamToken, startMatch, streamHarness } from "./stream-helpers.js";
+import type { StreamAnswer } from "./stream-helpers.js";
 
 const CARD_KEYS = ["country", "id", "image", "name", "position"];
 const ANCHOR_KEYS = [...CARD_KEYS, "display", "qualifier", "value"];
@@ -441,5 +445,137 @@ describe("Endless responses", () => {
     const payload = { ...readToken(started.token), challengerValue: 1 };
     const forged = `${Buffer.from(JSON.stringify(payload)).toString("base64url")}.x`;
     expect(() => checkToken(forged, started.round)).toThrow();
+  });
+});
+
+// ------------------------------------------------------------ Twitch Mode
+
+const STREAM_START_KEYS = ["limit", "questions", "round", "runId", "token"];
+const STREAM_END_KEYS = ["end", "reveal", "score"];
+const STREAM_TOKEN_KEYS = [
+  "anchorId",
+  "anchorValue",
+  "challengerId",
+  "correct",
+  "deadline",
+  "issuedAt",
+  "limit",
+  "mode",
+  "nonce",
+  "pool",
+  "questions",
+  "round",
+  "runId",
+  "stat",
+  "v",
+];
+
+/** Numbers in a match's response, beyond Friendly's: its settings at the start, its score at the end. */
+const STREAM_NUMERIC_PATHS = [...NUMERIC_PATHS, /^(questions|limit|score)$/];
+
+const STREAM_SETTINGS = new Set(["questions", "limit", "score"]);
+
+/** A match's token: exactly its fields, and of the figures only the anchor's. */
+function checkStreamToken(token: string, round: RoundPayload): void {
+  const payload = readStreamToken(token);
+  expect(Object.keys(payload).sort()).toEqual(STREAM_TOKEN_KEYS);
+  expect(payload.round).toBe(round.index);
+  expect(payload.stat).toBe(round.stat.key);
+  expect(payload.anchorId).toBe(round.anchor.id);
+  expect(payload.challengerId).toBe(round.challenger.id);
+  expect(payload.anchorValue).toBe(round.anchor.value);
+  const numbers = numericLeaves(payload).map((l) => l.path);
+  expect(numbers.sort()).toEqual([
+    "anchorValue",
+    "correct",
+    "deadline",
+    "issuedAt",
+    "limit",
+    "questions",
+    "round",
+    "v",
+  ]);
+}
+
+function checkStream(
+  response: StreamStartResponse | StreamGuessResponse,
+  deck: readonly Player[],
+  now: Date,
+): void {
+  const keys = allKeys(response);
+  for (const forbidden of ["stats", "dob", "deceased", "iconic", "era", "leagues", "mainClubs"]) {
+    expect(keys).not.toContain(forbidden);
+  }
+  for (const forbidden of ["band", "relaxation", "seed", "nonce", "deadline", "issuedAt"]) {
+    expect(keys).not.toContain(forbidden);
+  }
+  for (const leaf of numericLeaves(response)) {
+    expect(
+      STREAM_NUMERIC_PATHS.some((p) => p.test(leaf.path)),
+      `number at ${leaf.path}`,
+    ).toBe(true);
+  }
+  const stripped = JSON.stringify(response, (k, v: unknown) =>
+    // The match's own settings and the streamer's score: numbers, but never a figure.
+    SHOWN_FIELDS.has(k) || k === "token" || STREAM_SETTINGS.has(k) ? null : v,
+  );
+  expect(scanForLeakedValues(stripped, deck, now, "stream response")).toEqual([]);
+
+  if ("round" in response) {
+    expect(Object.keys(response).sort()).toEqual(STREAM_START_KEYS);
+    checkRound(response.round, deck, now);
+    checkStreamToken(response.token, response.round);
+    return;
+  }
+  expectKeysWithin(response.reveal, REVEAL_KEYS);
+  if ("next" in response) {
+    expect(Object.keys(response).sort()).toEqual(ENDLESS_CONTINUE_KEYS);
+    checkRound(response.next, deck, now);
+    checkStreamToken(response.token, response.next);
+  } else {
+    expect(Object.keys(response).sort()).toEqual(STREAM_END_KEYS);
+    expect(["finished", "deck-exhausted"]).toContain(response.end);
+  }
+}
+
+describe("Twitch Mode responses", () => {
+  const ways: StreamAnswer[] = ["right", "wrong", "timeout", "late"];
+
+  it.each([
+    { name: "sample deck, All legends", deck: SAMPLE_DECK, pool: "endless" as const },
+    { name: "fixture deck, All legends", deck: FIXTURE_DECK, pool: "endless" as const },
+    { name: "sample deck, Instagram", deck: SAMPLE_DECK, pool: "endless-instagram" as const },
+    { name: "themed deck, a squad", deck: THEMED_DECK, pool: "squad:club-testfield" as const },
+  ])(
+    "never carry a hidden value across whole matches on the $name",
+    async ({ deck, pool }) => {
+      let responses = 0;
+      for (let i = 0; i < 12; i++) {
+        const h = streamHarness({ deck, images: fakeImages(deck) });
+        const { started, answers } = await playMatch(h, {
+          deck,
+          pool,
+          questions: i % 2 === 0 ? 10 : 20,
+          limit: ([10, 20, 30, 60] as const)[i % 4] ?? 30,
+          answer: (round) => ways[(round + i) % ways.length]!,
+        });
+        const now = runDay(started.runId);
+        for (const response of [started, ...answers]) {
+          checkStream(response, deck, now);
+          responses += 1;
+        }
+        expect("end" in answers.at(-1)!).toBe(true);
+      }
+      expect(responses).toBeGreaterThan(12 * 10);
+    },
+    60_000,
+  );
+
+  it("fail on a token that carries the challenger's figure", async () => {
+    const h = streamHarness();
+    const started = await startMatch(h);
+    const payload = { ...readStreamToken(started.token), challengerValue: 1 };
+    const forged = `${Buffer.from(JSON.stringify(payload)).toString("base64url")}.x`;
+    expect(() => checkStreamToken(forged, started.round)).toThrow();
   });
 });

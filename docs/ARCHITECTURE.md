@@ -130,8 +130,10 @@ bucket — see section 9.
 │   │   ├── mine.ts        # /api/board/endless/me: this device's live rank
 │   │   ├── cron.ts        # the nightly snapshot and prune
 │   │   ├── moderation.ts  # the nickname blocklist check; blocklist-data.ts holds hashes only
-│   │   └── shadow.ts      # the timing heuristics
-│   └── run-do.ts          # Durable Object: wiring over run-ledger.ts
+│   │   ├── shadow.ts      # the timing heuristics
+│   │   ├── stream.ts      # Twitch Mode: a match's start and guess (`stream`)
+│   │   └── stream-ledger.ts # a match's Durable Object's rules
+│   └── run-do.ts          # Durable Object: wiring over run-ledger.ts, daily-ledger.ts and stream-ledger.ts
 ├── migrations/            # D1 migrations (wrangler d1 migrations)
 ├── scripts/
 │   ├── stats.ts           # pnpm stats — the saved Analytics Engine queries (§19)
@@ -429,6 +431,8 @@ seed(endless-instagram, runId)
 seed(squad:<theme id>, runId)
                        = HMAC-SHA256(RUN_SECRET, "squad:<theme id>:" + runBody)
 seed(friendly, runId)  = HMAC-SHA256(RUN_SECRET, "friendly:" + runBody)
+seed(stream, pool, runId)
+                       = HMAC-SHA256(RUN_SECRET, "stream:<pool>:" + runBody)
 ```
 
 **Endless variants** (DESIGN.md §3, `ENDLESS_VARIANTS` in `@bt/core`) each derive their seed under
@@ -449,6 +453,17 @@ dropped), measures distance over the whole deck, ramps by progress through the s
 (`BandRules.questions`: the schedule's rows are fractions of the run), lands the wheel where the
 round's band can be met, and deals first any player who would otherwise be stranded. When nobody
 left can be dealt the run ends, cleared. It has its own goldens; the other modes' are unchanged.
+
+**Twitch Mode** (DESIGN.md §3, `stream.ts` in @bt/core) deals a match with Endless's engine on its
+pool's variant (`endless`, `endless-instagram` or `squad:<theme id>`), under a domain of its own,
+`"stream:" + pool + ":"`, so a match can't be learned from an Endless run nor one pool's from
+another's. `buildStreamRun` cuts the run at the match's length and passes the match's own band
+rules (`RunOptions.bands`, from `streamBands`: a friendly opening of 2 or 3 questions, then
+`STREAM_SCHEDULE`, `STREAM_SQUAD_SCHEDULE` or `STREAM_INSTAGRAM_SCHEDULE`, each row a share of the
+match's questions; DESIGN.md §8), in place of the pool's schedule and pair rules. Without that
+option `buildRun` is unchanged, and the sequence-level `Mode` and every table keyed by it are
+untouched, so every other mode's golden fingerprint holds. Matches have their own goldens
+(`stream.test.ts` in @bt/core).
 
 Ranked's seed depends only on the game number, so **every player gets the same sequence** — that is what
 makes the board comparable. Endless and Friendly are per-run.
@@ -983,6 +998,57 @@ entries still visible to their owner). `no-store`, behind `BOARD_LOOKUPS`.
 `/api/run/leave` and the correction form accept `mode: "ranked"`, rebuilding the round from the
 stored game. `/api/run/submit` refuses a Daily token: Daily scores post themselves.
 
+### Twitch Mode
+
+A match (`stream`, DESIGN.md §3) runs on the same machinery as Endless: a signed token per
+question, its nonce spent once by the run's Durable Object, the server's own clock and deadline,
+and Turnstile at the start. Handlers are pure functions in `worker/src/stream.ts`, the match's
+state is `stream-ledger.ts`.
+
+- **Its deal** is Endless's engine on the pool's variant (`buildStreamRun`, `stream.ts` in
+  @bt/core), cut at the match's length, under the seed `HMAC(RUN_SECRET, "stream:<pool>:" +
+runBody)` (§7), by the match's own bands (`streamBands`), which ramp over its questions.
+- **Its run id** signs under `"run:stream:<pool>:"`, so it verifies only as a match on its own
+  pool, never as any other mode's run.
+- **Its token** is the progress token's shape under its own prefix, `"stream-token:"`
+  (`signStreamToken`; deliberately not `"stream:"`, the seed domain): `{ v, runId, mode: "stream",
+pool, questions, limit, round, correct, anchorId, challengerId, stat, anchorValue, issuedAt,
+deadline, nonce }`, with `correct` (the streamer's right answers so far) in place of `streak`.
+  Strict parse: `limit` one of `STREAM_LIMITS`, `questions` at most 20, `correct < round`, no
+  stray key. `POST /api/round/guess` routes on the prefix, as it does for Daily's.
+- **Its ledger** spends each nonce once and answers a resend of the latest step from what it kept,
+  as Endless's does, and records `results[]` (right or wrong per question) as Daily's does. Every
+  answer leads to the next question until the match's length (`finished`), or the end of what the
+  pool can deal (`deck-exhausted`). **A refused answer never voids a match**: the same token with
+  the other guess, an older token or one never issued is `409` and changes nothing; the first
+  answer stands and the genuine next token plays on. Its alarm is Endless's: a match silent past
+  `deadline + DISCONNECT_MARGIN_MS` is closed as `disconnected` (a refresh ends a match), and its
+  storage goes `RETAIN_MS` after its last activity. It lives in the same `RunDO` class under a
+  table of its own (`stream_run`, one row, the whole record), created `IF NOT EXISTS`, so no
+  Durable Object migration.
+- **Telemetry from chat.** Each guess may carry `chat: { pick, voters }` (`ChatPick`: `higher`,
+  `lower`, `split` or `none`; `voters` an integer, `none` exactly when it's 0). The server judges
+  the pick against the round itself and keeps chat's score and the peak voters on one question,
+  for the data points and the `run_end` line only. It never changes the match, and nothing else
+  from chat (no message, name or id) is ever sent.
+
+**`POST /api/run/start`** with `{ mode: "stream", pool, questions, limit, turnstileToken }` →
+`{ runId, round, token, questions, limit }`. In order: the flood limit and `RUN_STARTS`; strict
+parsing (`pool` an Endless variant id, never Daily; `questions` 10 or 20; `limit` 10, 20, 30 or
+60: anything else is `400`); a squad the deck doesn't have is `400`, before Turnstile; the length
+capped at the squad's size less one and echoed back; Turnstile; a fresh match id; rounds one and
+two dealt; the Durable Object told (`streamBegin`); the response. The deadline on every question is
+`deadlineWithLimit(issuedAt, round, statChanged, limit × 1000, wheel)`: the usual animation
+allowance (§8 above, no spin for Instagram), the chosen limit, and the 3 s grace.
+
+**`POST /api/round/guess`** with a match's token → `{ token, guess, clientElapsedMs?, chat? }`:
+the answers limit on the match key; the round recomputed and the token held to it (`409
+token_mismatch`); a timeout or anything past the deadline is wrong; then `{ reveal, next, token }`,
+or at the end `{ reveal, end: "finished" | "deck-exhausted", score }`. No challenge link and no
+result token. `/api/run/submit` refuses a match's token with `400 no_boards` (recorded as a refused
+`submit`) before its Durable Object, Turnstile or D1 are touched. The page sends no leave beacon
+for a match (it is often hidden while streamed) and offers no correction form.
+
 ### Disconnection
 
 Offline continuation is impossible by construction: the client does not hold the next value and
@@ -1295,6 +1361,9 @@ player's own row comes from `/api/board/daily/me`, never cached.
 - **Endless** reuses the round endpoint's three limiters: `RUN_STARTS` on `/api/run/start` before
   Turnstile is asked, `RUN_ANSWERS` keyed on the verified run key, and `ROUND_FLOOD` on both. No new
   limits. What stops a replayed answer is the Durable Object's spent-once nonce (§8), not a limit.
+- **Twitch Mode** reuses the same bindings too: `ROUND_FLOOD` and `RUN_STARTS` (then Turnstile) on
+  a match's start, `RUN_ANSWERS` on each guess keyed on the match. A 60-second window is far
+  slower than an Endless answer, so no limit needs changing, and there is no new one.
 - **Feedback** (`/api/feedback`, §8) is rate-limited, checked before any other work, as well as
   protected by Turnstile. Nothing it receives reaches a response.
 - **Rate limits** per IP: Endless run starts, submissions (`RUN_SUBMITS`, sized so a classroom
@@ -1449,6 +1518,8 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
 | `/football-higher-or-lower/legends/endless/leaderboard` | Endless's boards and this device's runs             | an island                       |
 | `/football-higher-or-lower/legends/daily`               | the game (Daily Ranked)                             | the island                      |
 | `/football-higher-or-lower/legends/daily/leaderboard`   | Daily Ranked's board: today's game                  | an island                       |
+| `/football-higher-or-lower/legends/multiplayer`         | the Multiplayer hub: a card per multiplayer mode    | none                            |
+| `/football-higher-or-lower/legends/multiplayer/twitch`  | the game (Twitch Mode)                              | the island                      |
 | `/about`, `/credits`, `/privacy`                        | the stats and how to play; credits; privacy         | none                            |
 
 - The game island is `client:load`, not `client:visible` — it is above the fold and the first
@@ -1587,7 +1658,7 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
   `/football-higher-or-lower` and the game page it carries `aria-current="true"`, styled the
   same, except where another link is the page itself — on the leaderboard page only Leaderboards
   is current (`navCurrent`).
-  From 860px the links sit inline (below that the game page's scores and four links would wrap
+  From 1000px the links sit inline (below that the game page's scores and five links would wrap
   the bar). Below that, and on short landscape screens, a "Menu" built on
   `<details>`/`<summary>` opens them with no JS and from the keyboard. Esc (returning focus to
   "Menu" when it was inside) and a click outside close it: on the game page through the island,
@@ -1901,6 +1972,52 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   open, never for someone who only plays; the site key is in `config.ts` (Cloudflare's always-pass
   test key under `pnpm dev`). The form shows sending, sent and failed states, and a calm note on
   `429`.
+- **Twitch Mode on the game page** (`mode="stream"`, the same island; logic in
+  `apps/web/src/game/stream/`, components in `components/stream/`):
+  - **The `ChatSource` seam** (`stream/chat-source.ts`): `connect(channel)`, `onMessage`,
+    `onStatus`, `close()`. The game never knows how chat is read. Today's source is
+    `stream/twitch-anon.ts`: Twitch's public chat WebSocket (`wss://irc-ws.chat.twitch.tv:443`)
+    with an anonymous guest login (`justinfan<n>`; no token, OAuth or app), the tags capability
+    for the user id, joined only once Twitch sends `ROOMSTATE` (a join it never confirms within
+    10 s reads as no such channel; a refusing `NOTICE` says so), `PING` answered, Twitch's
+    `RECONNECT` followed at once, and a dropped connection reconnected with exponential backoff
+    and jitter (1 s doubling to 30 s, ±20%); a source that has never got through gives up after
+    four attempts and says Twitch can't be reached. A line whose text is longer than any command
+    is dropped before its tags are read, so a big chat costs little. An official, login-based
+    source (EventSub) can be added later behind the same four calls without touching the game.
+    Socket, timers, clock and randomness are injected; the tests use a fake socket.
+  - **Votes** (`stream/commands.ts`, `stream/votes.ts`): the six commands in one config per
+    language (`VOTE_COMMANDS`); a `VoteBox` keyed on the user id, open only while the question's
+    clock runs, its counts kept as votes arrive and read four times a second for the screen. It
+    is emptied at each question; the stream API closes it as the answer goes and sends only
+    `{ pick, voters }`.
+  - **The machine**: in `stream` a pick is locked in (`locked`) rather than sent; the clock's
+    own timeout or "End voting" (`close`, allowed by `canEndVoting`) sends it, or `timeout`. The
+    limit is the match's, on every question (`limitOf`). Every answer goes on to the next question,
+    as in Daily Ranked. Chat's result per question is worked out at the reveal
+    (`stream/match.ts`) against the figures it shows.
+  - **The page**: the setup (`StreamSetup.svelte`, a centred, scrolling page rather than a
+    panel: Start, the channel and its status, the settings, the pool picker from `themes.json`,
+    and Start again) in the start panel's place, and again from full time for
+    Change questions or Change channel; a two-row track (`DualTrack.svelte`) and a strip with the
+    scoreboard, command hint, chat status, vote count and the reveal's split
+    (`StreamHud.svelte`) over the pitch; "Locked in" in the picks' place and "End voting" under
+    the clock; full time (`StreamResult.svelte`). Every new match, Play again included, starts
+    through the setup panel's own Turnstile widget, a fresh token each time (the Play again fix,
+    `play-again.test.ts`; `stream-play.test.ts` holds it for matches). The settings are
+    remembered under `bt:stream:channel`, `bt:stream:pool`, `bt:stream:length` and
+    `bt:stream:timer`; `?pool=<theme slug>` preselects. The channel is only filled in on return:
+    chat connects when Connect is pressed, never on load. No leave beacon, no local best.
+  - **`?mockChat=1`** (`pnpm dev` only, `stream/mock-chat.ts`, behind `import.meta.env.DEV` in a
+    dynamic import): a fake `ChatSource` with a crowd of made-up voters (`viewers`, `split`,
+    `fickle`, `spam`), and `window.__btDropChat()` to cut it and watch the reconnect. `mockChat`
+    is in `DEV_TOOL_MARKERS`, so `scan:dist` fails if it ships.
+  - **No Content-Security-Policy is set** by the site (no `_headers`, no meta, and the Worker
+    never answers for the static pages), so nothing had to be allowed for the chat WebSocket. If
+    one is added later, `connect-src` needs `wss://irc-ws.chat.twitch.tv` and nothing broader.
+  - **Privacy**: chat goes from Twitch to the streamer's browser and nowhere else. No message,
+    viewer name or user id is stored, logged or sent; only the pick and the count per question
+    reach the server, as telemetry (§19). The privacy page says so.
 - **All visible game text is in `apps/web/src/i18n/en.ts`**, a flat keyed object with
   `{placeholder}` interpolation (`t()`). Components hold no user-facing string literals. Another
   language is another file with the same keys; there is no language switching yet.
@@ -1955,6 +2072,18 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   test** over many complete Daily runs and resumes, tokens decoded. Under workerd: a whole Daily
   run over HTTP, the real `RunDO` alarm finishing a silent run into the harness's D1, and the Daily
   seed dealing the same game as in Node.
+- **Twitch Mode:** in Node, the match dealer and its goldens (`stream.test.ts` in @bt/core: each
+  pool's players only, a squad never repeating, the caps, the stream bands (the friendly opening,
+  then never easier, by progress through the match), and every other mode's runs unchanged); the handlers and ledger (`worker/src/__tests__/stream.test.ts`:
+  strict starts, only the four limits, the deadline on the chosen one, misses and timeouts playing
+  on to the end, the resend rule, conflicts refused without voiding and the match then played to
+  its end, forged and edited tokens, the alarm, chat's telemetry, and `submit` refusing a match);
+  the response-shape test over whole matches on every pool, tokens decoded; and the observability
+  test. Under workerd, one whole match over HTTP with a refused replay, and a match's seed dealing
+  the same rounds as in Node. In the web app: chat parsing, the channel input and the anonymous
+  source over a fake socket (`stream-chat.test.ts`), the scoring, share and settings
+  (`stream-match.test.ts`), and the controller with fake Turnstile and server
+  (`stream-play.test.ts`).
 - **Latency:** test the reveal under artificial delay (0ms, 200ms, 800ms, 3s). The count-up must
   hold and settle rather than snap or freeze, and no image fetch may occur inside the reveal window.
   In Endless the question's clock must not run while the answer is in flight, and the next
@@ -2002,8 +2131,9 @@ moderation were complete (Phase 6A); Daily Ranked (Phase 6B) followed on the sam
 ## 18. Deferred
 
 - **Accounts.** The real fix for the one-attempt rule and for cross-device history.
-- **Multiplayer.** A Durable Object per lobby is the canonical pattern when it arrives; the DO
-  namespace introduced here is a useful precedent.
+- **Multiplayer**, beyond Twitch Mode (which needs no lobby: chat is read in the streamer's
+  browser). For 1v1 and Last Man Standing, a Durable Object per lobby is the canonical pattern
+  when they arrive; the DO namespace introduced here is a useful precedent.
 - **Weekly and all-time boards for Ranked.** Endless has today, this week and this month
   (DESIGN.md §13, §14); no all-time board.
 
@@ -2303,7 +2433,17 @@ data points are exactly as before. Split the squads by `blob10`.
   recently-seen queue was shortened — the ladder in DESIGN.md §8, from `Round.relaxation`.
 - **Rank distance**: how far apart the two figures sit in the deck for the stat, 0 to 1, computed
   by the engine's own `percentiles` and `rankDistance` on the tables it dealt from.
-- **Final question**: round 20 of Friendly (`isFinalRound`).
+- **Final question**: round 20 of Friendly (`isFinalRound`); a Twitch Mode match's last.
+- **Twitch Mode** (`stream` in blob2, whatever the pool) writes, on every event, blob10 the theme
+  id for a squad pool (else empty) and blob11 the pool (`endless`, `endless-instagram`,
+  `squad:<theme id>`). Its `start` has double1 the questions and double2 the limit in seconds;
+  each `answer` adds blob12 chat's outcome (`right`, `wrong`, `split`, `none`, or empty when the
+  page sent none) and double8 that question's voters, with double3 the streamer's right answers
+  so far and double7 0; its `end` (blob6 `finished`, `deck-exhausted` or `disconnected`) has
+  double1 the streamer's score, double2 the questions, double3 the limit, double4 chat's score and
+  double5 the peak voters on one question. Counts only: no message, name or id from chat. Its
+  `run_start` and `run_end` lines say `"mode": "stream"` with `pool`, `questions` and `limit`, and
+  `run_end` adds `chatScore` and `peakVoters`.
 
 **What the numbers can and can't say.** Friendly is stateless (§7): a resent answer is judged and
 recorded again, and a technical caller can answer rounds out of order or without ever starting.
@@ -2614,6 +2754,30 @@ WHERE blob2 = 'ranked'
   AND timestamp > NOW() - INTERVAL '7' DAY
 GROUP BY game
 ORDER BY game DESC
+```
+
+**Twitch Mode: matches** (`stream`): per pool, length and timer, matches finished, the streamer's
+and chat's mean scores, how often the streamer beat chat or drew, the mean peak voters on one
+question, and matches the alarm closed because the page went away.
+
+```sql
+SELECT
+  blob11 AS pool,
+  double2 AS questions,
+  double3 AS limit_s,
+  sum(_sample_interval) AS matches,
+  round(sum(_sample_interval * double1) / sum(_sample_interval), 1) AS streamer_mean,
+  round(sum(_sample_interval * double4) / sum(_sample_interval), 1) AS chat_mean,
+  sumIf(_sample_interval, double1 > double4) AS streamer_won,
+  sumIf(_sample_interval, double1 = double4) AS draws,
+  round(sum(_sample_interval * double5) / sum(_sample_interval), 1) AS mean_peak_voters,
+  sumIf(_sample_interval, blob6 = 'disconnected') AS disconnected
+FROM biggerthan_game_events
+WHERE blob2 = 'stream'
+  AND blob1 = 'end'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY pool, questions, limit_s
+ORDER BY matches DESC
 ```
 
 **Latest 50 starts and ends** (`latest`): newest first, for a look at what's happening now. The

@@ -42,6 +42,8 @@ export type ChallengeParam =
 export function readChallenge(search: string, mode: GameMode): ChallengeParam {
   const params = new URLSearchParams(search);
   if (!CHALLENGE_PARAMS.some((name) => params.has(name))) return { kind: "none" };
+  // Twitch Mode has never had challenge links: a stray one is ignored.
+  if (mode === "stream") return { kind: "none" };
   if (!CHALLENGES[mode]) return { kind: "retired" };
   const runId = params.get("challenge") ?? "";
   const scoreText = params.get("score") ?? "";

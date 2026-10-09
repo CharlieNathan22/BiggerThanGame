@@ -21,6 +21,8 @@ import { DailyLedger, memoryDailyStore } from "../daily-ledger.js";
 import { handleGuess, handleRunStart } from "../run.js";
 import type { RunContext, RunResult, RunStub } from "../run.js";
 import { RunLedger, memoryStore } from "../run-ledger.js";
+import type { StreamStub } from "../stream.js";
+import { StreamLedger, memoryStreamStore } from "../stream-ledger.js";
 import type { ProgressPayload } from "../token.js";
 import type { TurnstileOutcome } from "../turnstile.js";
 import { SAMPLE_DECK, SECRET, TODAY, correctGuess, uuidFrom, wrongGuess } from "./helpers.js";
@@ -171,9 +173,11 @@ export function fakeRuns(): RunNamespace {
     return l;
   };
   const daily = fakeDailyRuns();
+  const stream = fakeStreamRuns();
   return {
     idFromName: (name) => name,
     get: (id: never) => ({
+      ...stream.stub(id as string),
       begin: async (first) => structuredClone(ledger(id as string).begin(structuredClone(first))),
       advance: async (step) => structuredClone(ledger(id as string).advance(structuredClone(step))),
       claimForSubmit: async (claim) =>
@@ -206,6 +210,34 @@ export function fakeDailyRuns(): {
       dailyPostFailed: async (now) => ledger(key).postFailed(now),
     }),
   };
+}
+
+/** Twitch Mode's side of a run's object: memory ledgers, one per match key, copying across the "RPC". */
+export function fakeStreamRuns(): {
+  stub(key: string): StreamStub;
+  ledger(key: string): StreamLedger;
+} {
+  const ledgers = new Map<string, StreamLedger>();
+  const ledger = (key: string): StreamLedger => {
+    let l = ledgers.get(key);
+    if (l === undefined) ledgers.set(key, (l = new StreamLedger(memoryStreamStore())));
+    return l;
+  };
+  return {
+    ledger,
+    stub: (key) => ({
+      streamBegin: async (first) => structuredClone(ledger(key).begin(structuredClone(first))),
+      streamAdvance: async (step) => structuredClone(ledger(key).advance(structuredClone(step))),
+    }),
+  };
+}
+
+/** A Twitch Mode side that no other test should ever reach. */
+export function noStream(): StreamStub {
+  const never = async (): Promise<never> => {
+    throw new Error("not a match");
+  };
+  return { streamBegin: never, streamAdvance: never };
 }
 
 /** A Daily side that no Endless test should ever reach. */

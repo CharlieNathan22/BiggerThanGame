@@ -22,6 +22,8 @@ import type {
   Round,
   RunStartResponse,
   StartResponse,
+  StreamGuessResponse,
+  StreamStartResponse,
 } from "@bt/core";
 import { scanForLeakedValues } from "@bt/deck";
 import {
@@ -39,7 +41,7 @@ import { challengeLink } from "../challenge.js";
 import type { LogLine } from "../log.js";
 import { parseRunId } from "../run-id.js";
 import { fakeRuns } from "./endless-helpers.js";
-import { friendlySeed } from "../seed.js";
+import { friendlySeed, streamSeed } from "../seed.js";
 import {
   SAMPLE_DECK,
   SECRET,
@@ -980,5 +982,76 @@ describe("warn and error lines", () => {
       expect(typeof spy.mock.calls[0]?.[0]).toBe("object");
       spy.mockRestore();
     }
+  });
+});
+
+describe("a Twitch Mode match's events", () => {
+  it("are counts and settings only: no chat, no hidden value, IP, secret, seed or signed id", async () => {
+    const e = endlessHarness();
+    const started = await e.post<StreamStartResponse>(RUN_START_PATH, {
+      mode: "stream",
+      pool: "endless",
+      questions: 10,
+      limit: 20,
+      turnstileToken: "t",
+    });
+    let token: string | undefined = started.token;
+    let round = started.round;
+    let answered = 0;
+    while (token !== undefined) {
+      e.wait(3000);
+      const right = correctGuess(SAMPLE_DECK, started.runId, round);
+      const guess: Guess = round.index % 3 === 0 ? wrongGuess(right) : right;
+      const res: StreamGuessResponse = await e.post(GUESS_PATH, {
+        token,
+        guess,
+        chat: { pick: round.index % 2 === 0 ? "higher" : "split", voters: 40 + round.index },
+      });
+      answered += 1;
+      if ("token" in res) {
+        token = res.token;
+        round = res.next;
+      } else {
+        token = undefined;
+        expect(res).toMatchObject({ end: "finished", score: 7 });
+      }
+    }
+    expect(answered).toBe(10);
+
+    const everything = JSON.stringify([e.points, e.lines]);
+    for (const needle of [IP, USER_AGENT, "session=not-ours", SECRET, started.runId]) {
+      expect(everything).not.toContain(needle);
+    }
+    const run = parseRunId(started.runId)!;
+    expect(everything).not.toContain(started.runId.slice(started.runId.indexOf(".") + 1));
+    expect(everything).not.toContain(await streamSeed(SECRET, run.origin, "endless"));
+
+    // Every point says stream, its pool in blob11, and numbers only where declared.
+    for (const point of e.points) {
+      const [event, mode] = point.blobs;
+      expect(mode).toBe("stream");
+      expect(point.blobs[10]).toBe("endless");
+      expect(point.doubles.length).toBe(event === "answer" ? 8 : event === "end" ? 5 : 2);
+      if (event === "answer") {
+        expect(["right", "wrong", "split", "none", ""]).toContain(point.blobs[11]);
+        expect(point.doubles[7]).toBeGreaterThan(40);
+      }
+    }
+    const end = e.points.find((p) => p.blobs[0] === "end")!;
+    expect(end.doubles).toEqual([7, 10, 20, expect.any(Number), 50]);
+
+    // A player is named only in run_end, the round its response revealed.
+    const revealed = new Set(["endStat", "guess", "players"]);
+    const lines = e.lines.map((line) =>
+      Object.fromEntries(Object.entries(line).filter(([field]) => !revealed.has(field))),
+    );
+    const unrevealed = JSON.stringify([e.points, lines]);
+    for (const player of SAMPLE_DECK) {
+      expect(unrevealed).not.toContain(`"${player.id}"`);
+      expect(unrevealed).not.toContain(player.name);
+    }
+    // The doubles are declared counts and settings, checked above; the text is scanned.
+    const scanned = JSON.stringify(e.points.map((p) => [p.blobs.slice(0, 3), p.blobs.slice(4)]));
+    expect(scanForLeakedValues(scanned, SAMPLE_DECK, TODAY, "data points")).toEqual([]);
   });
 });

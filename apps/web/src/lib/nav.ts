@@ -12,6 +12,8 @@ import {
   HOW_TO_PLAY_PATH,
   LEADERBOARD_PATH,
   LEGENDS_PATH,
+  MULTIPLAYER_PATH,
+  TWITCH_PATH,
   isWithin,
 } from "./paths";
 
@@ -20,13 +22,17 @@ export interface NavLink {
   readonly label: MessageKey;
   /** The part of the site the link stands for, when that's more than its own page. */
   readonly section?: string;
-  /** Other pages the link stands for: Endless's board, under Leaderboards (Daily's board). */
+  /**
+   * Other pages the link stands for: Endless's board, under Leaderboards
+   * (Daily's board); Twitch Mode, under Multiplayer.
+   */
   readonly also?: readonly string[];
 }
 
 export const NAV_LINKS: readonly NavLink[] = [
   { href: LEGENDS_PATH, label: "nav.play", section: FOOTBALL_PATH },
   { href: LEADERBOARD_PATH, label: "nav.leaderboards", also: [ENDLESS_LEADERBOARD_PATH] },
+  { href: MULTIPLAYER_PATH, label: "nav.multiplayer", also: [TWITCH_PATH] },
   { href: HOW_TO_PLAY_PATH, label: "nav.howToPlay" },
   { href: ABOUT_PATH, label: "nav.about" },
 ];

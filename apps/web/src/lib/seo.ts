@@ -23,6 +23,8 @@ import {
   DAILY_PATH,
   ENDLESS_LEADERBOARD_PATH,
   LEGENDS_PATH,
+  MULTIPLAYER_PATH,
+  TWITCH_PATH,
 } from "./paths";
 
 /** `og:site_name`, the WebSite's name, and the end of every title. */
@@ -151,6 +153,33 @@ export function gameLd(): JsonLd {
   };
 }
 
+/**
+ * Twitch Mode, on its own page: a game of its own, played by a streamer
+ * against their chat, so `MultiPlayer` rather than the Legends game's
+ * `SinglePlayer`.
+ */
+export function twitchGameLd(): JsonLd {
+  return {
+    "@context": CONTEXT,
+    "@type": "VideoGame",
+    "@id": `${absoluteUrl(TWITCH_PATH)}#game`,
+    name: t("multiplayer.twitch.name"),
+    alternateName: t("stream.tagline"),
+    description: t("twitch.description"),
+    url: absoluteUrl(TWITCH_PATH),
+    image: absoluteUrl(OG_IMAGE.path),
+    genre: "Quiz",
+    gamePlatform: "Web browser",
+    playMode: "https://schema.org/MultiPlayer",
+    applicationCategory: "GameApplication",
+    operatingSystem: "Any",
+    inLanguage: LANG,
+    isAccessibleForFree: true,
+    offers: { "@type": "Offer", price: "0", priceCurrency: "GBP" },
+    isPartOf: { "@id": `${absoluteUrl(HOME_PATH)}#website` },
+  };
+}
+
 export interface Crumb {
   readonly name: string;
   readonly path: string;
@@ -172,6 +201,8 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
   const daily = { name: t("mode.ranked.name"), path: DAILY_PATH };
   const leaderboard = { name: t("over.leaderboard"), path: ENDLESS_LEADERBOARD_PATH };
   const dailyBoard = { name: t("over.leaderboard"), path: DAILY_LEADERBOARD_PATH };
+  const multiplayer = { name: t("breadcrumb.multiplayer"), path: MULTIPLAYER_PATH };
+  const twitch = { name: t("breadcrumb.twitch"), path: TWITCH_PATH };
   switch (path) {
     case FOOTBALL_PATH:
       return [home, football];
@@ -189,6 +220,10 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
       return [home, football, legends, daily];
     case DAILY_LEADERBOARD_PATH:
       return [home, football, legends, daily, dailyBoard];
+    case MULTIPLAYER_PATH:
+      return [home, football, legends, multiplayer];
+    case TWITCH_PATH:
+      return [home, football, legends, multiplayer, twitch];
     default:
       return [];
   }

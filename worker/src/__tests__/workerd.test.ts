@@ -13,7 +13,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DAILY_QUESTIONS, IDLE_FINISH_MS, buildRun, valueOf } from "@bt/core";
+import { DAILY_QUESTIONS, IDLE_FINISH_MS, buildRun, buildStreamRun, valueOf } from "@bt/core";
 import type {
   BoardResponse,
   DailyGuessResponse,
@@ -23,6 +23,8 @@ import type {
   GuessResponse,
   RoundPayload,
   RunStartResponse,
+  StreamGuessResponse,
+  StreamStartResponse,
   SubmitResponse,
 } from "@bt/core";
 import { createTestHarness, unstable_splitSqlQuery } from "wrangler";
@@ -384,5 +386,72 @@ describe("Daily Ranked under workerd", () => {
     expect(row.results[0]!.finished_at).not.toBeNull();
     const after = await post<DailyResumeResponse>("/api/run/resume", { deviceId: device(2) });
     expect(after.body).toMatchObject({ state: "finished", result: { end: "abandoned" } });
+  }, 60_000);
+});
+
+describe("a Twitch Mode match under workerd", () => {
+  it("deals the same match from the same seed as Node", async () => {
+    const node = buildStreamRun({
+      deck: fixtureDeck,
+      seed: "stream:endless:1",
+      now: NOW,
+      pool: "endless",
+      questions: 20,
+    })
+      .map((r) => `${r.index}:${r.stat}:${r.anchor.id}>${r.challenger.id}`)
+      .join("|");
+    const res = await server.fetch(
+      "http://localhost/test/fingerprint?seed=stream:endless:1&variant=endless&questions=20",
+    );
+    expect(await res.text()).toBe(node);
+  });
+
+  it("plays a whole match over HTTP: misses carry on, a conflict is refused without voiding", async () => {
+    const res = await post<StreamStartResponse>("/api/run/start", {
+      mode: "stream",
+      pool: "endless",
+      questions: 10,
+      limit: 30,
+      turnstileToken: "test",
+    });
+    expect(res.status).toBe(200);
+    const started = res.body;
+    expect([started.questions, started.limit]).toEqual([10, 30]);
+    let token: string | undefined = started.token;
+    let round = started.round;
+    let answered = 0;
+    let previous: { token: string; guess: Guess } | undefined;
+    let last: StreamGuessResponse | undefined;
+    while (token !== undefined) {
+      const pick = right(started.runId, round);
+      // Every third question missed; the match goes on regardless.
+      const guess = round.index % 3 === 0 ? other(pick) : pick;
+      const answer: { status: number; body: StreamGuessResponse } = await post<StreamGuessResponse>(
+        "/api/round/guess",
+        {
+          token,
+          guess,
+          chat: { pick: "higher", voters: 12 },
+        },
+      );
+      expect(answer.status).toBe(200);
+      answered += 1;
+      // After question 2, replay question 1's token with the other pick: refused, nothing voided.
+      if (round.index === 2 && previous !== undefined) {
+        const replay = await post("/api/round/guess", {
+          token: previous.token,
+          guess: other(previous.guess),
+        });
+        expect(replay).toEqual({ status: 409, body: { error: "conflict", detail: "spent" } });
+      }
+      previous = { token, guess };
+      last = answer.body;
+      if ("token" in answer.body) {
+        token = answer.body.token;
+        round = answer.body.next;
+      } else token = undefined;
+    }
+    expect(answered).toBe(10);
+    expect(last).toMatchObject({ end: "finished", score: 7 });
   }, 60_000);
 });

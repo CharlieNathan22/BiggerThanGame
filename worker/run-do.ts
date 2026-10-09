@@ -14,6 +14,11 @@
  * finishes a run left quiet for `IDLE_FINISH_MS` and posts it to the board,
  * retries a post that failed, and deletes the run's storage hours later.
  *
+ * A Twitch Mode match (src/stream-ledger.ts) lives in one too, under a table
+ * of its own (`stream_run`): no Durable Object migration either. Its alarm is
+ * Endless's: a match left silent past its deadline is closed as
+ * `disconnected`, and its storage goes hours later.
+ *
  * Endless's alarm does two jobs. While a question is open it is set a little past
  * the deadline: if no answer has come by then, the run is closed as
  * `disconnected`, keeping the streak it had verified, and its end is logged and
@@ -51,15 +56,73 @@ import type {
   SubmitClaim,
 } from "./src/run-ledger.js";
 import { disconnectedEnd } from "./src/run.js";
+import { streamDisconnectedEnd } from "./src/stream.js";
+import { StreamLedger } from "./src/stream-ledger.js";
+import type {
+  NewStreamRun,
+  StreamAdvanceResult,
+  StreamLedgerStore,
+  StreamRunRecord,
+  StreamStep,
+} from "./src/stream-ledger.js";
 
 export class RunDO extends DurableObject<Env> {
   readonly #ledger: RunLedger;
   readonly #daily: DailyLedger;
+  readonly #stream: StreamLedger;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.#ledger = new RunLedger(sqlStore(ctx.storage.sql));
     this.#daily = new DailyLedger(dailySqlStore(ctx.storage.sql));
+    this.#stream = new StreamLedger(streamSqlStore(ctx.storage.sql));
+  }
+
+  // ------------------------------------------------------------- Twitch Mode
+
+  async streamBegin(first: NewStreamRun): Promise<boolean> {
+    const begun = this.#stream.begin(first);
+    await this.#scheduleStream();
+    return begun;
+  }
+
+  async streamAdvance(step: StreamStep): Promise<StreamAdvanceResult> {
+    const result = this.#stream.advance(step);
+    await this.#scheduleStream();
+    return result;
+  }
+
+  async #scheduleStream(): Promise<void> {
+    const at = this.#stream.alarmAt();
+    if (at === null) await this.ctx.storage.deleteAlarm();
+    else await this.ctx.storage.setAlarm(at);
+  }
+
+  /** A match's alarm: close it if it went silent, or delete it once it is old. */
+  async #streamAlarm(now: number): Promise<void> {
+    const action = this.#stream.onAlarm(now);
+    if (action.action === "delete") {
+      await this.ctx.storage.deleteAlarm();
+      await this.ctx.storage.deleteAll();
+      return;
+    }
+    if (action.action === "closed") await this.#recordStreamClosed(action.run);
+    await this.#scheduleStream();
+  }
+
+  /** A silent match's end, logged and recorded like any other. Never throws. */
+  async #recordStreamClosed(run: StreamRunRecord): Promise<void> {
+    const secret = this.env.RUN_SECRET;
+    if (secret === undefined || secret === "") return;
+    try {
+      const event = await streamDisconnectedEnd(run, DECK, secret);
+      const ctx = { country: run.country, deckVersion: run.deckVersion };
+      const line = toLogLine(event, ctx, "run-do");
+      if (line !== undefined) log(line);
+      this.env.GAME_EVENTS?.writeDataPoint(toDataPoint(event, ctx));
+    } catch {
+      // Telemetry is never worth a failed alarm; the match is closed either way.
+    }
   }
 
   // ------------------------------------------------------------ Daily Ranked
@@ -224,6 +287,10 @@ export class RunDO extends DurableObject<Env> {
       await this.#dailyAlarm(now);
       return;
     }
+    if (this.#stream.run !== undefined) {
+      await this.#streamAlarm(now);
+      return;
+    }
     const action = this.#ledger.onAlarm(now);
     if (action.action === "delete") {
       await this.ctx.storage.deleteAlarm();
@@ -318,6 +385,31 @@ function sqlStore(sql: SqlStorage): LedgerStore {
     clear() {
       sql.exec("DELETE FROM run");
       sql.exec("DELETE FROM answers");
+    },
+  };
+}
+
+/** A match's ledger store: one row, its whole record (a match has at most twenty answers). */
+function streamSqlStore(sql: SqlStorage): StreamLedgerStore {
+  sql.exec(
+    "CREATE TABLE IF NOT EXISTS stream_run (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)",
+  );
+  return {
+    read() {
+      const row = sql
+        .exec<{ data: string }>("SELECT data FROM stream_run WHERE id = 1")
+        .toArray()[0];
+      return row === undefined ? undefined : (JSON.parse(row.data) as StreamRunRecord);
+    },
+    write(run) {
+      sql.exec(
+        "INSERT INTO stream_run (id, data) VALUES (1, ?) " +
+          "ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+        JSON.stringify(run),
+      );
+    },
+    clear() {
+      sql.exec("DELETE FROM stream_run");
     },
   };
 }

@@ -4,11 +4,12 @@
  * always passing and the rate limits always allowing. Never deployed.
  *
  * Two test-only extras: `GET /test/fingerprint?seed=&mode=` deals a run in
- * workerd, for the cross-runtime determinism check; and `RunDO.alarmAt(now)`
+ * workerd, for the cross-runtime determinism check (`&questions=` deals a
+ * Twitch Mode match on the `variant` pool instead); and `RunDO.alarmAt(now)`
  * runs the Durable Object's alarm as at a chosen moment.
  */
 
-import { DAY_MS, buildRun, isEndlessVariantId, startOfDay } from "@bt/core";
+import { DAY_MS, buildRun, buildStreamRun, isEndlessVariantId, startOfDay } from "@bt/core";
 import type { EndlessVariantId, Mode } from "@bt/core";
 import { NOW, fixtureDeck } from "../../packages/core/src/__fixtures__/deck.js";
 import { RunDO as BaseRunDO } from "../run-do.js";
@@ -63,6 +64,14 @@ export default {
       const seed = url.searchParams.get("seed") ?? "";
       const mode = (url.searchParams.get("mode") ?? "endless") as Mode;
       const variant = url.searchParams.get("variant");
+      const questions = Number(url.searchParams.get("questions") ?? "0");
+      if (questions > 0 && isEndlessVariantId(variant)) {
+        return new Response(
+          buildStreamRun({ deck: fixtureDeck, seed, now: NOW, pool: variant, questions })
+            .map((r) => `${r.index}:${r.stat}:${r.anchor.id}>${r.challenger.id}`)
+            .join("|"),
+        );
+      }
       return new Response(
         fingerprint(seed, mode, isEndlessVariantId(variant) ? variant : undefined),
       );

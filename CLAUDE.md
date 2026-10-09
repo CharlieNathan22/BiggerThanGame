@@ -114,7 +114,7 @@ they record every request's IP, location, user agent and headers. Don't turn the
 
 **Gameplay analytics** — `pnpm stats` prints the start/end summary (runs started, finished,
 abandoned, score spread, win rate) for the last 7 days. Name queries to see more:
-`pnpm stats streaks endings clock friendly stats distance bands dropoff leaves replays endless daily latest`, or
+`pnpm stats streaks endings clock friendly stats distance bands dropoff leaves replays endless daily stream latest`, or
 `pnpm stats all`;
 `pnpm stats run <runKey>` lists one run's answers with the gaps between them (the run key is in
 its `run_start`/`run_end` log lines);
@@ -131,9 +131,10 @@ permission and nothing else. Keep it in `.env` only; never commit, print or past
 ```
 packages/core/    framework-free TypeScript. The game.
 packages/deck/    schema, validation, build pipeline. Data is a private submodule.
-apps/web/         Astro + Svelte
+apps/web/         Astro + Svelte; Twitch Mode's chat reading and vote counting in
+                  src/game/stream/ (client only: chat never reaches the server)
 worker/           fetch handler: /api/round/next (Friendly), /api/run/start and /api/round/guess
-                  (Endless and Daily Ranked: tokens, RunDO), /api/run/resume (Daily),
+                  (Endless, Daily Ranked and Twitch Mode's matches: tokens, RunDO), /api/run/resume (Daily),
                   /api/run/submit, GET /api/board/endless/:period and POST
                   /api/board/endless/me (the boards: D1, Cache API; your live rank), GET
                   /api/board/daily and POST /api/board/daily/me, /api/feedback,
@@ -202,7 +203,9 @@ Also ask before:
 
 DESIGN.md §16 and ARCHITECTURE.md §18 list deferred scope. In particular: **multiplayer, other
 sports, current players, accounts, weekly and all-time boards.** They're deferred deliberately, not
-overlooked. Don't scaffold them speculatively.
+overlooked. Don't scaffold them speculatively. Multiplayer has one exception, built on request:
+Twitch Mode (a streamer against their own chat). 1v1 and Last Man Standing are "Coming soon" cards
+on the Multiplayer hub and nothing more.
 
 ---
 

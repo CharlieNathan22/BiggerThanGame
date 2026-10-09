@@ -41,6 +41,14 @@
  * Daily run can also pick up where a refresh left it (`resumed`): straight to
  * the question on screen, its clock capped at what the server says is left.
  *
+ * Twitch Mode (`stream`) plays a match: a fixed number of questions on a
+ * clock chosen at setup, every answer going on to the next, like Daily
+ * Ranked's. The streamer's pick doesn't answer the question: it is locked in
+ * (`locked`, shown only as "Locked in") and goes when the voting window
+ * closes — when the clock runs out, or early with "End voting" (`close`) — as
+ * a `timeout` if there was none. Chat's votes are counted beside the machine
+ * (stream/votes.ts), never in it.
+ *
  * In a mode with challenge links (Endless, DESIGN.md §13) a run can start from
  * one. The link is offered with the start; the server says whether it checks
  * out — the run is then framed as "Beat n" — or not. Either way the run is a
@@ -48,12 +56,13 @@
  * own, to challenge a friend with. In Friendly an old link is only noted.
  */
 
-import { hasWheel, questionLimit, variantOf } from "@bt/core";
+import { canEndVoting, hasWheel, questionLimit, variantOf } from "@bt/core";
 import type {
   AnswerResponse,
   ChallengeLink,
   DailyResult,
   ChallengeStatus,
+  Guess,
   Mode,
   NamedVariant,
   PlayerCard,
@@ -62,6 +71,8 @@ import type {
   RunEnd,
   StatKey,
   StatPayload,
+  StreamLimit,
+  StreamPool,
   Tier,
   TimedGuess,
 } from "@bt/core";
@@ -87,8 +98,15 @@ export type Phase =
  */
 export type EndReason = RunEnd | "network";
 
-/** The modes the game page plays. */
-export type GameMode = Extract<Mode, "friendly" | "endless" | "ranked">;
+/** The modes the game page plays: the sequence modes, and Twitch Mode's match (`stream`). */
+export type GameMode = Extract<Mode, "friendly" | "endless" | "ranked"> | "stream";
+
+/** A Twitch Mode match's settings, as the server started it. */
+export interface StreamSettings {
+  readonly pool: StreamPool;
+  readonly questions: number;
+  readonly limit: StreamLimit;
+}
 
 /**
  * An answer's response as the machine reads it: the round's reveal, then the
@@ -255,6 +273,13 @@ export interface GameState {
   readonly hitch: Hitch | null;
   /** The challenge link this run came from, if any. */
   readonly challenge: Challenge | null;
+  /** Twitch Mode: the match's settings, from its start; null before it and elsewhere. */
+  readonly stream: StreamSettings | null;
+  /**
+   * Twitch Mode: the streamer's pick for the question on screen, locked in and
+   * not yet sent. It goes when the voting window closes.
+   */
+  readonly locked: Guess | null;
   /**
    * This run was started by Play again, not the first of the page visit: its
    * title card is the quicker one.
@@ -274,6 +299,8 @@ export type GameEvent =
       readonly runId: string;
       readonly round: RoundPayload;
       readonly challenge?: ChallengeStatus;
+      /** Twitch Mode: the match's settings. */
+      readonly stream?: StreamSettings;
     }
   | { readonly type: "startFailed"; readonly failure: Failure; readonly at: number }
   /** The title card has glided into the plaque: hold there for the photos. */
@@ -288,8 +315,10 @@ export type GameEvent =
   | { readonly type: "dealt"; readonly at?: number }
   | { readonly type: "spun"; readonly at?: number }
   | { readonly type: "guess"; readonly guess: TimedGuess; readonly at: number }
-  /** The question's clock ran out: answered as `timeout`. */
+  /** The question's clock ran out: answered as `timeout` (Twitch Mode: the locked pick, if any). */
   | { readonly type: "timeout"; readonly at: number }
+  /** Twitch Mode's "End voting": the window closes early, and the locked pick goes. */
+  | { readonly type: "close"; readonly at: number }
   | { readonly type: "answered"; readonly response: Answered; readonly at: number }
   /**
    * Daily Ranked, after a refresh: the run's question on screen and the
@@ -346,6 +375,8 @@ export function initialState(
     challenge,
     link: null,
     repeat: false,
+    stream: null,
+    locked: null,
   };
 }
 
@@ -358,8 +389,9 @@ export function shouldSpin(round: RoundPayload, wheel = true): boolean {
   return wheel && (round.index === 1 || round.stat.statChanged);
 }
 
-/** Whether the run on screen has a wheel: core's word on its variant (`hasWheel`). */
-export function wheelOf(state: Pick<GameState, "mode" | "variant">): boolean {
+/** Whether the run on screen has a wheel: core's word on its variant, or a match's pool (`hasWheel`). */
+export function wheelOf(state: Pick<GameState, "mode" | "variant" | "stream">): boolean {
+  if (state.mode === "stream") return hasWheel(state.stream?.pool ?? "endless");
   return state.mode !== "endless" || hasWheel(variantOf(state.variant));
 }
 
@@ -393,6 +425,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         runId: event.runId,
         challenge: settleChallenge(state.challenge, event),
         round: event.round,
+        stream: event.stream ?? null,
       };
 
     case "titled":
@@ -467,18 +500,28 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       };
 
     case "guess":
+      // Twitch Mode: the pick is locked in, once, and goes when voting closes.
+      if (state.mode === "stream") {
+        if (state.phase !== "awaiting" || state.locked !== null) return state;
+        if (event.guess === "timeout") return state;
+        return { ...state, locked: event.guess };
+      }
+      return answer(state, event.guess, event);
+
     case "timeout":
-      if (state.phase !== "awaiting") return state;
-      // The clock stops here: never while the answer is in flight.
-      return {
-        ...state,
-        phase: "revealing",
-        guess: event.type === "timeout" ? "timeout" : event.guess,
-        clock: null,
-        cap: null,
-        stopped: stopClock(state.clock, event),
-        count: { tappedAt: event.at, arrivedAt: null },
-      };
+      return answer(
+        state,
+        state.mode === "stream" ? (state.locked ?? "timeout") : "timeout",
+        event,
+      );
+
+    case "close": {
+      const { clock, stream } = state;
+      if (state.mode !== "stream" || state.phase !== "awaiting") return state;
+      if (clock === null || stream === null) return state;
+      if (!canEndVoting(stream.limit, event.at - clock.startedAt)) return state;
+      return answer(state, state.locked ?? "timeout", event);
+    }
 
     case "answered": {
       if (state.phase !== "revealing" || state.reveal !== null || state.count === null) {
@@ -580,10 +623,28 @@ export function reduce(state: GameState, event: GameEvent): GameState {
   }
 }
 
+/** The answer goes: the clock stops here, never running while it is in flight. */
+function answer(
+  state: GameState,
+  guess: TimedGuess,
+  event: { readonly type: "guess" | "timeout" | "close"; readonly at: number },
+): GameState {
+  if (state.phase !== "awaiting") return state;
+  return {
+    ...state,
+    phase: "revealing",
+    guess,
+    clock: null,
+    cap: null,
+    stopped: stopClock(state.clock, event),
+    count: { tappedAt: event.at, arrivedAt: null },
+  };
+}
+
 /** The clock frozen at an answer: what was left at the tap, or nothing at a timeout. */
 function stopClock(
   clock: QuestionClock | null,
-  event: { readonly type: "guess" | "timeout"; readonly at: number },
+  event: { readonly type: "guess" | "timeout" | "close"; readonly at: number },
 ): StoppedClock | null {
   if (clock === null) return null;
   const remainingMs =
@@ -597,11 +658,20 @@ function stopClock(
  */
 function clockFor(state: GameState, at: number | undefined): QuestionClock | null {
   if (state.round === null) return null;
-  const limitMs = questionLimit(state.mode, state.round.index);
+  const limitMs = limitOf(state, state.round.index);
   if (limitMs === null) return null;
   const startedAt = at ?? 0;
   const left = state.cap === null ? limitMs : Math.max(0, state.cap - startedAt);
   return { startedAt, limitMs: Math.min(limitMs, left) };
+}
+
+/**
+ * The limit on question `round`, ms: the mode's (`QUESTION_LIMITS`), or a
+ * Twitch Mode match's chosen one on every question; null with no clock.
+ */
+export function limitOf(state: Pick<GameState, "mode" | "stream">, round: number): number | null {
+  if (state.mode === "stream") return state.stream === null ? null : state.stream.limit * 1000;
+  return questionLimit(state.mode, round);
 }
 
 /** What the server made of the offered link. A refusal made before the start stands. */
@@ -627,6 +697,7 @@ function deal(state: GameState, round: RoundPayload): GameState {
     ...state,
     phase: "dealing",
     round,
+    locked: null,
     // Without a spin the plaque shows the stat straight away; with one it keeps
     // the previous stat until the wheel lands.
     plaque: shouldSpin(round, wheelOf(state)) ? state.plaque : round.stat,

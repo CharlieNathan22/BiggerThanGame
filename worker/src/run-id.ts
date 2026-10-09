@@ -35,7 +35,7 @@
  */
 
 import { isSquadVariantId, resolveVariant } from "@bt/core";
-import type { EndlessVariantId, NamedVariant, Player, StaticVariantId } from "@bt/core";
+import type { EndlessVariantId, NamedVariant, Player, StaticVariantId, StreamPool } from "@bt/core";
 import { hmacSha256, timingSafeEqual, toBase64Url } from "./hmac.js";
 
 /**
@@ -197,6 +197,43 @@ export async function verifyRankedRunId(runId: string, secret: string): Promise<
   if (parsed === undefined || parsed.replay) return undefined;
   const given = runId.slice(parsed.body.length + 1);
   return timingSafeEqual(given, await signWith(secret, RANKED_PREFIX, parsed.body))
+    ? parsed
+    : undefined;
+}
+
+/**
+ * Twitch Mode's match ids sign under `run:stream:<pool>:` (`run:stream:endless:`,
+ * `run:stream:squad:club-barcelona:`), so one verifies only as a match on the
+ * pool it was minted for, and never as a run of any other mode.
+ */
+function streamPrefix(pool: StreamPool): string {
+  return `run:stream:${pool}:`;
+}
+
+/** A fresh, signed match id on `pool` for today (UTC). */
+export async function mintStreamRunId(
+  now: Date,
+  uuid: string,
+  secret: string,
+  pool: StreamPool,
+): Promise<string> {
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(now.getUTCDate()).padStart(2, "0");
+  const body = `${y}${m}${d}-${uuid}`;
+  return `${body}.${await signWith(secret, streamPrefix(pool), body)}`;
+}
+
+/** The match id's parts if this server signed it as a match on `pool`; undefined otherwise. */
+export async function verifyStreamRunId(
+  runId: string,
+  secret: string,
+  pool: StreamPool,
+): Promise<RunId | undefined> {
+  const parsed = parseRunId(runId);
+  if (parsed === undefined || parsed.replay) return undefined;
+  const given = runId.slice(parsed.body.length + 1);
+  return timingSafeEqual(given, await signWith(secret, streamPrefix(pool), parsed.body))
     ? parsed
     : undefined;
 }

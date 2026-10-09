@@ -121,5 +121,20 @@ export function deadlineFor(
 ): number | null {
   const limit = questionLimit(mode, round);
   if (limit === null) return null;
-  return issuedAt + answerAllowance(round, statChanged, wheel) + limit + NETWORK_GRACE_MS;
+  return deadlineWithLimit(issuedAt, round, statChanged, limit, wheel);
+}
+
+/**
+ * `deadlineFor` with the limit given rather than looked up by mode: Twitch
+ * Mode's match sets one limit for every question, question one included
+ * (stream.ts). The allowance and the grace are the same as everywhere.
+ */
+export function deadlineWithLimit(
+  issuedAt: number,
+  round: number,
+  statChanged: boolean,
+  limitMs: number,
+  wheel = true,
+): number {
+  return issuedAt + answerAllowance(round, statChanged, wheel) + limitMs + NETWORK_GRACE_MS;
 }

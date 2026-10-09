@@ -397,3 +397,26 @@ describe("the themes' pages", () => {
     expect(checkPages(site({}), expect_)).toContain(`${BARCELONA}: expected, but not built`);
   });
 });
+
+describe("the Multiplayer pages", () => {
+  const MULTIPLAYER = "/football-higher-or-lower/legends/multiplayer";
+  const TWITCH = `${MULTIPLAYER}/twitch`;
+
+  it("index the hub with a breadcrumb, and Twitch Mode as a game page, with the default preview", () => {
+    const expect_ = siteExpectations(["/og-image.png"]);
+    expect(expect_.structuredData[MULTIPLAYER]).toEqual(["BreadcrumbList"]);
+    expect(expect_.structuredData[TWITCH]).toEqual(["BreadcrumbList", "VideoGame"]);
+    expect(expect_.previewImages?.[TWITCH]).toBeUndefined();
+    expect(expect_.playModes?.[TWITCH]).toBe("MultiPlayer");
+  });
+
+  it("hold Twitch Mode's game to MultiPlayer, and every other to SinglePlayer", () => {
+    const multi = { ...GAME, playMode: "https://schema.org/MultiPlayer" };
+    const expect_ = { ...EXPECT, playModes: { "/game": "MultiPlayer" as const } };
+    expect(checkPages(site({ "/game": { ld: [WEBSITE, TRAIL, multi] } }), expect_)).toEqual([]);
+    expect(checkPages(site(), expect_).join("\n")).toContain("playMode isn't MultiPlayer");
+    expect(
+      checkPages(site({ "/game": { ld: [WEBSITE, TRAIL, multi] } }), EXPECT).join("\n"),
+    ).toContain("playMode isn't SinglePlayer");
+  });
+});

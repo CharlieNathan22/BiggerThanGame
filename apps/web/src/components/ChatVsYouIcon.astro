@@ -1,0 +1,50 @@
+---
+// Twitch Mode's icon: a chat bubble facing a player, our own drawing. Never a
+// platform's logo, glitch mark or colours (DESIGN.md §17): chat in the
+// Twitch Mode mint, the player in the site's gold. Decoration only; the card
+// it sits on is named by its heading. Put first on its card (`order`).
+---
+
+<svg class="chatvs" viewBox="0 0 64 32" aria-hidden="true" focusable="false">
+  <!-- Chat: a speech bubble with three dots. -->
+  <path
+    class="bubble"
+    d="M4 6h20a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H12l-5 5v-5H4a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3z"
+  />
+  <circle class="dot" cx="9" cy="14" r="1.6" />
+  <circle class="dot" cx="14" cy="14" r="1.6" />
+  <circle class="dot" cx="19" cy="14" r="1.6" />
+  <!-- Facing it: a player, head and shoulders. -->
+  <circle class="player" cx="50" cy="10" r="5" />
+  <path class="player" d="M40 28c0-6 4.5-10 10-10s10 4 10 10" />
+  <!-- Between them, a small spark. -->
+  <path class="spark" d="M33 12l2 4-2 4M37 12l-2 4 2 4" />
+</svg>
+
+<style>
+  .chatvs {
+    order: -1;
+    width: var(--chatvs-w);
+    height: auto;
+    margin: 0 auto var(--card-inner-gap);
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    overflow: visible;
+  }
+  .bubble {
+    stroke: var(--stream-chat);
+  }
+  .dot {
+    fill: var(--stream-chat);
+    stroke: none;
+  }
+  .player {
+    stroke: var(--gold);
+    filter: drop-shadow(0 0 4px rgba(var(--glow-rgb), 0.6));
+  }
+  .spark {
+    stroke: var(--dim);
+  }
+</style>

@@ -5,7 +5,12 @@
 // logged or measured changes this page too.
 import Page from "../layouts/Page.astro";
 import { CORRECTIONS_EMAIL } from "../config";
-import { DAILY_LEADERBOARD_PATH, FRIENDLY_PATH, ENDLESS_LEADERBOARD_PATH } from "../lib/paths";
+import {
+  DAILY_LEADERBOARD_PATH,
+  FRIENDLY_PATH,
+  ENDLESS_LEADERBOARD_PATH,
+  TWITCH_PATH,
+} from "../lib/paths";
 
 const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-policy/";
 ---
@@ -36,6 +41,10 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
       board, and are kept for 100 days, with your country's flag if you choose.
     </li>
     <li>Game statistics are anonymous: the only thing about you they record is your country.</li>
+    <li>
+      In Twitch Mode your browser reads your Twitch chat directly. Nothing your chat says, and no
+      viewer's name, reaches us: only how many voted and which way.
+    </li>
     <li>
       Feedback you send is emailed to us and also kept in our server logs for three days. Please
       don't include personal details in it.
@@ -148,6 +157,31 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
   <p>
     Cloudflare Turnstile (below) checks each publish too, and the server's usual limit on how fast a
     connection can send applies.
+  </p>
+
+  <h2>Twitch Mode</h2>
+  <p>
+    In <a href={TWITCH_PATH}>Twitch Mode</a> your browser connects straight to Twitch's public chat
+    server, read only, as an anonymous guest: there's no Twitch login, no token and no app, and we
+    never post in your chat. Chat messages go from Twitch to your browser and nowhere else. They
+    never reach our server.
+  </p>
+  <p>
+    Your browser looks at each message only to see whether it's a vote (<code>!h</code>,
+    <code>!higher</code>, <code>!l</code>, <code>!lower</code> and so on). It keeps one vote per
+    viewer, by their Twitch user number, for the question on screen only, in memory, and forgets
+    them all when the next question starts. No message, viewer name or user number is stored, logged
+    or sent anywhere.
+  </p>
+  <p>
+    What reaches our server with your answer to each question is a count: how many voted and which
+    way chat went (higher, lower, a tie or no votes). Our anonymous game statistics keep that, the
+    match's settings and both scores, with no names and nothing from the chat itself.
+  </p>
+  <p>
+    Your browser remembers your channel name, the questions, the number of questions and the voting
+    time you last chose, under <code>bt:stream:</code> in local storage, so starting again takes one
+    click. Clearing this site's data removes them.
   </p>
 
   <h2>Server logs</h2>

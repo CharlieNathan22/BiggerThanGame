@@ -141,10 +141,11 @@ function decodeEscapes(text: string): string {
 
 /**
  * Markers of `pnpm dev`'s tools, which a production build must drop entirely
- * (apps/web's game/dev.ts sits behind `import.meta.env.DEV`). Any one of them
- * in the built site means a dev branch was bundled.
+ * (apps/web's game/dev.ts and Twitch Mode's fake chat, game/stream/mock-chat.ts,
+ * sit behind `import.meta.env.DEV`). Any one of them in the built site means a
+ * dev branch was bundled.
  */
-export const DEV_TOOL_MARKERS = ["mockEnd"] as const;
+export const DEV_TOOL_MARKERS = ["mockEnd", "mockChat"] as const;
 
 /** Every file in the built site that carries a dev tool's marker. */
 export function devToolsIn(files: readonly DistFile[]): string[] {

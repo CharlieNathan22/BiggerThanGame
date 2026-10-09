@@ -18,6 +18,7 @@
 
 import type { PlayerImage } from "./images.js";
 import type { Position, StatKey, Tier } from "./types.js";
+import type { StreamLength, StreamLimit, StreamPool } from "./stream.js";
 import type { NamedVariant } from "./variants.js";
 
 export type Guess = "higher" | "lower";
@@ -43,6 +44,7 @@ export type TimedGuess = Guess | "timeout";
  *   Only ever in the server's own records; the client banks the run itself.
  * - `finished`: Daily Ranked, question 20 answered without all twenty right
  *   (a perfect run goes on into the bonus, where `wrong` or `timeout` ends it);
+ *   and Twitch Mode, the match's last question answered, right or wrong;
  * - `abandoned`: Daily Ranked, a run with no activity for `IDLE_FINISH_MS`,
  *   finished by the server with every unanswered question counted wrong.
  */
@@ -577,6 +579,60 @@ export type DailyMineResponse =
       readonly standing: DailyBoardEntry;
     };
 
+// ------------------------------------------------------------ Twitch Mode
+
+/**
+ * Chat's answer to a question, as the streamer's page counted the votes: the
+ * majority, `split` on a tie, `none` with no votes. Telemetry for the server;
+ * it never changes the match.
+ */
+export type ChatPick = "higher" | "lower" | "split" | "none";
+
+/**
+ * `POST /api/run/start` for Twitch Mode (`stream`). The questions and the
+ * limit are chosen at setup; the server accepts only `STREAM_LENGTHS` and
+ * `STREAM_LIMITS`, and caps a squad's length at its size less one.
+ */
+export interface StreamStartRequest {
+  readonly mode: "stream";
+  readonly pool: StreamPool;
+  readonly questions: StreamLength;
+  /** The voting window, seconds: the limit on every question. */
+  readonly limit: StreamLimit;
+  readonly turnstileToken: string;
+}
+
+export interface StreamStartResponse extends StartResponse {
+  readonly token: string;
+  /** The match's questions, after the pool's cap. */
+  readonly questions: number;
+  readonly limit: StreamLimit;
+}
+
+/**
+ * What chat did on the question just answered: counts only, never a message,
+ * a name or an id. The voters are that question's alone.
+ */
+export interface StreamChat {
+  readonly pick: ChatPick;
+  readonly voters: number;
+}
+
+/** `POST /api/round/guess` with a match's token: the streamer's pick, and chat's as telemetry. */
+export interface StreamGuessRequest extends GuessRequest {
+  readonly chat?: StreamChat;
+}
+
+/** The match is over: its last question answered, or the pool could deal no more. */
+export interface StreamGuessEndResponse {
+  readonly reveal: Reveal;
+  readonly end: "finished" | "deck-exhausted";
+  /** The streamer's right answers. */
+  readonly score: number;
+}
+
+export type StreamGuessResponse = GuessContinueResponse | StreamGuessEndResponse;
+
 export type ApiErrorCode =
   | "bad_request"
   | "not_found"
@@ -588,9 +644,10 @@ export type ApiErrorCode =
   | "verification_failed"
   /**
    * Endless: the progress token was already spent, is out of order, or its run
-   * is over. The run is void; nothing more is taken for it. Daily Ranked: the
-   * same refusals without voiding the run, and at a start `name_taken`,
-   * `already_played` or `not_started` (as the detail).
+   * is over. The run is void; nothing more is taken for it. Daily Ranked and
+   * Twitch Mode: the same refusals without voiding the run (the first answer
+   * stands), and Daily's start `name_taken`, `already_played` or
+   * `not_started` (as the detail).
    */
   | "conflict"
   /** Feedback only: the message couldn't be sent on. */

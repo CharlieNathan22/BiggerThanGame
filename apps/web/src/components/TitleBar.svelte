@@ -407,8 +407,9 @@
     font-variation-settings: var(--fv-nav);
   }
 
-  /* From 860px: below that, the game page's scores and four links would wrap the bar. */
-  @media (min-width: 860px) {
+  /* From 1000px: below that, the game page's scores and five links would wrap the
+     bar (measured at Friendly's "20 / 20 · Best 20/20" and Endless's 150s). */
+  @media (min-width: 1000px) {
     .links {
       display: block;
     }
