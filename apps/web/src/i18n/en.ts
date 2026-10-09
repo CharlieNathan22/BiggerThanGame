@@ -240,6 +240,8 @@ export const en = {
   "leaderboard.col.streak": "Streak",
   "leaderboard.retired": "Retired name",
   "leaderboard.you": "You",
+  // A board entry's flag place when it has no country (Flag.svelte)
+  "flag.unknown": "Country not shown",
   "leaderboard.pinnedPlace": "{rank} of {total}",
   "leaderboard.pinnedThen": "{rank} of {total} when published",
   "leaderboard.pinnedJump": "{place} · Go to page {page}",

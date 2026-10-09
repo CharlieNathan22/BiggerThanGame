@@ -2,10 +2,24 @@
  * Country flags on the leaderboards (DESIGN.md §13): round SVGs from
  * circle-flags (MIT), vendored in public/flags at HatScripts/circle-flags@379588b5,
  * one per code in @bt/core `FLAG_COUNTRIES`. Served from this site; no CDN.
- * A flag is named for screen readers by its country's name.
+ * A flag is named for screen readers by its country's name. A board entry
+ * with no country (left off, or none known) shows a "?" mark in the flag's
+ * place, named "Country not shown". Display only: nothing stored or sent.
  */
 
-import { LOCALE } from "../i18n";
+import { LOCALE, t } from "../i18n";
+
+/** What goes in a flag's place: the country's flag, or with none the "?" mark. */
+export type FlagMark =
+  | { readonly kind: "flag"; readonly src: string; readonly name: string }
+  | { readonly kind: "unknown"; readonly name: string };
+
+/** The flag for a country, or the "?" mark ("Country not shown") for none. */
+export function flagMark(country: string | null): FlagMark {
+  return country === null
+    ? { kind: "unknown", name: t("flag.unknown") }
+    : { kind: "flag", src: flagSrc(country), name: countryName(country) };
+}
 
 /** Where a flag's SVG is: `/flags/gb.svg`. */
 export function flagSrc(country: string): string {

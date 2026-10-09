@@ -903,6 +903,9 @@
   --flag-glow: 0 0 0 1px rgba(var(--glow-rgb), 0.55), 0 0 7px rgba(var(--glow-rgb), 0.75);
   --flag-align: -0.18em;
   --flag-gap: 6px;
+  /* No country: a "?" in the flag's place, its disc muted so it reads as unknown. */
+  --flag-unknown-fill: rgba(238, 243, 241, 0.1);
+  --flag-unknown-ink: var(--dim);
   /* The publish dialog's "Show my country flag" box. */
   --check-size: 20px;
   /* A tied streak's thinking time beside it ("18 · 1:42.3"); under it on a phone. */

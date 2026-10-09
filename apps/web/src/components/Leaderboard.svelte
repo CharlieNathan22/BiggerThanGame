@@ -299,6 +299,7 @@
             <p class="winner">
               {#each winner.parts as part, i (i)}{#if part.name}<Flag
                     country={winner.country}
+                    unknown
                   />{/if}<span class:gold={part.gold} class:name={part.name}>{part.text}</span
                 >{/each}
             </p>
@@ -323,7 +324,7 @@
                     <span class="rank num">{pinned.rank}</span>
                     <span class="who">
                       <span class="line">
-                        <Flag country={pinned.country} keep />
+                        <Flag country={pinned.country} unknown />
                         <span class="nick">{pinned.nickname ?? t("leaderboard.retired")}</span>
                         <span class="you">{t("leaderboard.you")}</span>
                       </span>
@@ -342,7 +343,7 @@
                     <span class="rank num">{pinned.rank}</span>
                     <span class="who">
                       <span class="line">
-                        <Flag country={pinned.country} keep />
+                        <Flag country={pinned.country} unknown />
                         <span class="nick">{pinned.nickname ?? t("leaderboard.retired")}</span>
                         <span class="you">{t("leaderboard.you")}</span>
                       </span>
@@ -382,7 +383,7 @@
                         <td class="rank num">{row.rank}</td>
                         <td class="name" class:retired={row.nickname === null}>
                           <span class="line">
-                            <Flag country={row.country} lazy={page > 0} keep />
+                            <Flag country={row.country} lazy={page > 0} unknown />
                             <span class="nick">{row.nickname ?? t("leaderboard.retired")}</span>
                             {#if row.mine}<span class="you">{t("leaderboard.you")}</span>{/if}
                           </span>

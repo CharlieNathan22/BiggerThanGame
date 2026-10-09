@@ -1194,8 +1194,12 @@ changed more often doesn't lose a tie for its longer spins. The board page puts 
   connection it was published from (Cloudflare's), only the two-letter code, nothing finer. The
   publish dialog shows the flag that will appear with a "Show my country flag" box, ticked by
   default; unticked, no country is kept, and the choice is remembered on the device like the
-  nickname. An unknown country, Tor, or one with no flag shows none. A retired name keeps its
-  flag. The flags are circle-flags (MIT), served from this site.
+  nickname. An entry with no flag (left off, an unknown country, Tor, or one with no flag) shows
+  an original "?" in a circle in its place instead, the flag's size, shape and gold glow with a
+  muted fill, named "Country not shown" for screen readers, so every name lines up: on every
+  row, the pinned own row and the previous winner's line, on both the Endless and Daily boards.
+  Display only; nothing more is stored or sent. A retired name keeps its flag. The flags are
+  circle-flags (MIT), served from this site.
 
 - **Periods are UTC.** The day resets at 00:00 UTC; the week is the ISO week, Monday 00:00 UTC to
   Monday 00:00 UTC (so the week of 28 December 2026 is 2026-W53, into January); the month is the
