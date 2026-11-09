@@ -21,6 +21,7 @@ import {
   INSTAGRAM_PATH,
   DAILY_LEADERBOARD_PATH,
   DAILY_PATH,
+  DUEL_PATH,
   ENDLESS_LEADERBOARD_PATH,
   LEGENDS_PATH,
   MULTIPLAYER_PATH,
@@ -180,6 +181,33 @@ export function twitchGameLd(): JsonLd {
   };
 }
 
+/**
+ * 1v1, on its own page: two players in a private room, so `MultiPlayer`. Its
+ * `url` is the page itself, never a room's invite link.
+ */
+export function duelGameLd(): JsonLd {
+  return {
+    "@context": CONTEXT,
+    "@type": "VideoGame",
+    "@id": `${absoluteUrl(DUEL_PATH)}#game`,
+    name: t("duel.heading"),
+    alternateName: t("duel.tagline"),
+    description: t("duel.description"),
+    url: absoluteUrl(DUEL_PATH),
+    image: absoluteUrl(OG_IMAGE.path),
+    genre: "Quiz",
+    gamePlatform: "Web browser",
+    playMode: "https://schema.org/MultiPlayer",
+    numberOfPlayers: { "@type": "QuantitativeValue", value: 2 },
+    applicationCategory: "GameApplication",
+    operatingSystem: "Any",
+    inLanguage: LANG,
+    isAccessibleForFree: true,
+    offers: { "@type": "Offer", price: "0", priceCurrency: "GBP" },
+    isPartOf: { "@id": `${absoluteUrl(HOME_PATH)}#website` },
+  };
+}
+
 export interface Crumb {
   readonly name: string;
   readonly path: string;
@@ -203,6 +231,7 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
   const dailyBoard = { name: t("over.leaderboard"), path: DAILY_LEADERBOARD_PATH };
   const multiplayer = { name: t("breadcrumb.multiplayer"), path: MULTIPLAYER_PATH };
   const twitch = { name: t("breadcrumb.twitch"), path: TWITCH_PATH };
+  const duel = { name: t("breadcrumb.duel"), path: DUEL_PATH };
   switch (path) {
     case FOOTBALL_PATH:
       return [home, football];
@@ -224,6 +253,8 @@ export function breadcrumbTrail(path: string): readonly Crumb[] {
       return [home, football, legends, multiplayer];
     case TWITCH_PATH:
       return [home, football, legends, multiplayer, twitch];
+    case DUEL_PATH:
+      return [home, football, legends, multiplayer, duel];
     default:
       return [];
   }

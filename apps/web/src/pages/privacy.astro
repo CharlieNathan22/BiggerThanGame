@@ -7,6 +7,7 @@ import Page from "../layouts/Page.astro";
 import { CORRECTIONS_EMAIL } from "../config";
 import {
   DAILY_LEADERBOARD_PATH,
+  DUEL_PATH,
   FRIENDLY_PATH,
   ENDLESS_LEADERBOARD_PATH,
   TWITCH_PATH,
@@ -44,6 +45,10 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
     <li>
       In Twitch Mode your browser reads your Twitch chat directly. Nothing your chat says, and no
       viewer's name, reaches us: only how many voted and which way.
+    </li>
+    <li>
+      In 1v1 the name you enter is shown to the friend you play. It is kept only while your room is
+      open, and never written to our logs or statistics.
     </li>
     <li>
       Feedback you send is emailed to us and also kept in our server logs for three days. Please
@@ -184,6 +189,27 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
     click. Clearing this site's data removes them.
   </p>
 
+  <h2>1v1</h2>
+  <p>
+    In <a href={DUEL_PATH}>1v1</a> you play a friend in a private room. The name you enter is
+    checked the way a leaderboard name is, and shown to the other player in that room. The room
+    keeps both names, its settings and the scores while it is open, and nothing else about you. A
+    room closes 15 minutes after the last player has gone from it, or after 2 hours with nobody
+    doing anything in it, and everything in it is deleted.
+  </p>
+  <p>
+    Your browser stays connected to the room while you are in it, so you both get each question at
+    the same moment. Our anonymous game statistics record that a room was made, each match's
+    settings and final scores, and how it ended, with no names and no room codes.
+  </p>
+  <p>
+    Your browser keeps your seat in a room under <code>bt:room:</code> in local storage, so a
+    refresh, a dropped connection or opening the invite link again brings you back to your own seat.
+    It is removed when the room closes or you leave. Your browser also remembers the questions, the
+    number of questions and the time per question you last chose, under <code>bt:duel:</code>, and
+    the name you played under. Clearing this site's data removes them.
+  </p>
+
   <h2>Server logs</h2>
   <p>
     For three days, our server logs keep a short record of what happened: the start and end of each
@@ -209,12 +235,12 @@ const TURNSTILE_ADDENDUM = "https://www.cloudflare.com/en-gb/turnstile-privacy-p
 
   <h3>Cloudflare Turnstile</h3>
   <p>
-    Before a form sends, when you start an Endless run or a Daily Ranked game, and when you publish
-    a run, Cloudflare Turnstile checks that it's a person and not a bot. It loads when you open a
-    form, or on the Endless, Instagram Endless and Daily Ranked pages once the page has loaded —
-    never while you're playing Friendly. Most of the time you won't see it. To make that check,
-    Cloudflare processes your IP address, details of your connection and your browser's user agent,
-    to detect and block bots, under the{" "}
+    Before a form sends, when you start an Endless run or a Daily Ranked game, when you create or
+    join a 1v1 room, and when you publish a run, Cloudflare Turnstile checks that it's a person and
+    not a bot. It loads when you open a form, or on the Endless, Instagram Endless, Daily Ranked and
+    1v1 pages once the page has loaded — never while you're playing Friendly. Most of the time you
+    won't see it. To make that check, Cloudflare processes your IP address, details of your
+    connection and your browser's user agent, to detect and block bots, under the{" "}
     <a href={TURNSTILE_ADDENDUM}>Cloudflare Turnstile Privacy Addendum</a>. We receive only whether
     the check passed.
   </p>

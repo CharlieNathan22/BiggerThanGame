@@ -17,12 +17,24 @@
   the streamer's own chat: its setup in the start panel's place, chat's votes
   counted beside the game (game/stream), the streamer's pick locked in until
   voting closes, a strip over the pitch with both scores, and a full-time
-  panel in the game-over panel's place.
+  panel in the game-over panel's place. 1v1 (`duel`) is a match between two
+  players in a private room (game/duel): creating or joining one and its lobby
+  in the start panel's place, the room's questions and reveals driving the same
+  pitch, a strip with both scores and the connection, and its own full time.
 -->
 <script lang="ts">
-  import { CHALLENGES, NICKNAME_LIMITS, generateNickname, isNamedVariant } from "@bt/core";
+  import {
+    CHALLENGES,
+    NICKNAME_LIMITS,
+    generateNickname,
+    isNamedVariant,
+    isSuddenDeath,
+  } from "@bt/core";
   import type {
     DailyResult,
+    DuelLength,
+    DuelLimit,
+    DuelPool,
     Guess,
     NamedVariant,
     SitePage,
@@ -37,6 +49,7 @@
   import {
     DAILY_LEADERBOARD_PATH,
     DAILY_PATH,
+    DUEL_PATH,
     ENDLESS_LEADERBOARD_PATH,
     FRIENDLY_PATH,
     LEGENDS_PATH,
@@ -107,13 +120,41 @@
   } from "../../game/feedback";
   import type { Draft, FeedbackKind, ReportedRound } from "../../game/feedback";
   import { createDraftStore, focusAfterClose } from "../../game/modal";
-  import { initialState, shouldSpin, wheelOf } from "../../game/machine";
+  import { initialState, isMatch, shouldSpin, wheelOf } from "../../game/machine";
+  import {
+    createRoomApi,
+    inviteLink,
+    roomCodeOf,
+    roomFromQuery,
+    seatProblem,
+    socketUrl,
+    withRoom,
+  } from "../../game/duel/api";
+  import type { RoomApi, SeatProblem } from "../../game/duel/api";
+  import { DuelClient } from "../../game/duel/client";
+  import type { DuelSnapshot } from "../../game/duel/client";
+  import { beforeReveal, duelQuestions, opponent, opponentSeat } from "../../game/duel/room";
+  import { createSeatStore } from "../../game/duel/session";
+  import { DUEL_KEYS, readDuelSetup, saveDuelSetting } from "../../game/duel/settings";
+  import { RoomSocket } from "../../game/duel/socket";
+  import type { RoomSocketLike } from "../../game/duel/socket";
+  import {
+    closedText,
+    duelShareText,
+    isNameProblem,
+    refusedText,
+    resultText,
+    revealAnnouncement,
+    seatProblemText,
+    trackText,
+  } from "../../game/duel/view";
   import { createStreamApi } from "../../game/stream/api";
   import { normaliseChannel } from "../../game/stream/channel";
   import type { ChatSource, ChatStatus } from "../../game/stream/chat-source";
   import { parseVote } from "../../game/stream/commands";
   import {
     matchScore,
+    poolShareName,
     questionResult,
     streamShareCard,
     streamShareText,
@@ -215,6 +256,11 @@
   import StreamHud from "../stream/StreamHud.svelte";
   import StreamResult from "../stream/StreamResult.svelte";
   import StreamSetup from "../stream/StreamSetup.svelte";
+  import DuelClosed from "../duel/DuelClosed.svelte";
+  import DuelHud from "../duel/DuelHud.svelte";
+  import DuelLobby from "../duel/DuelLobby.svelte";
+  import DuelResult from "../duel/DuelResult.svelte";
+  import DuelSetup from "../duel/DuelSetup.svelte";
 
   interface Props {
     /**
@@ -241,8 +287,8 @@
     /** The game page's path, for the title bar: "Legends" under /legends, and the current page. */
     path: string;
     /**
-     * Twitch Mode only: the themes its picker offers (themes.json, names and
-     * counts only), and each one's colours as its card's custom properties.
+     * Twitch Mode and 1v1: the themes the picker offers (themes.json, names
+     * and counts only), and each one's colours as its card's custom properties.
      */
     streamThemes?: readonly Theme[];
     streamColours?: Readonly<Record<string, string>>;
@@ -253,7 +299,14 @@
   const play = $derived(playId(mode, variant));
   /** How the run scores and ends: the mode, its win target, a squad's theme; a match's length. */
   const rules = $derived.by(() =>
-    playOf(mode, theme, game.stream?.questions ?? streamSetup.length),
+    playOf(
+      mode,
+      theme,
+      game.stream?.questions ??
+        (mode === "duel"
+          ? (duel.view?.settings.questions ?? duelSetup.length)
+          : streamSetup.length),
+    ),
   );
   /** Whether a finished run can be published: Endless's own boards only. */
   const boards = $derived(hasBoards(mode, variant));
@@ -344,7 +397,11 @@
   const streamScore = $derived(matchScore(streamResults));
   const streamOption = $derived(streamPools.find((o) => o.pool === streamSetup.pool));
   /** The pool being played (from the match once started), as a variant for its labels. */
-  const streamPool = $derived(game.stream?.pool ?? streamSetup.pool);
+  const streamPool = $derived.by(
+    () =>
+      game.stream?.pool ??
+      (mode === "duel" ? (duel.view?.settings.pool ?? duelSetup.pool) : streamSetup.pool),
+  );
   const streamVariant = $derived(isNamedVariant(streamPool) ? streamPool : undefined);
   const streamTheme = $derived(streamPools.find((o) => o.pool === streamPool)?.theme);
   const showSetup = $derived.by(
@@ -427,6 +484,325 @@
     const result = questionResult(round, reveal, guess, votes.counts());
     streamResults = [...streamResults, result];
     streamRevealed = result;
+  });
+
+  // --------------------------------------------------------------------- 1v1
+
+  const dueling = $derived(mode === "duel");
+  /** A match's rules on the pitch, whoever it is against: Twitch Mode's chat, or a friend. */
+  const matching = $derived(isMatch(mode));
+  /** The room's settings as the host is choosing them, remembered between visits (duel/settings.ts). */
+  let duelSetup = $state<{ pool: DuelPool; length: DuelLength; limit: DuelLimit }>({
+    pool: "endless",
+    length: 10,
+    limit: 20,
+  });
+  /** Which way in the setup shows: making a room, or joining one. */
+  let duelTab = $state<"create" | "join">("create");
+  let duelName = $state("");
+  /** Create or Join has been pressed with the name, or the code, as it is: its problem shows. */
+  let duelNameTried = $state(false);
+  let duelCode = $state("");
+  let duelCodeTried = $state(false);
+  /** Why the last create or join failed. */
+  let duelProblem = $state<SeatProblem | null>(null);
+  let duelBusy = $state(false);
+  /** From an invite link: whose room it is, once it has been looked up. */
+  let duelHost = $state<string | null>(null);
+  let duelChecking = $state(false);
+  /** A room looked for and not found, before any seat was had in it. */
+  let duelGone = $state(false);
+  /** The room, as its client knows it (game/duel/client.ts). */
+  let duel = $state<DuelSnapshot>({
+    code: null,
+    view: null,
+    link: { kind: "idle" },
+    closed: null,
+    refused: null,
+  });
+  let duelClient: DuelClient | null = null;
+  let roomApi: RoomApi | null = null;
+  /** This device's seats, by room code (duel/session.ts): what brings a player back. */
+  const duelSeats = createSeatStore(browserStorage);
+  /** `performance.now()`, twice a second: what the room's countdowns are read against. */
+  let duelNow = $state(0);
+  /** What a screen reader hears of the other player: locking in, dropping out, coming back. */
+  let duelSaid = $state("");
+  /** The seat is being taken back with a token kept on this device, not yet welcomed. */
+  let duelRestoring = false;
+  let closedButton: HTMLButtonElement | undefined = $state();
+  const duelSetupOption = $derived(streamPools.find((o) => o.pool === duelSetup.pool));
+  /** The room's pool, for its name in the lobby and the share. */
+  const duelOption = $derived(
+    streamPools.find((o) => o.pool === (duel.view?.settings.pool ?? duelSetup.pool)),
+  );
+  /**
+   * Which of 1v1's screens shows: the setup, a room still connecting, its
+   * lobby, a match on the pitch, full time (once the last reveal has played
+   * out), or a room that has gone.
+   */
+  const duelStage = $derived.by(
+    (): "setup" | "connecting" | "lobby" | "match" | "fulltime" | "closed" => {
+      if (duelGone || duel.closed !== null) return "closed";
+      if (duel.code === null) return "setup";
+      const { view } = duel;
+      if (view === null) return "connecting";
+      if (view.phase === "lobby") return "lobby";
+      if (view.phase === "playing") return "match";
+      return game.phase === "over" || game.phase === "idle" ? "fulltime" : "match";
+    },
+  );
+  /** 1v1 is showing a screen of its own, in the start panel's place: nothing is on the pitch. */
+  const duelOffPitch = $derived(dueling && duelStage !== "match" && duelStage !== "fulltime");
+  /**
+   * The room as the scoreboard and the track show it: while a reveal is still
+   * playing, as it stood before it, so the score never gives the answer away.
+   */
+  const duelShown = $derived.by(() => {
+    const { view } = duel;
+    if (view === null) return null;
+    const playing = view.reveal !== null && game.round?.index === view.reveal.index;
+    return playing && (game.phase === "revealing" || game.phase === "awaiting")
+      ? beforeReveal(view)
+      : view;
+  });
+  /** The match on the two-row track: this player's row (`streamer`) and the other's (`chat`). */
+  const duelTrack = $derived(
+    duelShown === null
+      ? []
+      : duelQuestions(duelShown).map((q) => ({
+          index: q.index,
+          chat: q.them ? ("right" as const) : ("wrong" as const),
+          streamer: q.you ? ("right" as const) : ("wrong" as const),
+        })),
+  );
+  /** The question on screen is sudden death. */
+  const duelSudden = $derived.by(
+    () => dueling && game.round !== null && isSuddenDeath(game.round.index, target ?? 0),
+  );
+  /** Sudden-death questions so far, the one on screen included: the track's extra segments. */
+  const duelExtra = $derived.by(() =>
+    Math.max(0, Math.max(duelTrack.length, game.round?.index ?? 0) - (target ?? 0)),
+  );
+  const duelNameText = $derived(
+    duelNameTried && nicknameText(duelName) !== null
+      ? (nicknameText(duelName) ?? "")
+      : duelProblem !== null && isNameProblem(duelProblem)
+        ? seatProblemText(duelProblem)
+        : "",
+  );
+  const duelCodeText = $derived(
+    duelCodeTried && roomCodeOf(duelCode) === null ? t("duel.code.invalid") : "",
+  );
+  const duelProblemText = $derived(
+    duelProblem !== null && !isNameProblem(duelProblem) ? seatProblemText(duelProblem) : "",
+  );
+
+  function chooseDuelPool(pool: DuelPool): void {
+    duelSetup = { ...duelSetup, pool };
+    saveDuelSetting(browserStorage, DUEL_KEYS.pool, pool);
+  }
+  function chooseDuelLength(length: DuelLength): void {
+    duelSetup = { ...duelSetup, length };
+    saveDuelSetting(browserStorage, DUEL_KEYS.length, length);
+  }
+  function chooseDuelLimit(limit: DuelLimit): void {
+    duelSetup = { ...duelSetup, limit };
+    saveDuelSetting(browserStorage, DUEL_KEYS.timer, limit);
+  }
+
+  /** The page's address, with the room's code or without: what a refresh comes back to. */
+  function showRoom(code: string | null): void {
+    const search = withRoom(location.search, code);
+    history.replaceState(history.state, "", `${location.pathname}${search}${location.hash}`);
+  }
+
+  /** Into the room, in the seat this token holds; a refresh comes back to it. */
+  function enterRoom(code: string, token: string): void {
+    duelGone = false;
+    duelProblem = null;
+    shareNotes.clear();
+    copyByHand = null;
+    duelClient?.enter(code, token);
+    showRoom(code);
+  }
+
+  async function createDuel(): Promise<void> {
+    if (roomApi === null || duelBusy) return;
+    duelNameTried = true;
+    if (nicknameText(duelName) !== null) return;
+    duelBusy = true;
+    duelProblem = null;
+    try {
+      const seat = await roomApi.create({
+        pool: duelSetup.pool,
+        questions: duelSetup.length,
+        limit: duelSetup.limit,
+        name: duelName,
+      });
+      saveNickname(browserStorage, seat.name);
+      enterRoom(seat.code, seat.token);
+    } catch (err) {
+      duelProblem = seatProblem(err);
+    } finally {
+      duelBusy = false;
+    }
+  }
+
+  async function joinDuel(): Promise<void> {
+    if (roomApi === null || duelBusy) return;
+    duelNameTried = true;
+    duelCodeTried = true;
+    const code = roomCodeOf(duelCode);
+    if (code === null || nicknameText(duelName) !== null) return;
+    duelBusy = true;
+    duelProblem = null;
+    try {
+      const seat = await roomApi.join(code, duelName);
+      saveNickname(browserStorage, seat.name);
+      enterRoom(seat.code, seat.token);
+    } catch (err) {
+      const problem = seatProblem(err);
+      // A room that isn't there: said once, with the way to make another.
+      if (problem === "closed") duelGone = true;
+      else duelProblem = problem;
+    } finally {
+      duelBusy = false;
+    }
+  }
+
+  /** What an invite link opens on: whose lobby it is, a full room, or none. */
+  async function peekRoom(code: string): Promise<void> {
+    if (roomApi === null) return;
+    duelChecking = true;
+    try {
+      const seen = await roomApi.peek(code);
+      if (seen.state === "open") duelHost = seen.host;
+      else if (seen.state === "full") duelProblem = "full";
+      else duelGone = true;
+    } catch {
+      // Not found out: Join will say.
+    } finally {
+      duelChecking = false;
+    }
+  }
+
+  /** Out of the room for good, and back to the setup: Leave, and New room. */
+  function leaveDuel(): void {
+    duelClient?.leave();
+    backToSetup();
+  }
+
+  /** The setup again, from a room that has closed or been left. */
+  function backToSetup(): void {
+    duelClient?.forget();
+    duelGone = false;
+    duelProblem = null;
+    duelHost = null;
+    duelCode = "";
+    duelCodeTried = false;
+    duelNameTried = false;
+    duelTab = "create";
+    shareNotes.clear();
+    copyByHand = null;
+    showRoom(null);
+    void tick().then(() => startButton?.focus());
+  }
+
+  function duelTyped(): void {
+    duelNameTried = false;
+    duelCodeTried = false;
+    if (duelProblem !== null) duelProblem = null;
+  }
+
+  async function copyInvite(): Promise<void> {
+    if (duel.code === null) return;
+    const show = shareNotes.begin();
+    try {
+      if (platform?.writeText === undefined) throw new Error("no clipboard");
+      await platform.writeText(inviteLink(site(), duel.code));
+      show(t("duel.lobby.copied"));
+    } catch {
+      show(t("duel.lobby.copyFailed"));
+    }
+  }
+
+  async function shareInvite(): Promise<void> {
+    if (duel.code === null || platform?.share === undefined) return;
+    try {
+      await platform.share({
+        text: t("duel.lobby.inviteText"),
+        url: inviteLink(site(), duel.code),
+      });
+    } catch {
+      // Closed without sharing: nothing to say.
+    }
+  }
+
+  // A seat taken back from this device's token that the room won't have (it
+  // closed, or the seat was given up): on to what a new visitor would see.
+  $effect(() => {
+    if (!dueling || !duelRestoring) return;
+    if (duel.view !== null) {
+      duelRestoring = false;
+      return;
+    }
+    if (duel.closed === null || duel.closed === "replaced") return;
+    duelRestoring = false;
+    const code = roomCodeOf(duelCode);
+    duelClient?.forget();
+    duelTab = "join";
+    if (code !== null) void peekRoom(code);
+  });
+
+  // The other player locking in, dropping out and coming back: said once each.
+  let duelHeard = { locked: false, connected: true, name: "" };
+  $effect(() => {
+    const { view } = duel;
+    if (!dueling || view === null) return;
+    const them = opponent(view);
+    const locked = view.locked.includes(opponentSeat(view));
+    const connected = them === undefined || them.connected;
+    const name = them?.name ?? "";
+    const before = duelHeard;
+    duelHeard = { locked, connected, name };
+    if (name === "" || view.phase !== "playing") return;
+    if (locked && !before.locked) duelSaid = t("live.duelLocked", { name });
+    else if (!connected && before.connected) duelSaid = t("live.duelAway", { name });
+    else if (connected && !before.connected) duelSaid = t("live.duelBack", { name });
+  });
+
+  // A new match in the room: last match's share note goes.
+  let duelMatch = 0;
+  $effect(() => {
+    const no = duel.view?.matchNo ?? 0;
+    if (no === duelMatch) return;
+    duelMatch = no;
+    shareNotes.clear();
+    copyByHand = null;
+    duelSaid = "";
+  });
+
+  // Full time, and a room that has gone, each put focus on their first action.
+  $effect(() => {
+    if (duelStage === "closed") void tick().then(() => closedButton?.focus());
+  });
+
+  /** What a screen reader hears of the game in 1v1: the question, then the reveal with both picks. */
+  const duelAnnouncement = $derived.by(() => {
+    const { view } = duel;
+    if (!dueling || view === null) return "";
+    if (duelStage === "fulltime") return t("live.duelDone", { result: resultText(view) });
+    const { round: asked, reveal: figure } = game;
+    const revealed = view.reveal;
+    const shown = game.phase === "verdict" || game.phase === "sliding" || game.phase === "over";
+    if (shown && asked !== null && figure !== null && revealed !== null) {
+      return revealAnnouncement(view, revealed, asked, figure);
+    }
+    if (game.phase === "awaiting" && duelSudden && asked?.index === (target ?? 0) + 1) {
+      return `${t("live.duelSuddenDeath")} ${announcement(game, rules)}`;
+    }
+    return game.phase === "title" || game.phase === "awaiting" ? announcement(game, rules) : "";
   });
 
   // ------------------------------------------------------------ Daily Ranked
@@ -528,12 +904,13 @@
       }
     });
     // A Twitch Mode match sends none: its page is often hidden while it's streamed.
+    // Nor does 1v1: the room itself knows who is there.
     const onVisibility = () => {
-      if (mode === "stream") return;
+      if (mode === "stream" || mode === "duel") return;
       if (document.visibilityState === "hidden") leaves.report(game, mode, "hidden");
     };
     const onPageHide = () => {
-      if (mode !== "stream") leaves.report(game, mode, "pagehide");
+      if (mode !== "stream" && mode !== "duel") leaves.report(game, mode, "pagehide");
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", onPageHide);
@@ -667,7 +1044,58 @@
         }
       }, 250);
     }
-    const api: GameApi = endlessApi ?? dailyApi ?? streamApi ?? createApi(fetchFn);
+    let tickDuel: ReturnType<typeof setInterval> | undefined;
+    if (mode === "duel") {
+      const remembered = readDuelSetup(browserStorage, streamPools);
+      duelSetup = {
+        pool: poolFromQuery(location.search, streamPools) ?? remembered.pool,
+        length: remembered.length,
+        limit: remembered.limit,
+      };
+      duelName = startingNickname(undefined, readNickname(browserStorage), () =>
+        generateNickname(cryptoRandom),
+      );
+      roomApi = createRoomApi(
+        fetchFn,
+        (humanCheck = createHumanCheck(
+          loader,
+          () => turnstileBox ?? null,
+          TURNSTILE_SITE_KEY,
+          schedule,
+        )),
+      );
+      const socket = new RoomSocket({
+        socket: (url) => new WebSocket(url) as unknown as RoomSocketLike,
+        url: (code) => socketUrl(location, code),
+        schedule,
+        now: () => performance.now(),
+        random: Math.random,
+        // Back from another app, or back online: the room is tried at once.
+        onWake: (wake) => {
+          const onVisible = () => {
+            if (document.visibilityState === "visible") wake();
+          };
+          document.addEventListener("visibilitychange", onVisible);
+          window.addEventListener("online", wake);
+          window.addEventListener("pageshow", wake);
+          return () => {
+            document.removeEventListener("visibilitychange", onVisible);
+            window.removeEventListener("online", wake);
+            window.removeEventListener("pageshow", wake);
+          };
+        },
+      });
+      duelClient = new DuelClient({
+        socket,
+        seats: duelSeats,
+        now: () => performance.now(),
+        onChange: (snapshot) => (duel = snapshot),
+      });
+      duelNow = performance.now();
+      tickDuel = setInterval(() => (duelNow = performance.now()), 500);
+    }
+    const api: GameApi =
+      endlessApi ?? dailyApi ?? streamApi ?? duelClient?.api ?? createApi(fetchFn);
 
     const key = bestKey(deck, play);
     // A squad keeps how far it got and whether it was ever cleared (best.ts).
@@ -675,22 +1103,24 @@
     const c = new GameController({
       api,
       mode,
-      ...(variant !== undefined && mode !== "stream" ? { variant } : {}),
+      ...(variant !== undefined && !isMatch(mode) ? { variant } : {}),
       preload: createPreloader(IMAGE_BASE, () => new Image()),
+      // 1v1: a pick goes to the room the moment it is locked in.
+      onLock: (index, locked) => duelClient?.lock(index, locked),
       timings,
       now: () => performance.now(),
       schedule,
       reducedMotion: () => reducedMotion,
       // Daily Ranked keeps no best: its score is the day's, on the board. Nor
-      // does a Twitch Mode match: it is scored for both sides.
+      // does a match (Twitch Mode, 1v1): it is scored for both sides.
       best:
-        ranked || mode === "stream"
+        ranked || isMatch(mode)
           ? 0
           : squad
             ? readSquadBest(browserStorage, key).best
             : readBest(browserStorage, key),
       saveBest: (best) => {
-        if (ranked || mode === "stream") return;
+        if (ranked || isMatch(mode)) return;
         void (squad
           ? saveSquadBest(browserStorage, key, { best, cleared: false })
           : saveBest(browserStorage, key, best));
@@ -710,7 +1140,7 @@
               : { kind: "playing", gameNo, nextGameAt: nextAt() };
           return;
         }
-        if (mode === "stream") return;
+        if (isMatch(mode)) return;
         if (squad && over.end === "won") {
           saveSquadBest(browserStorage, key, { best: over.streak, cleared: true });
         }
@@ -736,6 +1166,25 @@
     const unsubscribe = c.subscribe((s) => (game = s));
     controller = c;
 
+    if (duelClient !== null) {
+      duelClient.attach(c);
+      // An invite link, or a refresh: the room in the address. A seat kept on
+      // this device is taken straight back; otherwise the room is looked at,
+      // and the page opens on Join.
+      const code = roomFromQuery(location.search);
+      if (code !== null) {
+        duelCode = code;
+        duelTab = "join";
+        const token = duelSeats.read(code);
+        if (token !== null) {
+          duelRestoring = true;
+          duelClient.enter(code, token);
+        } else {
+          void peekRoom(code);
+        }
+      }
+    }
+
     let tick30: ReturnType<typeof setInterval> | undefined;
     if (ranked) {
       void lookupDaily();
@@ -750,6 +1199,8 @@
       removeDevPanel?.();
       if (tick30 !== undefined) clearInterval(tick30);
       if (tickVotes !== undefined) clearInterval(tickVotes);
+      if (tickDuel !== undefined) clearInterval(tickDuel);
+      duelClient?.destroy();
       chatSource?.close();
       unsubscribe();
       c.destroy();
@@ -812,7 +1263,7 @@
   const chip = $derived(titleChip(game, rules));
   /** A squad's line under the plaque on a career stat: "Whole career, not just Barcelona". */
   const plaqueNote = $derived.by(() => {
-    const squad = streaming ? streamTheme : theme;
+    const squad = matching ? streamTheme : theme;
     return squad !== undefined && game.plaque !== null ? squadNoteText(game.plaque.key, squad) : "";
   });
 
@@ -856,7 +1307,7 @@
   /** A run banked after the connection dropped: "your streak of n is saved". */
   const banked = $derived(bankedText(game, rules));
   /** A signed challenge to share, in a mode with them, once the run is over. */
-  const canChallenge = $derived(mode !== "stream" && CHALLENGES[mode] && game.link !== null);
+  const canChallenge = $derived(!isMatch(mode) && CHALLENGES[mode] && game.link !== null);
 
   /** The small print under a card's figure. */
   function cardQualifier(card: PitchCard): string {
@@ -1043,6 +1494,13 @@
 
   async function onShareText(): Promise<void> {
     if (platform === null) return;
+    if (dueling) {
+      // The 1v1 page, never the room: a share is not an invite.
+      if (duel.view !== null) {
+        await shareOut(duelShareText(duel.view, duelOption, `${site()}${DUEL_PATH}`));
+      }
+      return;
+    }
     if (streaming) {
       await shareOut(
         streamShareText(streamScore, channel, streamOption, `${site()}${TWITCH_PATH}`),
@@ -1189,7 +1647,7 @@
 <div class="game" style:--tier={TIER_COLOUR[tier]} inert={feedback !== null || publishOpen}>
   <!-- Twitch Mode's scores are on its own strip over the pitch, not in the bar. -->
   <TitleBar
-    {...streaming
+    {...matching
       ? {}
       : {
           scores: {
@@ -1223,6 +1681,28 @@
           : null}
         status={chatStatus}
         onretry={retryChat}
+      />
+    {/if}
+  {:else if dueling}
+    {#if !duelOffPitch && duelShown !== null}
+      <section class="progress" aria-label={t("progress.region")}>
+        <DualTrack
+          questions={target ?? duelSetup.length}
+          results={duelTrack}
+          current={phase === "over" || phase === "idle" ? null : (round?.index ?? null)}
+          label={trackText(round?.index ?? 1, target ?? duelSetup.length)}
+          region={t("duel.track.region")}
+          extra={duelExtra}
+          flip
+        />
+      </section>
+      <DuelHud
+        view={duelShown}
+        link={duel.link}
+        now={duelNow}
+        suddenDeath={duelSudden && phase !== "over"}
+        revealed={phase === "verdict" || phase === "sliding" ? duelShown.reveal : null}
+        open={phase === "awaiting"}
       />
     {/if}
   {:else if target !== null}
@@ -1286,13 +1766,18 @@
           <!-- One slot for Higher / Lower, the connection note and the verdict
                label, kept whether they show or not, so the text above never moves. -->
           <div class="slot">
-            {#if streaming && game.locked !== null && phase === "awaiting"}
-              <!-- The streamer's pick, hidden from chat: only that it's in. -->
+            {#if matching && game.locked !== null && phase === "awaiting"}
+              <!-- The pick, hidden from chat or from the other player: only that it's in.
+                   In 1v1, out of time says so. -->
               <p class="locked" role="status">
                 <svg class="lock" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" />
                 </svg>
-                {t("stream.lockedIn")}
+                {#if dueling}
+                  {game.locked === "timeout" ? t("duel.locked.timeout") : t("duel.locked.you")}
+                {:else}
+                  {t("stream.lockedIn")}
+                {/if}
               </p>
             {/if}
             <div
@@ -1300,8 +1785,12 @@
               role="group"
               aria-label={streaming
                 ? `${t("stream.yourPick")}: ${t("pick.group", { name: card.player.name })}`
-                : t("pick.group", { name: card.player.name })}
-              hidden={phase !== "awaiting" || (streaming && game.locked !== null)}
+                : dueling && duel.view !== null
+                  ? `${t("duel.yourPick", {
+                      name: opponent(duel.view)?.name ?? "",
+                    })}: ${t("pick.group", { name: card.player.name })}`
+                  : t("pick.group", { name: card.player.name })}
+              hidden={phase !== "awaiting" || (matching && game.locked !== null)}
             >
               <button class="pick" bind:this={higherButton} onclick={() => pick("higher")}>
                 <svg class="arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
@@ -1357,7 +1846,7 @@
         stage={plaqueStage(game)}
         clock={game.clock}
         {now}
-        variant={streaming ? streamVariant : variant}
+        variant={matching ? streamVariant : variant}
         note={plaqueNote}
       />
     {/if}
@@ -1392,8 +1881,17 @@
       </div>
     {/if}
 
-    <p class="sr" aria-live="polite">{announcement(game, rules)}</p>
-    {#if phase !== "idle" && phase !== "starting" && !showSetup}
+    <p class="sr" aria-live="polite">
+      {dueling ? duelAnnouncement : announcement(game, rules)}
+    </p>
+    {#if dueling}
+      <!-- 1v1: the other player locking in, dropping out and coming back. -->
+      <p class="sr" aria-live="polite">{duelSaid}</p>
+      {#if !duelOffPitch}
+        <!-- The setup's and the lobby's heading goes with them; the page keeps one. -->
+        <h1 class="sr">{t("duel.heading")}</h1>
+      {/if}
+    {:else if phase !== "idle" && phase !== "starting" && !showSetup}
       <!-- The start panel's heading, "Football Legends", goes with it; the page keeps one. -->
       <h1 class="sr">{streaming ? t("stream.subtitle") : t("brand.heading")}</h1>
     {/if}
@@ -1456,6 +1954,99 @@
           {/snippet}
         </StreamSetup>
       </div>
+    {:else if dueling && duelStage === "closed"}
+      <div class="veil stream setuppage">
+        <DuelClosed
+          message={closedText(duel.closed ?? "unknown")}
+          oncreate={backToSetup}
+          bind:button={closedButton}
+        />
+      </div>
+    {:else if dueling && duelStage === "setup"}
+      <!-- 1v1's setup, in the start panel's place: make a room, or join one. -->
+      <div class="veil stream setuppage">
+        <DuelSetup
+          tab={duelTab}
+          ontab={(way) => {
+            duelTab = way;
+            duelTyped();
+          }}
+          options={streamPools}
+          colours={streamColours}
+          pool={duelSetup.pool}
+          onpool={chooseDuelPool}
+          length={duelSetup.length}
+          onlength={chooseDuelLength}
+          limit={duelSetup.limit}
+          onlimit={chooseDuelLimit}
+          cap={duelSetupOption?.cap ?? null}
+          bind:name={duelName}
+          nameProblem={duelNameText}
+          onshuffle={() => {
+            duelName = generateNickname(cryptoRandom);
+            duelTyped();
+          }}
+          oninput={duelTyped}
+          bind:code={duelCode}
+          codeProblem={duelCodeText}
+          invitedBy={duelHost}
+          checking={duelChecking}
+          busy={duelBusy}
+          ready={controller !== null}
+          oncreate={createDuel}
+          onjoin={joinDuel}
+          problem={duelProblemText}
+          bind:goButton={startButton}
+        >
+          {#snippet turnstile()}
+            <div class="turnstile" bind:this={turnstileBox} {@attach releaseCheck}></div>
+          {/snippet}
+        </DuelSetup>
+      </div>
+    {:else if dueling && duelStage === "connecting"}
+      <div class="veil stream setuppage">
+        <div class="duelwait">
+          <h1 class="sr">{t("duel.heading")}</h1>
+          <p role="status">{t("duel.lobby.connecting")}</p>
+          <button class="ghost" onclick={leaveDuel}>{t("duel.lobby.leave")}</button>
+        </div>
+      </div>
+    {:else if dueling && duelStage === "lobby" && duel.view !== null && duel.code !== null}
+      <div class="veil stream setuppage">
+        <DuelLobby
+          view={duel.view}
+          link={duel.link}
+          invite={inviteLink(site(), duel.code)}
+          poolName={poolShareName(duelOption)}
+          canShare={platform?.share !== undefined && platform.touch}
+          note={shareNote.text}
+          noteFading={shareNote.fading}
+          refused={refusedText(duel.refused)}
+          oncopy={copyInvite}
+          onshare={shareInvite}
+          onready={(ready) => duelClient?.ready(ready)}
+          onstart={() => duelClient?.startMatch()}
+          onleave={leaveDuel}
+          bind:startButton
+        />
+      </div>
+    {:else if dueling && duelStage === "fulltime" && duel.view !== null}
+      <div class="veil stream">
+        <DuelResult
+          view={duel.view}
+          note={shareNote.text}
+          noteFading={shareNote.fading}
+          {copyByHand}
+          refused={refusedText(duel.refused)}
+          connected={duel.link.kind === "connected"}
+          onshare={onShareText}
+          onrematch={() => duelClient?.rematch()}
+          onnewroom={leaveDuel}
+          bind:againButton
+        />
+      </div>
+    {:else if dueling}
+      <!-- A match on the pitch: no panel over it. -->
     {:else if streaming && phase === "over"}
       <div class="veil stream">
         <StreamResult
@@ -3280,6 +3871,19 @@
     transform: translateX(-50%);
   }
   /* The setup and full-time panels, centred over the pitch. */
+  /* 1v1, while the room is being reached: a line and a way out. */
+  .duelwait {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--stream-head-gap);
+    padding: var(--stream-page-pad);
+    color: var(--chalk);
+    font-size: var(--fs-stream-hint);
+  }
+  .duelwait p {
+    margin: 0;
+  }
   .veil.stream {
     align-items: center;
     justify-content: center;

@@ -1,7 +1,8 @@
 /**
  * Worker entry. Routing and bindings live in `src/app.ts`; this file only
  * supplies the bundled deck and the one workerd-only constructor the app needs,
- * and exports the Durable Object class for Endless runs (run-do.ts).
+ * and exports the Durable Object classes: a run's (run-do.ts) and a
+ * multiplayer room's (room-do.ts).
  */
 
 import { EmailMessage } from "cloudflare:email";
@@ -9,6 +10,7 @@ import { createApp } from "./src/app.js";
 import type { Env } from "./src/app.js";
 import { DECK, DECK_VERSION, IMAGES } from "./src/deck.js";
 
+export { RoomDO } from "./room-do.js";
 export { RunDO } from "./run-do.js";
 
 export default createApp({

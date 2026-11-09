@@ -8,7 +8,7 @@
  * players' ids, the stat and the anchor's figure — plus the server's timing and
  * a nonce. The challenger's figure is never in it. The HMAC is over the encoded
  * payload under its own prefix (`"token:"`, `"daily:"`, `"stream-token:"`,
- * `"result:"`), so no other use of
+ * `"result:"`, `"room-token:"`), so no other use of
  * `RUN_SECRET` can produce a valid token, and one kind can't pass for the other.
  * Verification compares in constant time and parses strictly: a payload with a
  * missing, extra or mistyped field is not a token.
@@ -129,11 +129,31 @@ export interface StreamPayload {
   readonly nonce: string;
 }
 
+/**
+ * A seat in a multiplayer room (room.ts): what a player comes back with, after
+ * a refresh, a dropped connection or a closed tab. Under its own prefix, so no
+ * run's token passes for one. It names the **room's own key**, minted when the
+ * room was made, never its code: a token is no use in another room, nor in a
+ * later room that happens to get the same code. It carries nothing about the
+ * game; the room's Durable Object checks the seat is still this player's.
+ */
+export interface RoomTokenPayload {
+  readonly v: 1;
+  /** The room's key, `YYYYMMDD-<uuid>`. */
+  readonly room: string;
+  /** 0 is the host. */
+  readonly seat: number;
+  /** The player's random id, known only to the server and this token. */
+  readonly player: string;
+}
+
 const PROGRESS_PREFIX = "token:";
 const DAILY_PREFIX = "daily:";
 /** Not `"stream:"`, which is the matches' seed domain (stream.ts in @bt/core). */
 const STREAM_PREFIX = "stream-token:";
 const RESULT_PREFIX = "result:";
+/** Not `"room:"` or `"duel:"`: the second is the matches' seed domain (duel.ts in @bt/core). */
+const ROOM_PREFIX = "room-token:";
 
 export function signToken(secret: string, payload: ProgressPayload): Promise<string> {
   return sign(secret, PROGRESS_PREFIX, progressFields(payload));
@@ -181,6 +201,23 @@ export async function verifyResult(
 ): Promise<ResultPayload | undefined> {
   const json = await verify(secret, RESULT_PREFIX, token);
   return json === undefined ? undefined : parseResult(json);
+}
+
+export function signRoomToken(secret: string, payload: RoomTokenPayload): Promise<string> {
+  return sign(secret, ROOM_PREFIX, {
+    v: 1,
+    room: payload.room,
+    seat: payload.seat,
+    player: payload.player,
+  } satisfies RoomTokenPayload);
+}
+
+export async function verifyRoomToken(
+  secret: string,
+  token: string,
+): Promise<RoomTokenPayload | undefined> {
+  const json = await verify(secret, ROOM_PREFIX, token);
+  return json === undefined ? undefined : parseRoomToken(json);
 }
 
 // ---------------------------------------------------------------- internals
@@ -465,6 +502,22 @@ function parseStream(json: unknown): StreamPayload | undefined {
     deadline,
     nonce,
   };
+}
+
+const ROOM_TOKEN_KEYS = ["player", "room", "seat", "v"];
+const ROOM_KEY = /^\d{8}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** Seats are 0 to 9: a room holds ten players at most (room.ts in @bt/core). */
+const ROOM_MAX_SEAT = 9;
+
+function parseRoomToken(json: unknown): RoomTokenPayload | undefined {
+  if (typeof json !== "object" || json === null || "variant" in json) return undefined;
+  const r = record(json, ROOM_TOKEN_KEYS);
+  if (r === undefined) return undefined;
+  const { room, seat, player } = r;
+  if (typeof room !== "string" || !ROOM_KEY.test(room)) return undefined;
+  if (!isCount(seat) || seat > ROOM_MAX_SEAT) return undefined;
+  if (!isString(player)) return undefined;
+  return { v: 1, room, seat, player };
 }
 
 function parseResult(json: unknown): ResultPayload | undefined {

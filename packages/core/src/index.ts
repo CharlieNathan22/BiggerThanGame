@@ -195,6 +195,7 @@ export {
   buildStreamRun,
   canEndVoting,
   streamBands,
+  streamBandsFor,
   streamOpening,
   isStreamLength,
   isStreamLimit,
@@ -206,6 +207,94 @@ export {
 } from "./stream.js";
 export type { StreamLength, StreamLimit, StreamPool, StreamRunOptions } from "./stream.js";
 export { FLAG_COUNTRIES, flagCountry } from "./countries.js";
+
+export {
+  DEFAULT_DUEL_LENGTH,
+  DEFAULT_DUEL_LIMIT,
+  DUEL_LENGTHS,
+  DUEL_LIMITS,
+  DUEL_PLAYERS,
+  SUDDEN_DEATH_MAX,
+  buildDuelRun,
+  duelDeadline,
+  duelQuestions,
+  duelSeedDomain,
+  isDuelLength,
+  isDuelLimit,
+  isDuelPool,
+  isSuddenDeath,
+} from "./duel.js";
+export type { DuelLength, DuelLimit, DuelPool, DuelRunOptions } from "./duel.js";
+
+export {
+  DUEL_RULES,
+  REJOIN_MS,
+  ROOM_IDLE_MS,
+  ROOM_QUIET_MS,
+  anyoneConnected as roomOccupied,
+  createRoom,
+  roomPlayers,
+  roomResult,
+  roomSeries,
+  seatOf,
+  step as roomStep,
+  roomExpired,
+  wakeAt as roomWakeAt,
+} from "./room.js";
+export type {
+  MatchOutcome,
+  MatchProgress,
+  NewRoom,
+  QuestionFacts,
+  RoomDeps,
+  RoomInput,
+  RoomMatch,
+  RoomOutput,
+  RoomRecord,
+  RoomRules,
+  RoomSeat,
+  RoomState,
+  RoomStatePhase,
+  RoomStep,
+  Settlement,
+} from "./room.js";
+
+export {
+  ROOM_CLOSE,
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
+  ROOM_MAX_QUESTION,
+  ROOM_MESSAGE_MAX,
+  ROOM_PING,
+  ROOM_PONG,
+  ROOM_PROTOCOL,
+  cleanRoomCode,
+  isRoomCode,
+  parseClientMessage,
+  roomCodeFrom,
+} from "./room-protocol.js";
+export type {
+  MatchEndReason,
+  RoomClientMessage,
+  RoomClosedReason,
+  RoomCreateRequest,
+  RoomErrorCode,
+  RoomJoinRefusal,
+  RoomJoinRequest,
+  RoomMatchView,
+  RoomMode,
+  RoomPeekRequest,
+  RoomPeekResponse,
+  RoomPhase,
+  RoomPlayerView,
+  RoomQuestion,
+  RoomResult,
+  RoomSeatResponse,
+  RoomSeries,
+  RoomServerMessage,
+  RoomSettings,
+  RoomSnapshot,
+} from "./room-protocol.js";
 
 export {
   BOARD_PERIODS,

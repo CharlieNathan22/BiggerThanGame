@@ -7,6 +7,10 @@
   Colour never carries it alone: the track is a progressbar whose value text
   is "Question 7 of 20", the scoreboard says both scores in text, and the
   result panel's strip is labelled question by question.
+
+  1v1 uses it too (`region` names it), with this player's row on top, as
+  they come first on its scoreboard (`flip`), and its sudden-death questions
+  as further segments after the match's own (`extra`), set a little apart.
 -->
 <script lang="ts">
   import { t } from "../../i18n";
@@ -15,22 +19,31 @@
   interface Props {
     /** The match's questions. */
     questions: number;
-    results: readonly QuestionResult[];
+    /** Each question as it ended: the top row's side (`chat`), and the bottom row's (`streamer`). */
+    results: readonly Pick<QuestionResult, "index" | "chat" | "streamer">[];
     /** The question on screen, or null between questions. */
     current: number | null;
     label: string;
+    /** The track's name for a screen reader. Twitch Mode's by default. */
+    region?: string;
+    /** Questions past the match's own (1v1's sudden death), drawn after them. */
+    extra?: number;
+    /** The bottom row's side on top instead, and the top's below. */
+    flip?: boolean;
   }
 
-  let { questions, results, current, label }: Props = $props();
+  let { questions, results, current, label, region, extra = 0, flip = false }: Props = $props();
 
   const steps = $derived(
-    Array.from({ length: questions }, (_, i) => {
+    Array.from({ length: questions + extra }, (_, i) => {
       const result = results.find((r) => r.index === i + 1);
       return {
         chat: result === undefined ? "todo" : result.chat === "right" ? "hit" : "miss",
         you: result === undefined ? "todo" : result.streamer === "right" ? "hit" : "miss",
         current: current === i + 1,
         final: i + 1 === questions,
+        sudden: i + 1 > questions,
+        first: i === questions,
       };
     }),
   );
@@ -39,17 +52,28 @@
 <div
   class="track"
   role="progressbar"
-  aria-label={t("stream.track.region")}
+  aria-label={region ?? t("stream.track.region")}
   aria-valuemin={0}
-  aria-valuemax={questions}
+  aria-valuemax={questions + extra}
   aria-valuenow={results.length}
   aria-valuetext={label}
-  style:--steps={questions}
+  style:--steps={questions + extra}
 >
   {#each steps as step, i (i)}
-    <span class="step" class:current={step.current} class:final={step.final}>
-      <span class="half chat {step.chat}"></span>
-      <span class="half you {step.you}"></span>
+    <span
+      class="step"
+      class:current={step.current}
+      class:final={step.final}
+      class:sudden={step.sudden}
+      class:first={step.first}
+    >
+      {#if flip}
+        <span class="half you {step.you}"></span>
+        <span class="half chat {step.chat}"></span>
+      {:else}
+        <span class="half chat {step.chat}"></span>
+        <span class="half you {step.you}"></span>
+      {/if}
     </span>
   {/each}
 </div>
@@ -89,6 +113,10 @@
   }
   .step.current {
     box-shadow: var(--track-current-glow);
+  }
+  /* Sudden death: after the match's own questions, a little apart. */
+  .step.first {
+    margin-left: var(--track-gap);
   }
   .current .half.todo {
     background: var(--track-current);

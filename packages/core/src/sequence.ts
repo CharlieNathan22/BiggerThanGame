@@ -46,6 +46,13 @@ export interface RunOptions {
    * every other mode, it changes nothing.
    */
   readonly bands?: BandRules;
+  /**
+   * 1v1 (duel.ts) only, with `bands`: rounds dealt past the match's
+   * `questions`, for sudden death. They fall in the schedule's last row, its
+   * hardest, since every row is a share of `questions`. The rounds up to
+   * `questions` are the same with or without it. Absent, it changes nothing.
+   */
+  readonly extraRounds?: number;
 }
 
 /**
@@ -174,7 +181,7 @@ export function buildRun(opts: RunOptions): Round[] {
   const maxRounds = Math.min(
     opts.maxRounds ?? Infinity,
     roundCap(mode),
-    variant?.questions ?? Infinity,
+    (variant?.questions ?? Infinity) + (opts.extraRounds ?? 0),
   );
   const iconicRounds = variant?.iconicRounds ?? ICONIC_ROUNDS[mode];
   const rng = createRng(seed);

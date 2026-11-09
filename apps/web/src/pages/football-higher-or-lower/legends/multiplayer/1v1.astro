@@ -1,0 +1,70 @@
+---
+// 1v1 ("Play a friend", DESIGN.md §3): two players in a private room, the
+// same question for both at the same moment. The game's fixed-height,
+// no-scroll screen and island (Base's `game`), with the room's setup and lobby
+// in the start panel's place; its own title, description, canonical and
+// structured data (a breadcrumb under Multiplayer, and a MultiPlayer
+// VideoGame), and the site's default preview. The picker's themes are the
+// same list as the squad pages' and Twitch Mode's.
+//
+// An invite link is this page with `?room=<code>`. The page is static, so its
+// canonical is itself whatever the query says: a room's link is never a page
+// of its own to index.
+import Base from "../../../../layouts/Base.astro";
+import Footer from "../../../../components/Footer.astro";
+import Game from "../../../../components/game/Game.svelte";
+import { t } from "../../../../i18n";
+import { DUEL_PATH } from "../../../../lib/paths";
+import { breadcrumbLd, breadcrumbTrail, duelGameLd } from "../../../../lib/seo";
+import { loadThemes, themeColours } from "../../../../lib/themes";
+
+const themes = loadThemes().map(({ id, type, name, slug, players }) => ({
+  id,
+  type,
+  name,
+  slug,
+  players,
+}));
+/** Each theme's colours as its card's custom properties; a theme without its own has none. */
+const colours = Object.fromEntries(
+  themes.flatMap((theme) => {
+    const style = themeColours(theme);
+    return style === undefined ? [] : [[theme.id, style]];
+  }),
+);
+---
+
+<Base
+  title={t("duel.title")}
+  description={t("duel.description")}
+  game
+  canonical={DUEL_PATH}
+  structuredData={[breadcrumbLd(breadcrumbTrail(DUEL_PATH)), duelGameLd()]}
+>
+  <!-- client:load, not client:visible: the first tap must not wait (ARCHITECTURE.md §14). -->
+  <Game
+    client:load
+    deck="legends"
+    mode="duel"
+    path={DUEL_PATH}
+    streamThemes={themes}
+    streamColours={colours}
+  />
+  <noscript>
+    <p class="noscript">{t("start.noscript")}</p>
+  </noscript>
+  <Footer />
+</Base>
+
+<style>
+  /* The island's wrapper element must not break the page's flex column. */
+  :global(astro-island) {
+    display: contents;
+  }
+  .noscript {
+    padding: 8px 18px;
+    text-align: center;
+    font-size: var(--fs-body);
+    color: var(--dim);
+  }
+</style>

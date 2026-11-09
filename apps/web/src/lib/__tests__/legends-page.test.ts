@@ -10,6 +10,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { t } from "../../i18n";
 
 const source = (path: string) =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
@@ -92,6 +93,12 @@ describe("the Legends page's modes", () => {
     expect(cards[4]).toMatch(/bestOf=\{squadQuestions\(theme\.players\)\}/);
     // The Multiplayer card is a way in, not a mode: no best of its own.
     expect(cards[5]).not.toMatch(/bestKey=/);
+    // Its line says what is live and what is still to come.
+    expect(t("legends.multiplayer.name")).toBe("Twitch Mode and 1v1");
+    expect(t("legends.multiplayer.body")).toBe(
+      "Twitch Mode and 1v1 are live.\nLast Man Standing is coming soon.",
+    );
+    expect(t("legends.multiplayer.body")).not.toContain("\u2014");
     // Daily Ranked shows today's result instead.
     expect(cards[0]).not.toMatch(/bestKey=/);
   });

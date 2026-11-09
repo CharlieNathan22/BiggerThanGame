@@ -5,7 +5,8 @@
  * the device's stores go under, the page a challenge link opens, whether runs
  * can be published, whether the wheel spins, and the run's win target.
  * Twitch Mode (`stream`) is a play of its own: a match of 10 or 20 questions
- * over a pool, with no best, no boards and no challenge links.
+ * over a pool, with no best, no boards and no challenge links. So is 1v1
+ * (`duel`): the same kind of match, between two players in a room.
  */
 
 import {
@@ -22,22 +23,25 @@ import { hasMessage, t } from "../i18n";
 import type { MessageKey, Params } from "../i18n";
 import {
   DAILY_PATH,
+  DUEL_PATH,
   ENDLESS_PATH,
   FRIENDLY_PATH,
   INSTAGRAM_PATH,
   TWITCH_PATH,
   themePagePath,
 } from "../lib/paths";
+import { isMatch } from "./machine";
 import type { GameMode } from "./machine";
 
 /**
  * Names a page's plays: `friendly`, `ranked` (Daily Ranked), `endless`,
- * `endless-instagram`, `squad:club-barcelona`, and Twitch Mode's `stream`.
+ * `endless-instagram`, `squad:club-barcelona`, Twitch Mode's `stream` and
+ * 1v1's `duel`.
  */
-export type PlayId = "friendly" | "ranked" | "stream" | EndlessVariantId;
+export type PlayId = "friendly" | "ranked" | "stream" | "duel" | EndlessVariantId;
 
 export function playId(mode: GameMode, variant?: NamedVariant): PlayId {
-  return mode === "friendly" || mode === "ranked" || mode === "stream" ? mode : variantOf(variant);
+  return mode === "friendly" || mode === "ranked" || isMatch(mode) ? mode : variantOf(variant);
 }
 
 /** A "Clear the squad" theme as a page knows it: from `themes.json`, names and counts only. */
@@ -67,11 +71,11 @@ export function asPlay(play: PlayLike): Play {
 }
 
 /**
- * The play on a page: a squad's when it has a theme, a Twitch Mode match's out
- * of its `questions`, else the mode's own.
+ * The play on a page: a squad's when it has a theme, a match's (Twitch Mode,
+ * 1v1) out of its `questions`, else the mode's own.
  */
 export function playOf(mode: GameMode, theme?: Theme, questions = 10): Play {
-  if (mode === "stream") return { mode, target: questions };
+  if (isMatch(mode)) return { mode, target: questions };
   return theme === undefined
     ? asPlay(mode)
     : { mode, target: squadQuestions(theme.players), theme };
@@ -82,6 +86,7 @@ export function playPath(play: PlayId, theme?: Theme): string {
   if (play === "friendly") return FRIENDLY_PATH;
   if (play === "ranked") return DAILY_PATH;
   if (play === "stream") return TWITCH_PATH;
+  if (play === "duel") return DUEL_PATH;
   if (play === "endless") return ENDLESS_PATH;
   if (play === "endless-instagram") return INSTAGRAM_PATH;
   if (theme === undefined) throw new Error(`no theme for ${play}`);
@@ -106,6 +111,7 @@ export function modeSubtitle(mode: GameMode, variant?: NamedVariant, theme?: The
   if (theme !== undefined) return theme.name;
   if (mode === "ranked") return t("daily.subtitle");
   if (mode === "stream") return t("stream.subtitle");
+  if (mode === "duel") return t("duel.subtitle");
   return variant === "endless-instagram"
     ? t("mode.instagram.subtitle")
     : t(mode === "friendly" ? "mode.friendly.name" : "mode.endless.name");

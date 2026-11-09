@@ -41,6 +41,7 @@ export const SITE_PAGES = [
   "/football-higher-or-lower/legends/endless/leaderboard",
   "/football-higher-or-lower/legends/multiplayer",
   "/football-higher-or-lower/legends/multiplayer/twitch",
+  "/football-higher-or-lower/legends/multiplayer/1v1",
   "/404",
 ] as const;
 

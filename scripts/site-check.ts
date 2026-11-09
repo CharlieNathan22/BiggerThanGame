@@ -142,6 +142,7 @@ const DAILY = `${LEGENDS}/daily`;
 const DAILY_LEADERBOARD = `${DAILY}/leaderboard`;
 const MULTIPLAYER = `${LEGENDS}/multiplayer`;
 const TWITCH = `${MULTIPLAYER}/twitch`;
+const DUEL = `${MULTIPLAYER}/1v1`;
 
 /**
  * What the built site must be, given its non-page files. The Endless page is a
@@ -152,7 +153,7 @@ const TWITCH = `${MULTIPLAYER}/twitch`;
  * "Clear the squad" theme (`themePaths`, from the deck build's themes.json) is
  * a game page too, under the Legends page. The Multiplayer hub is an ordinary
  * page under the Legends page, with a breadcrumb; Twitch Mode is a game page
- * under it, a game of its own whose VideoGame is `MultiPlayer`.
+ * under it, a game of its own whose VideoGame is `MultiPlayer`, and so is 1v1.
  */
 export function siteExpectations(
   files: readonly string[],
@@ -174,12 +175,13 @@ export function siteExpectations(
       [DAILY_LEADERBOARD]: ["BreadcrumbList"],
       [MULTIPLAYER]: ["BreadcrumbList"],
       [TWITCH]: game,
+      [DUEL]: game,
       ...Object.fromEntries(themePaths.map((path) => [path, game])),
     },
     files,
     previewImage: "/og-image.png",
     previewImages: { [FRIENDLY]: "/og-friendly.png" },
-    playModes: { [TWITCH]: "MultiPlayer" },
+    playModes: { [TWITCH]: "MultiPlayer", [DUEL]: "MultiPlayer" },
   };
 }
 

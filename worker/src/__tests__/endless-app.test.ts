@@ -269,6 +269,16 @@ describe("wrangler.toml", () => {
     expect(toml).toMatch(/\[\[migrations\]\]\s*tag = "v1"\s*new_sqlite_classes = \["RunDO"\]/);
   });
 
+  it("binds ROOMS to the RoomDO class, under a migration of its own after v1", () => {
+    expect(toml).toMatch(
+      /\[\[durable_objects\.bindings\]\]\s*name = "ROOMS"\s*class_name = "RoomDO"/,
+    );
+    expect(toml).toMatch(/\[\[migrations\]\]\s*tag = "v2"\s*new_sqlite_classes = \["RoomDO"\]/);
+    // Migrations are applied in order, and one already applied is never edited.
+    expect(toml.indexOf('tag = "v1"')).toBeLessThan(toml.indexOf('tag = "v2"'));
+    expect(toml.match(/\[\[migrations\]\]/g)).toHaveLength(2);
+  });
+
   it("never sets ENDLESS_PREVIEW for production", () => {
     expect(toml).not.toContain("ENDLESS_PREVIEW");
   });

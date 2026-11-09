@@ -6,7 +6,7 @@
  */
 
 import type { MessageKey } from "../i18n";
-import { TWITCH_PATH } from "./paths";
+import { DUEL_PATH, TWITCH_PATH } from "./paths";
 
 export interface MultiplayerMode {
   readonly id: "twitch" | "1v1" | "last-man-standing";
@@ -15,7 +15,7 @@ export interface MultiplayerMode {
   /** Its page when it's live; null while it's coming soon. */
   readonly href: string | null;
   /** An original icon (never a platform's logo or marks). */
-  readonly icon?: "chat-vs-player";
+  readonly icon?: "chat-vs-player" | "players-facing";
 }
 
 export const MULTIPLAYER_MODES: readonly MultiplayerMode[] = [
@@ -26,7 +26,13 @@ export const MULTIPLAYER_MODES: readonly MultiplayerMode[] = [
     href: TWITCH_PATH,
     icon: "chat-vs-player",
   },
-  { id: "1v1", name: "multiplayer.1v1.name", body: "multiplayer.1v1.body", href: null },
+  {
+    id: "1v1",
+    name: "multiplayer.1v1.name",
+    body: "multiplayer.1v1.body",
+    href: DUEL_PATH,
+    icon: "players-facing",
+  },
   {
     id: "last-man-standing",
     name: "multiplayer.lastManStanding.name",

@@ -478,6 +478,18 @@
   --stream-field-radius: 10px;
   --stream-field-pad-x: 12px;
 
+  /* 1v1 (components/duel): the two players' colours, this player in the
+     site's gold and their friend in the match mint, as Twitch Mode has its
+     two sides; the room's code, large and spaced, to read out over a call;
+     and the panels' width, narrower than a streamed setup's. */
+  --duel-you: var(--gold);
+  --duel-them: var(--stream-chat);
+  --fs-duel-code: clamp(2.1rem, 1.2rem + 5vw, 3.6rem);
+  --duel-code-tracking: 0.16em;
+  --duel-panel-w: min(620px, 100%);
+  --duel-icon-w: 72px;
+  --duel-dot: 9px;
+
   /* Endless's title chip at the top of the pitch: the streak title the run
      holds so far, where Friendly has its progress track. */
   --chip-bg: rgba(6, 18, 26, 0.72);

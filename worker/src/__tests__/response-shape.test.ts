@@ -7,6 +7,10 @@
  * typechecking. This walks many complete runs and inspects every response
  * three ways: key whitelists, a whitelist of where numbers may appear, and the
  * deck's own leak scanner as a backstop.
+ *
+ * 1v1's rooms send messages rather than responses, and are held to the same:
+ * every message to every seat, across whole matches, with the two things a
+ * room hides until a reveal (the challenger's figure, and the players' picks).
  */
 
 import { describe, expect, it } from "vitest";
@@ -16,6 +20,8 @@ import type {
   GuessResponse,
   NamedVariant,
   Player,
+  RoomQuestion,
+  RoomServerMessage,
   RoundPayload,
   RunStartResponse,
   StartResponse,
@@ -34,6 +40,14 @@ import {
 } from "./helpers.js";
 import { begin, harness, readToken, walk } from "./endless-helpers.js";
 import type { Ending } from "./endless-helpers.js";
+import {
+  matchDay,
+  openRoom,
+  playMatch as playRoomMatch,
+  roomHarness,
+  startMatch as startRoomMatch,
+} from "./room-helpers.js";
+import type { Sent, Way } from "./room-helpers.js";
 import { playMatch, readStreamToken, startMatch, streamHarness } from "./stream-helpers.js";
 import type { StreamAnswer } from "./stream-helpers.js";
 
@@ -577,5 +591,338 @@ describe("Twitch Mode responses", () => {
     const payload = { ...readStreamToken(started.token), challengerValue: 1 };
     const forged = `${Buffer.from(JSON.stringify(payload)).toString("base64url")}.x`;
     expect(() => checkStreamToken(forged, started.round)).toThrow();
+  });
+});
+
+// ------------------------------------------------------------ 1v1 rooms
+
+/** Every message a room sends, by type: exactly these keys (some optional). */
+const ROOM_MESSAGE_KEYS: Readonly<Record<RoomServerMessage["t"], readonly string[]>> = {
+  welcome: ["room", "t", "v", "you"],
+  players: ["phase", "players", "t", "v"],
+  question: ["question", "t", "v"],
+  locked: ["seat", "t", "v"],
+  reveal: ["correct", "end", "next", "picks", "reveal", "scores", "t", "v"],
+  fulltime: ["players", "result", "series", "t", "v"],
+  rematch: ["seats", "t", "v"],
+  closed: ["reason", "t", "v"],
+  error: ["code", "t", "v"],
+};
+const ROOM_QUESTION_KEYS = ["closesInMs", "limitMs", "match", "round", "suddenDeath"];
+const ROOM_PLAYER_KEYS = ["connected", "left", "name", "ready", "rejoinInMs", "seat"];
+const ROOM_RESULT_KEYS = ["left", "questions", "reason", "results", "scores", "winner"];
+const ROOM_SNAPSHOT_KEYS = [
+  "code",
+  "locked",
+  "match",
+  "phase",
+  "picked",
+  "players",
+  "question",
+  "rematch",
+  "result",
+  "series",
+  "settings",
+];
+
+/** A question, wherever a message carries one. */
+const Q = String.raw`(question|next|room\.question)`;
+const RESULT = String.raw`(result|end\.result|room\.result)`;
+const SERIES = String.raw`(series|end\.series|room\.series)`;
+
+/** Where a number may appear in a room's message. Anything else is a leak. */
+const ROOM_NUMERIC_PATHS = [
+  /^v$/,
+  /^you$/,
+  /^seat$/,
+  /^seats\.\d+$/,
+  new RegExp(`^${Q}\\.(match|limitMs|closesInMs)$`),
+  new RegExp(`^${Q}\\.round\\.index$`),
+  new RegExp(`^${Q}\\.round\\.anchor\\.value$`),
+  new RegExp(`^${Q}\\.round\\.(anchor|challenger)\\.image\\.(width|height)$`),
+  new RegExp(`^${Q}\\.round\\.upcoming\\.(width|height)$`),
+  // Only a reveal carries the challenger's figure.
+  /^reveal\.(round|value)$/,
+  /^scores\.\d+$/,
+  new RegExp(`^${RESULT}\\.(winner|questions|left|scores\\.\\d+)$`),
+  new RegExp(`^${SERIES}\\.(draws|wins\\.\\d+)$`),
+  /^(players|room\.players)\.\d+\.(seat|rejoinInMs)$/,
+  /^room\.match\.(no|scores\.\d+)$/,
+  /^room\.settings\.(questions|limit)$/,
+  /^room\.(locked|rematch)\.\d+$/,
+];
+
+/** A room's own numbers: counts, seats and clocks, never a figure. Stripped before the scan. */
+const ROOM_PLAIN = new Set([
+  "v",
+  "you",
+  "seat",
+  "seats",
+  "match",
+  "limitMs",
+  "closesInMs",
+  "scores",
+  "winner",
+  "questions",
+  "left",
+  "draws",
+  "wins",
+  "rejoinInMs",
+  "no",
+  "limit",
+  "locked",
+  "rematch",
+]);
+
+function checkRoomQuestion(question: RoomQuestion, deck: readonly Player[], now: Date): void {
+  expect(Object.keys(question).sort()).toEqual(ROOM_QUESTION_KEYS);
+  checkRound(question.round, deck, now);
+}
+
+/** One message as one seat got it. `secrets`: strings no message may contain. */
+function checkRoomMessage(
+  sent: Sent,
+  deck: readonly Player[],
+  now: Date,
+  secrets: readonly string[],
+): void {
+  const { message, seat } = sent;
+  expectKeysWithin(message, ROOM_MESSAGE_KEYS[message.t]);
+  expect(message.v).toBe(1);
+
+  const keys = allKeys(message);
+  for (const forbidden of ["stats", "dob", "deceased", "iconic", "era", "leagues", "mainClubs"]) {
+    expect(keys).not.toContain(forbidden);
+  }
+  for (const forbidden of [
+    "band",
+    "relaxation",
+    "seed",
+    "nonce",
+    "deadline",
+    "issuedAt",
+    "answer",
+    "token",
+    "awaySince",
+    "lastActivity",
+  ]) {
+    expect(keys).not.toContain(forbidden);
+  }
+  // Nothing a seed or a seat could be had from: the room's key, a match's id, a token, a player's id.
+  const text = JSON.stringify(message);
+  for (const secret of secrets) expect(text).not.toContain(secret);
+
+  for (const leaf of numericLeaves(message)) {
+    expect(
+      ROOM_NUMERIC_PATHS.some((p) => p.test(leaf.path)),
+      `number at ${leaf.path} in ${message.t}`,
+    ).toBe(true);
+  }
+  const stripped = JSON.stringify(message, (k, v: unknown) =>
+    SHOWN_FIELDS.has(k) || ROOM_PLAIN.has(k) ? null : v,
+  );
+  expect(scanForLeakedValues(stripped, deck, now, `room ${message.t}`)).toEqual([]);
+
+  // Only a reveal says which way anyone went, or what the challenger had.
+  if (message.t !== "reveal") {
+    for (const hidden of ["picks", "correct", "reveal"]) expect(keys).not.toContain(hidden);
+    const figures = keys.filter((k) => k === "value" || k === "display" || k === "qualifier");
+    // A question's anchor shows its figure: one of each at most, and only inside a question.
+    expect(figures.filter((k) => k === "value").length).toBeLessThanOrEqual(1);
+    if (message.t !== "question" && message.t !== "welcome") expect(figures).toEqual([]);
+  }
+
+  switch (message.t) {
+    case "question":
+      checkRoomQuestion(message.question, deck, now);
+      break;
+    case "locked":
+      expect(Object.keys(message).sort()).toEqual(["seat", "t", "v"]);
+      break;
+    case "reveal":
+      expectKeysWithin(message.reveal, REVEAL_KEYS);
+      // The reader's own verdict, as in every other mode's reveal.
+      expect(message.reveal.correct).toBe(message.correct[seat]);
+      for (const pick of message.picks) expect(["higher", "lower", null]).toContain(pick);
+      if (message.next !== undefined) checkRoomQuestion(message.next, deck, now);
+      if (message.end !== undefined) {
+        expect(Object.keys(message.end).sort()).toEqual(["result", "series"]);
+        expectKeysWithin(message.end.result, ROOM_RESULT_KEYS);
+      }
+      expect(message.next === undefined).toBe(message.end !== undefined);
+      break;
+    case "fulltime":
+      expectKeysWithin(message.result, ROOM_RESULT_KEYS);
+      for (const player of message.players) expectKeysWithin(player, ROOM_PLAYER_KEYS);
+      break;
+    case "players":
+      for (const player of message.players) expectKeysWithin(player, ROOM_PLAYER_KEYS);
+      break;
+    case "welcome": {
+      const { room } = message;
+      expectKeysWithin(room, ROOM_SNAPSHOT_KEYS);
+      for (const player of room.players) expectKeysWithin(player, ROOM_PLAYER_KEYS);
+      if (room.question !== undefined) checkRoomQuestion(room.question, deck, now);
+      if (room.result !== undefined) expectKeysWithin(room.result, ROOM_RESULT_KEYS);
+      // A player's own pick comes back to them; only the seats of who else has locked in.
+      if (room.picked !== undefined) expect(room.locked).toContain(seat);
+      else expect(room.locked ?? []).not.toContain(seat);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+describe("1v1 room messages", () => {
+  const ways: Way[] = ["right", "wrong", "timeout", "none"];
+
+  it.each([
+    { name: "sample deck, All legends", deck: SAMPLE_DECK, pool: "endless" as const },
+    { name: "fixture deck, All legends", deck: FIXTURE_DECK, pool: "endless" as const },
+    { name: "sample deck, Instagram", deck: SAMPLE_DECK, pool: "endless-instagram" as const },
+    { name: "themed deck, a squad", deck: THEMED_DECK, pool: "squad:club-testfield" as const },
+  ])(
+    "never carry a hidden value or a pick before the reveal, across whole matches on the $name",
+    async ({ deck, pool }) => {
+      let messages = 0;
+      let questions = 0;
+      for (let i = 0; i < 8; i++) {
+        const h = roomHarness({ deck, images: fakeImages(deck) });
+        const room = await openRoom(h, {
+          pool,
+          questions: i % 2 === 0 ? 10 : 20,
+          limit: ([10, 20, 30] as const)[i % 3] ?? 20,
+        });
+        const { table } = room;
+        const first = await startRoomMatch(room);
+        const now = matchDay(h);
+        await playRoomMatch(h, room, first, {
+          deck,
+          way: (seat, index) => ways[(index + i + seat * (1 + (i % 3))) % ways.length]!,
+        });
+        // A player comes back mid-question, both having answered or not: more snapshots.
+        if (table.host.state?.phase === "fulltime" && i % 2 === 0) {
+          await table.say(0, { v: 1, t: "rematch" });
+          await table.say(1, { v: 1, t: "rematch" });
+          const again = table.last(0, "question")?.question;
+          if (again !== undefined) {
+            await table.say(0, { v: 1, t: "answer", q: 1, pick: "higher" });
+            await table.drop(1);
+            await table.hello(room.tokens[1]);
+            await table.drop(0);
+            await table.hello(room.tokens[0]);
+            await table.say(1, { v: 1, t: "answer", q: 1, pick: "lower" });
+            await table.say(1, { v: 1, t: "leave" });
+          }
+        }
+
+        const state = table.host.state;
+        const secrets = [
+          ...room.tokens,
+          ...(state === undefined
+            ? []
+            : [state.key, ...(state.match === null ? [] : [state.match.id])]),
+          ...(state?.seats.flatMap((s) => (s === null ? [] : [s.id])) ?? []),
+        ];
+        for (const sent of table.sent) {
+          checkRoomMessage(sent, deck, now, secrets);
+          messages += 1;
+          if (sent.message.t === "question") questions += 1;
+          if (sent.message.t === "reveal" && sent.message.next !== undefined) questions += 1;
+        }
+
+        // Between a question and its reveal, nothing sent to either seat holds its
+        // challenger's figure. Seat by seat, since each gets every message of its own.
+        for (const seat of [0, 1]) {
+          let open: RoomQuestion | undefined;
+          for (const message of table.inbox(seat)) {
+            if (message.t === "question") open = message.question;
+            else if (message.t === "welcome") open = message.room.question ?? open;
+            if (open === undefined) continue;
+            const { round } = open;
+            const challenger = deck.find((p) => p.id === round.challenger.id)!;
+            const hidden = valueOf(challenger, round.stat.key, now)!;
+            if (message.t === "reveal") {
+              // The reveal is where it arrives, and it is the true figure.
+              expect(message.reveal.value).toBe(hidden);
+              expect(message.reveal.round).toBe(round.index);
+              open = message.next;
+              continue;
+            }
+            const figures = numericLeaves(message).filter((l) => /(^|\.)value$/.test(l.path));
+            for (const figure of figures) expect(figure.path).toMatch(/round\.anchor\.value$/);
+            // Never a tie, so the one figure on show can't be the hidden one.
+            expect(round.anchor.value).not.toBe(hidden);
+          }
+        }
+      }
+      expect(messages).toBeGreaterThan(8 * 40);
+      expect(questions).toBeGreaterThan(8 * 10);
+    },
+    90_000,
+  );
+
+  it("fail on a question whose challenger carries its figure", async () => {
+    const h = roomHarness();
+    const room = await openRoom(h);
+    const first = await startRoomMatch(room);
+    const sent = room.table.sent.find((s) => s.message.t === "question")!;
+    const leaky = structuredClone(sent) as unknown as {
+      seat: number;
+      code: string;
+      message: { question: { round: { challenger: Record<string, unknown> } } };
+    };
+    leaky.message.question.round.challenger["value"] = 1;
+    expect(() =>
+      checkRoomMessage(leaky as unknown as Sent, SAMPLE_DECK, matchDay(h), []),
+    ).toThrow();
+    expect(() => checkRoomMessage(sent, SAMPLE_DECK, matchDay(h), [])).not.toThrow();
+    expect(first.round.challenger).not.toHaveProperty("value");
+  });
+
+  it("fail on a `locked` that says which way, and on a snapshot with the other's pick", async () => {
+    const h = roomHarness();
+    const room = await openRoom(h);
+    await startRoomMatch(room);
+    await room.table.say(0, { v: 1, t: "answer", q: 1, pick: "higher" });
+    const locked = room.table.sent.find((s) => s.message.t === "locked")!;
+    expect(() => checkRoomMessage(locked, SAMPLE_DECK, matchDay(h), [])).not.toThrow();
+    const telling = { ...locked, message: { ...locked.message, pick: "higher" } };
+    expect(() =>
+      checkRoomMessage(telling as unknown as Sent, SAMPLE_DECK, matchDay(h), []),
+    ).toThrow();
+
+    await room.table.drop(1);
+    await room.table.hello(room.tokens[1]);
+    const welcome = room.table.sent.filter((s) => s.message.t === "welcome").at(-1)!;
+    expect(() => checkRoomMessage(welcome, SAMPLE_DECK, matchDay(h), [])).not.toThrow();
+    const peeking = structuredClone(welcome) as unknown as {
+      message: { room: Record<string, unknown> };
+    };
+    // The guest handed the host's pick: they haven't locked in themselves.
+    peeking.message.room["picked"] = "higher";
+    expect(() =>
+      checkRoomMessage(peeking as unknown as Sent, SAMPLE_DECK, matchDay(h), []),
+    ).toThrow();
+    const picks = structuredClone(welcome) as unknown as {
+      message: { room: Record<string, unknown> };
+    };
+    picks.message.room["picks"] = ["higher", null];
+    expect(() =>
+      checkRoomMessage(picks as unknown as Sent, SAMPLE_DECK, matchDay(h), []),
+    ).toThrow();
+  });
+
+  it("fail on a message that carries the room's key", async () => {
+    const h = roomHarness();
+    const room = await openRoom(h);
+    const { key } = room.table.host.state!;
+    const sent = room.table.sent[0]!;
+    expect(() => checkRoomMessage(sent, SAMPLE_DECK, matchDay(h), [key])).not.toThrow();
+    const leaky = { ...sent, message: { ...sent.message, t: "closed", reason: key } };
+    expect(() =>
+      checkRoomMessage(leaky as unknown as Sent, SAMPLE_DECK, matchDay(h), [key]),
+    ).toThrow();
   });
 });

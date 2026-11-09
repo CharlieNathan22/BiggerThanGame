@@ -5,13 +5,24 @@
  *
  * Two test-only extras: `GET /test/fingerprint?seed=&mode=` deals a run in
  * workerd, for the cross-runtime determinism check (`&questions=` deals a
- * Twitch Mode match on the `variant` pool instead); and `RunDO.alarmAt(now)`
- * runs the Durable Object's alarm as at a chosen moment.
+ * Twitch Mode match on the `variant` pool instead, and with `&duel` a 1v1
+ * match and its sudden death); and `RunDO.alarmAt(now)` and
+ * `RoomDO.alarmAt(now)` run a Durable Object's alarm as at a chosen moment
+ * (`RoomDO.alarmDue()` says when its alarm is set for).
+ * A room deals from the fixture deck here, as the app does.
  */
 
-import { DAY_MS, buildRun, buildStreamRun, isEndlessVariantId, startOfDay } from "@bt/core";
-import type { EndlessVariantId, Mode } from "@bt/core";
+import {
+  DAY_MS,
+  buildDuelRun,
+  buildRun,
+  buildStreamRun,
+  isEndlessVariantId,
+  startOfDay,
+} from "@bt/core";
+import type { EndlessVariantId, Mode, Player } from "@bt/core";
 import { NOW, fixtureDeck } from "../../packages/core/src/__fixtures__/deck.js";
+import { RoomDO as BaseRoomDO } from "../room-do.js";
 import { RunDO as BaseRunDO } from "../run-do.js";
 import { createApp } from "../src/app.js";
 import type { Env } from "../src/app.js";
@@ -19,6 +30,22 @@ import type { Env } from "../src/app.js";
 export class RunDO extends BaseRunDO {
   async alarmAt(now: number): Promise<void> {
     await this.onAlarm(now);
+  }
+}
+
+/** A room that deals from the fixture deck, as the test app does, with the alarm on call. */
+export class RoomDO extends BaseRoomDO {
+  protected override source(): { deck: readonly Player[]; images: Record<string, never> } {
+    return { deck: fixtureDeck, images: {} };
+  }
+
+  async alarmAt(now: number): Promise<void> {
+    await this.onAlarm(now);
+  }
+
+  /** When the room's alarm is set for, or null. */
+  async alarmDue(): Promise<number | null> {
+    return this.ctx.storage.getAlarm();
   }
 }
 
@@ -65,6 +92,13 @@ export default {
       const mode = (url.searchParams.get("mode") ?? "endless") as Mode;
       const variant = url.searchParams.get("variant");
       const questions = Number(url.searchParams.get("questions") ?? "0");
+      if (questions > 0 && isEndlessVariantId(variant) && url.searchParams.has("duel")) {
+        return new Response(
+          buildDuelRun({ deck: fixtureDeck, seed, now: NOW, pool: variant, questions })
+            .map((r) => `${r.index}:${r.stat}:${r.anchor.id}>${r.challenger.id}`)
+            .join("|"),
+        );
+      }
       if (questions > 0 && isEndlessVariantId(variant)) {
         return new Response(
           buildStreamRun({ deck: fixtureDeck, seed, now: NOW, pool: variant, questions })

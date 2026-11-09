@@ -57,8 +57,8 @@ can include Pirlo, Casillas and Cannavaro without apology.
 - **Football only.** The name allows expansion to other sports later; v1 does not attempt it.
 - **Legends only.** Retired players have frozen data — caps, goals, trophies and transfer fees
   never change again. This removes almost the entire data-refresh burden.
-- **Single player**, and Twitch Mode (§3): a streamer against their own chat. Other multiplayer
-  (1v1, Last Man Standing) waits until single-player retention is proven.
+- **Single player**, and two multiplayer modes (§3): Twitch Mode, a streamer against their own
+  chat, and 1v1, two friends in a private room. Last Man Standing waits.
 - **Two modes**, both with one life. See section 3.
 - **Player photography ships in v1.** Stats are facts and not copyrightable; photos are. Every
   image must be freely licensed (Wikimedia Commons or equivalent), verified per image, and
@@ -270,11 +270,11 @@ one-attempt enforcement and timing heuristics. None of those depend on the value
 
 The Legends deck's multiplayer modes live on their own hub, **Multiplayer**
 (`/football-higher-or-lower/legends/multiplayer`, §17): one card per mode in the site's glass
-cards. **Twitch Mode** is the first and the only live one. **1v1** ("Play a friend head to head")
-and **Last Man Standing** ("Up to 10 players, one mistake and you're out") are "Coming soon"
-cards, not links, and nothing behind them is built (§16). Which modes are live is config
-(`MULTIPLAYER_MODES`, `lib/multiplayer.ts`): a mode goes live by being given its page, never by
-changing the hub's markup.
+cards. **Twitch Mode** and **1v1** ("Play a friend head to head") are live. **Last Man Standing**
+("Up to 10 players, one mistake and you're out") is a "Coming soon" card, not a link, and nothing
+of its own is built (§16); it will play on the room engine 1v1 runs on (ARCHITECTURE.md §8). Which
+modes are live is config (`MULTIPLAYER_MODES`, `lib/multiplayer.ts`): a mode goes live by being
+given its page, never by changing the hub's markup.
 
 ### Twitch Mode ("Chat vs You")
 
@@ -345,6 +345,85 @@ commands. No login, no leaderboards, no challenge links and no local best.
   high contrast, nothing important at the edges) and still works on a phone.
 - **The word "Twitch" only.** No Twitch logo, glitch mark or brand colours anywhere: the icon is
   our own, a chat bubble facing a player, and chat's colour is a mint of our own.
+
+### 1v1 ("Play a friend")
+
+Two friends play a fixed-length **match** head to head, in a private **room**: the same question
+for both at the same moment. No random matchmaking, no leaderboards, no submits and no challenge
+links.
+
+- **Creating a room (the host).** On one page, in steps: the name (prefilled with the last one
+  used or a generated one, with the shuffle button and the leaderboards' moderation, §13); the
+  length, 10 or 20 questions (a squad capped as in Twitch Mode); the timer, **Fast (10 s)**,
+  **Relaxed (20 s, the default)** or **Slow (30 s)**, the same on every question, and the only
+  three the server accepts; and the questions, from **Twitch Mode's own pool picker**, the same
+  component and the same list: All legends, Instagram, or any club, league or era.
+  `?pool=<theme slug>` (or `all`, `instagram`) preselects. Create makes the room on the server,
+  which answers with its code and the host's signed seat (ARCHITECTURE.md §8).
+- **Room codes** are six characters from an alphabet with nothing that reads as something else (no
+  0 or O, no 1, I or L) and no vowels, so a code never spells a word: `23456789BCDFGHJKMNPQRSTVWXYZ`.
+  Made by the server, never the page, and checked against the rooms that exist.
+- **Inviting.** The lobby shows the code in large, spaced type, and the **invite link**
+  (`/football-higher-or-lower/legends/multiplayer/1v1?room=K7QM2X`) with Copy and, on a phone,
+  Share. The link opens the page on Join, the code filled in, saying whose room it is
+  ("Ada has invited you to a match."). A code can also be typed on the 1v1 page.
+- **Joining (the guest).** A name, with the same prefill and moderation, then Join. **The two names
+  in a room must differ**, whatever their case: a taken one says so under the field ("That name is
+  taken in this room. Try another."). A room holds two players: a third is told "This room is
+  full." A code that names no room shows "This room has closed. Create a new one." with a button.
+- **The lobby.** Both players, each with where they stand (Ready, Not ready, Away), the room's
+  settings read only, a Ready toggle for each, and for the host **Start**, enabled once both are
+  **connected and ready**. The guest reads "Waiting for Ada to start".
+- **Away in the lobby is only a status.** A player whose connection drops there keeps their seat
+  and shows as away, for as long as it takes; nothing counts them down, and the room neither closes
+  nor frees the seat. Only an explicit **Leave** does: a guest's frees their seat (the invite still
+  works), the host's closes the room and the guest is told.
+- **The match.** Dealt by the existing engine under a seed of the room's match alone
+  (`duel:<pool>:` and the match's id), on **Twitch Mode's match difficulty schedule** for the pool
+  and length (§8), so both players get exactly the same questions.
+  - **The server owns the clock.** Each question has one deadline: the chosen limit, plus the
+    usual allowance for the animation before it and the network's grace (§9). Both pages count
+    down to it.
+  - **Answering.** Each player picks Higher or Lower privately. When one locks in, the other sees
+    "Sam has locked in", never which way.
+  - **The reveal** comes as soon as both have answered, or when the deadline passes: the answer
+    and both picks together. A question not answered in time is wrong.
+  - **Scoring.** One point a right answer. Speed never matters.
+  - On screen: "You 7 – 6 Sam" always, a track of 10 or 20 segments with both players' results in
+    each, this player's row on top, and the connection (this page's own, with the seconds left
+    when it is trying to get back, and the other player's; on a phone the other player's is
+    shown only when they have dropped out or left, so the strip stays short).
+- **Sudden death.** Level after the last question, the match plays extra questions, in the
+  hardest band of its schedule, until one player is right and the other wrong. Sudden-death points
+  count in the score. As a failsafe, after **10** sudden-death questions with no winner the match
+  is a **draw**. If the pool runs out of questions first (a small squad: it never repeats a
+  player), the higher score wins and a level one is a draw.
+- **Full time.** Who won, or a draw; the final score; how it was decided when it wasn't simply the
+  score; the question-by-question strip; Share, Rematch, New room and Try other modes.
+- **Rematch.** When both have pressed Rematch a new match starts in the same room, on the same
+  settings, under a new seed. The room keeps a running series score: "Series: You 2 – 1 Sam".
+- **Dropping out of a match.** A player whose connection drops can come back within **30
+  seconds**. **The clock keeps running**: a question missed while away is wrong. After 30 seconds
+  away they forfeit, and the other player wins ("Sam left the match"). Leave during a match is a
+  forfeit at once. After a forfeit there is no rematch.
+- **Coming back.** A player's seat is kept on their device (`bt:room:<code>`), so a refresh, a
+  dropped connection, the invite link opened again in a new tab, or a phone's browser having
+  killed the tab all bring them back to their own seat, never to "This room is full". The page
+  reconnects by itself, at once when it becomes visible again or the browser comes back online.
+  The seat is cleared when the room closes or the player leaves or forfeits.
+- **Expiry.** Two clocks, neither of which runs during a match, and nothing of a closed room is
+  kept.
+  - **Empty for 15 minutes.** A room stays open while anyone is connected to it: a host waiting
+    in the lobby for a friend keeps the room, and so do two players sitting at full time. Once
+    nobody is connected, it closes **15 minutes** after the last player went (or the last thing
+    one did). Coming back inside those 15 minutes stops the count.
+  - **Nothing done for 2 hours.** In the lobby or at full time, a room closes **2 hours** after
+    the last thing a player did, even with someone still connected: a tab left open is not a
+    player. What counts is making the room, joining it, Ready, Start, an answer and asking for
+    a rematch; a connection dropping or coming back does not, nor does a question timing out.
+    Anyone still there sees the usual "This room has closed. Create a new one".
+- **Built for a phone**: most invites are opened from a chat app. The join screen, the lobby and
+  the match work from 320 wide with nothing scrolling sideways.
 
 ### Launch order
 
@@ -788,6 +867,15 @@ lopsided sides. Before this ramp, matches borrowed their pool's
 (Endless's rows 1–20, a squad's ramp over the match) and averaged 17–19 out of 20 and 8–9.5 out of
 10, with 19–44% drawn.
 
+**1v1** (§3) has no ramp of its own: a match is dealt by **Twitch Mode's match bands** for its
+pool and length (`streamBandsFor`, the same objects, not a copy), under its own seed domain
+(`duel:<pool>:`), so the two modes can never share a deal and neither changes the other. Sudden
+death is the same deal carried on past the match's questions (`RunOptions.extraRounds`): every row
+of those bands is a share of the match's questions, so a question past them falls in the last
+row, the hardest (All legends: 0.005–0.02, at least 5% apart), with no rule of its own. Two
+evenly matched players on that ramp draw 13–16% of 20-question matches and 20–24% of 10-question
+ones (the Twitch Mode simulation above), which is how often a match goes to sudden death.
+
 **Friendly's twenty questions**: It opens
 on the same uncapped band for the five rounds that prefer iconic names, stays uncapped a little
 lower for five more, then tightens quickly and **never gets easier**: from round 5 each band is at
@@ -923,6 +1011,10 @@ run, and everyone hits the same coin flip.
   telemetry, never trusted.
 - **Endless's start panel says so**: "Endless has a 10-second clock", with a link to Friendly for
   anyone who'd rather play without one.
+- **1v1's clock is the room's** (§3): 10, 20 or 30 seconds, chosen by the host, the same on every
+  question, question one included. Each question has one deadline for both players, held by the
+  room and worked out as every deadline is (the animation's allowance, the limit, the grace); the
+  page's clock never runs past it. Out of time is a wrong answer, never the end of the match.
 - **Friendly Mode** (section 3) is the exception, and is excluded from all boards.
 
 ---
@@ -1131,6 +1223,11 @@ a number.
   "Football Legends", "Instagram legends" or "<Theme> legends"), then the Twitch Mode page's
   address. The image draws the score, who won, the pool, and chat's and the streamer's strips, a
   square per question each, gold or mint for right and a crossed red one for a miss.
+
+- **1v1's share is spoiler-free too**, and text only: who beat whom, the score and the pool, then
+  the 1v1 page's address, never the room's. "I beat Sam 14–12 on Barcelona legends · Bigger Than
+  1v1"; "Sam beat me 14–12 on …"; "I drew 10–10 with Sam on …". No player of the deck, no stat, no
+  figure.
 
 - **Challenge links, Endless only** (`CHALLENGES`), Instagram Endless included, each variant's
   link opening its own page: "Challenge a friend" on the game-over panel shares "Beat <score>" and
@@ -1395,8 +1492,9 @@ error-report routing (email), and the Endless submission rate limit (set with th
 
 ## 16. Deliberately not building
 
-- **Multiplayer**, beyond Twitch Mode — 1v1 and Last Man Standing show as "Coming soon" cards on
-  the Multiplayer hub and nothing more, until single-player retention is proven.
+- **Multiplayer**, beyond Twitch Mode and 1v1. Last Man Standing shows as a "Coming soon" card on
+  the Multiplayer hub and nothing more. For 1v1: no random matchmaking, no leaderboards, no
+  submits and no challenge links; rooms are private, by invite link or code.
 - **Other sports** — not until the football deck is genuinely good. The name permits it; the
   roadmap doesn't yet.
 - **Current players** — they reintroduce the refresh burden that legends-only removes.
@@ -1428,8 +1526,11 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
         ├── /leagues/<slug>        (generated from themes.json): the Endless screen, with
         ├── /eras/<slug>           Friendly's progress track.
         ├── /multiplayer           the Multiplayer hub: a card per multiplayer mode. Static, no JS.
-        │   └── /twitch            the game: Twitch Mode. The same screen, its setup in the start
-        │                          panel's place, a strip with both scores over the pitch.
+        │   ├── /twitch            the game: Twitch Mode. The same screen, its setup in the start
+        │   │                      panel's place, a strip with both scores over the pitch.
+        │   └── /1v1               the game: 1v1. The same screen, the room's setup and lobby in
+        │                          the start panel's place. An invite link is this page with
+        │                          ?room=<code>, never a page of its own.
         └── /endless               the game: Endless. The same screen, with a clock.
             ├── /instagram         the game: Instagram Endless. The same screen as Endless.
             └── /leaderboard       Endless's boards: today, this week, this month, and this
@@ -1511,8 +1612,8 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   Friendly; then **Clubs**, **Leagues** and **Eras**, "Clear the squad"'s themes in a section
   each under a heading in gold Cinzel with its glow, centred (a type with no theme has no
   section); then, for now, **Multiplayer**, a section under the same heading style with one
-  full-width card to the Multiplayer hub ("Twitch Mode and more": Twitch Mode is live, more is
-  coming).
+  full-width card to the Multiplayer hub ("Twitch Mode and 1v1": "Twitch Mode and 1v1 are live.
+  Last Man Standing is coming soon.").
   Every open mode's card shows this device's best when there is one — "Your best: 23", Friendly's
   out of twenty ("Your best: 12/20") — in the card's accent, gold or pink; with storage blocked or
   no best yet, nothing.
@@ -1545,6 +1646,13 @@ Bigger Than is the brand; football higher or lower is its first game. No trailin
   Multiplayer) and lists the modes as cards, Twitch Mode with our own icon; Twitch Mode's page is a
   game page, so its trail (Legends › Multiplayer › Twitch Mode) is in its structured data only, and
   its `VideoGame` is `MultiPlayer`.
+- **1v1's page** ("1v1: Play a Friend"; "1v1 Football Quiz: Play a Friend | Bigger Than Game") is a
+  game page like Twitch Mode's: its own title, description, preview tags (the site's default
+  image), JSON-LD (a `MultiPlayer` `VideoGame` for two, and the trail Legends › Multiplayer › 1v1
+  in its structured data only) and a sitemap entry. **Its canonical is the page itself**, set by
+  name, so an invite link (`?room=K7QM2X`) is never indexed as a page of its own; a shared result
+  links the page too, never a room. Its card on the hub has an icon of our own, two players facing
+  each other, in the two colours a match is scored in: no club's, league's or platform's marks.
 - **Local best** is kept per deck and mode or Endless variant — `bt:best:<deck>:<mode>`:
   `bt:best:legends:friendly`, `bt:best:legends:endless`, `bt:best:legends:endless-instagram`,
   and a theme's `bt:best:legends:squad:<theme id>`, which holds the furthest through the squad and

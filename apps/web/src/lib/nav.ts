@@ -7,6 +7,7 @@
 import type { MessageKey } from "../i18n";
 import {
   ABOUT_PATH,
+  DUEL_PATH,
   ENDLESS_LEADERBOARD_PATH,
   FOOTBALL_PATH,
   HOW_TO_PLAY_PATH,
@@ -24,7 +25,7 @@ export interface NavLink {
   readonly section?: string;
   /**
    * Other pages the link stands for: Endless's board, under Leaderboards
-   * (Daily's board); Twitch Mode, under Multiplayer.
+   * (Daily's board); Twitch Mode and 1v1, under Multiplayer.
    */
   readonly also?: readonly string[];
 }
@@ -32,7 +33,7 @@ export interface NavLink {
 export const NAV_LINKS: readonly NavLink[] = [
   { href: LEGENDS_PATH, label: "nav.play", section: FOOTBALL_PATH },
   { href: LEADERBOARD_PATH, label: "nav.leaderboards", also: [ENDLESS_LEADERBOARD_PATH] },
-  { href: MULTIPLAYER_PATH, label: "nav.multiplayer", also: [TWITCH_PATH] },
+  { href: MULTIPLAYER_PATH, label: "nav.multiplayer", also: [TWITCH_PATH, DUEL_PATH] },
   { href: HOW_TO_PLAY_PATH, label: "nav.howToPlay" },
   { href: ABOUT_PATH, label: "nav.about" },
 ];

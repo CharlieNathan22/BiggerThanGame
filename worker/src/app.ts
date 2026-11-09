@@ -6,8 +6,10 @@
  * (feedback.ts) and `/api/run/leave` (leave.ts). Daily Ranked (daily.ts) shares
  * the start and the guess — a start with `mode: "ranked"`, a guess with a Daily
  * token — and adds `/api/run/resume`, `GET /api/board/daily` and
- * `POST /api/board/daily/me` (daily-board.ts). And the nightly cron (cron.ts),
- * as `scheduled`.
+ * `POST /api/board/daily/me` (daily-board.ts). 1v1's rooms (room.ts):
+ * `/api/room/create`, `/api/room/join` and `/api/room/peek`, and the room's
+ * WebSocket, `GET /api/room/ws`, handed to its Durable Object (room-do.ts).
+ * And the nightly cron (cron.ts), as `scheduled`.
  *
  * `/api/*` runs here (`run_worker_first` in wrangler.toml); everything else is
  * the static site, served from the ASSETS binding. Every `/api/*` response is
@@ -24,7 +26,7 @@
  * one `info` line with what was sent (feedback.ts). None can change a response.
  */
 
-import { dailyEpochMs } from "@bt/core";
+import { dailyEpochMs, isRoomCode } from "@bt/core";
 import type { ApiError, BoardPeriod, Player } from "@bt/core";
 import { countryOf, toDataPoint, toLogLine } from "./analytics.js";
 import { parseBoardPeriod, serveBoard } from "./board.js";
@@ -49,6 +51,10 @@ import { buildPlainTextMime, isPlainAddress } from "./mail.js";
 import type { ImageLookup } from "./payload.js";
 import { RATE_LIMITS, checkRateLimit, rateLimitKey } from "./rate-limit.js";
 import type { RateLimiter, RateLimiters } from "./rate-limit.js";
+import { handleRoomCreate, handleRoomJoin, handleRoomPeek } from "./room.js";
+import type { RoomContext, RoomResult, RoomStub } from "./room.js";
+import { roomDataPoint, roomLogLine } from "./room-analytics.js";
+import type { RoomEvent } from "./room-analytics.js";
 import { handleNextRound } from "./round.js";
 import { handleGuess, handleRunStart, parseGuess } from "./run.js";
 import type { RunContext, RunResult, RunStub } from "./run.js";
@@ -96,6 +102,8 @@ export interface Env {
   readonly GAME_EVENTS?: AnalyticsDataset;
   /** One Durable Object per Endless run (run-do.ts): spends each token once. */
   readonly RUNS?: RunNamespace;
+  /** One Durable Object per multiplayer room (room-do.ts), named by its code. */
+  readonly ROOMS?: RoomNamespace;
   /** D1: the boards' scores and snapshots (scores.ts). */
   readonly DB?: D1Like;
   /** Publishes per IP. */
@@ -113,6 +121,12 @@ export interface WaitContext {
 export interface RunNamespace {
   idFromName(name: string): unknown;
   get(id: never): RunStub & SubmitStub & DailyStub & StreamStub;
+}
+
+/** The `ROOMS` Durable Object namespace, typed structurally for Node tests. */
+export interface RoomNamespace {
+  idFromName(name: string): unknown;
+  get(id: never): RoomStub & { fetch(request: Request): Promise<Response> };
 }
 
 export interface AppDeps {
@@ -139,6 +153,8 @@ export interface AppDeps {
   readonly cache?: () => BoardCache | undefined;
   /** Daily Ranked's epoch, ms: `dailyEpochMs()` by default. Tests pick their own. */
   readonly epoch?: number;
+  /** Random bytes, for a room's code. `crypto.getRandomValues` by default. */
+  readonly randomBytes?: (n: number) => Uint8Array;
 }
 
 export const ROUND_PATH = "/api/round/next";
@@ -151,6 +167,10 @@ export const BOARD_PATH = "/api/board/endless";
 export { MINE_PATH };
 export const RESUME_PATH = "/api/run/resume";
 export { DAILY_BOARD_PATH, DAILY_MINE_PATH };
+export const ROOM_CREATE_PATH = "/api/room/create";
+export const ROOM_JOIN_PATH = "/api/room/join";
+export const ROOM_PEEK_PATH = "/api/room/peek";
+export const ROOM_SOCKET_PATH = "/api/room/ws";
 
 /**
  * An Endless start: a Turnstile token (up to 2,048 characters) and perhaps a
@@ -182,7 +202,11 @@ type Route =
   | typeof MINE_PATH
   | typeof RESUME_PATH
   | typeof DAILY_BOARD_PATH
-  | typeof DAILY_MINE_PATH;
+  | typeof DAILY_MINE_PATH
+  | typeof ROOM_CREATE_PATH
+  | typeof ROOM_JOIN_PATH
+  | typeof ROOM_PEEK_PATH
+  | typeof ROOM_SOCKET_PATH;
 
 /** The run's Durable Object failed us: our problem, a calm 503. */
 class RunStoreError extends Error {
@@ -217,6 +241,8 @@ export function createApp(deps: AppDeps): {
     deps.cache ??
     ((): BoardCache | undefined =>
       (globalThis as { caches?: { default?: BoardCache } }).caches?.default);
+  const randomBytes =
+    deps.randomBytes ?? ((n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n)));
   const emailMessage =
     deps.emailMessage ??
     ((): OutgoingEmail => {
@@ -1022,6 +1048,131 @@ export function createApp(deps: AppDeps): {
     }
   }
 
+  /**
+   * 1v1's rooms (room.ts): making one, joining one and looking at one. Behind
+   * the flood limit, then a run start per IP, counted in the handler before
+   * any other work; create and join then ask Turnstile before the room's
+   * Durable Object is touched.
+   */
+  async function room(
+    request: Request,
+    env: Env,
+    route: typeof ROOM_CREATE_PATH | typeof ROOM_JOIN_PATH | typeof ROOM_PEEK_PATH,
+  ): Promise<Response> {
+    const limiters = limitersOf(env);
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+    const flood = await checkRateLimit(limiters, "flood", ip);
+    if (!flood.ok) return rateLimited(route, flood.retryAfter, "flood");
+
+    if (request.method !== "POST") {
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "POST" } });
+    }
+    const { RUN_SECRET: secret, TURNSTILE_SECRET: turnstileSecret, ROOMS: rooms } = env;
+    const needsTurnstile = route !== ROOM_PEEK_PATH;
+    if (!secret || rooms === undefined || (needsTurnstile && !turnstileSecret)) {
+      const missing = [
+        secret ? "" : "RUN_SECRET",
+        rooms === undefined ? "ROOMS" : "",
+        needsTurnstile && !turnstileSecret ? "TURNSTILE_SECRET" : "",
+      ].filter((name) => name !== "");
+      return refuse(route, 500, "internal", {
+        reason: "not_configured",
+        cause: `${missing.join(", ")} missing`,
+      });
+    }
+
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > MAX_RUN_BYTES) {
+      return refuse(route, 400, "bad_request", { detail: "body too large" });
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return refuse(route, 400, "bad_request", { detail: "body must be JSON" });
+    }
+
+    const eventContext: EventContext = { country: countryOf(request), deckVersion };
+    const ctx: RoomContext = {
+      deck: deps.deck,
+      secret,
+      clock,
+      uuid,
+      randomBytes,
+      verifyTurnstile: (token) => verifyTurnstile(token, turnstileSecret ?? "", fetchFn),
+      rooms: (code) => roomStub(rooms, code),
+      limits: { start: () => checkRateLimit(limiters, "starts", ip) },
+      country: eventContext.country,
+      deckVersion,
+      record: (event: RoomEvent) => {
+        try {
+          logger(roomLogLine(event, eventContext, route));
+          env.GAME_EVENTS?.writeDataPoint(roomDataPoint(event, eventContext));
+        } catch {
+          // Telemetry is never worth a failed request.
+        }
+      },
+    };
+    try {
+      let result: RoomResult;
+      if (route === ROOM_CREATE_PATH) result = await handleRoomCreate(body, ctx);
+      else if (route === ROOM_JOIN_PATH) result = await handleRoomJoin(body, ctx);
+      else result = await handleRoomPeek(body, ctx);
+      if (result.status === 200) return json(200, result.body);
+      if (result.status === 429) return rateLimited(route, result.retryAfter, result.limit);
+      return refuse(
+        route,
+        result.status,
+        result.body.error,
+        result.body.detail !== undefined ? { detail: result.body.detail } : {},
+      );
+    } catch (err) {
+      if (err instanceof RunStoreError) {
+        return refuse(route, 503, "unavailable", { reason: "room_store", cause: err.message });
+      }
+      return refuse(route, 500, "internal", describeError(err));
+    }
+  }
+
+  /**
+   * A room's WebSocket (`GET /api/room/ws?code=`): checked here for what a
+   * request can be checked for, then handed to the room's Durable Object,
+   * which takes the socket and waits for its `hello` (room-do.ts). Only our
+   * own pages may open one: a browser sends the page's origin with the
+   * upgrade, and another site's is refused.
+   */
+  async function roomSocket(request: Request, env: Env): Promise<Response> {
+    const route = ROOM_SOCKET_PATH;
+    const ip = rateLimitKey(request.headers.get("cf-connecting-ip"));
+    const flood = await checkRateLimit(limitersOf(env), "flood", ip);
+    if (!flood.ok) return rateLimited(route, flood.retryAfter, "flood");
+
+    if (request.method !== "GET") {
+      return refuse(route, 405, "method_not_allowed", { headers: { allow: "GET" } });
+    }
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return refuse(route, 400, "bad_request", { detail: "expected a WebSocket upgrade" });
+    }
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    if (!isRoomCode(code)) return refuse(route, 400, "bad_request", { detail: "code" });
+    if (!sameSite(request.headers.get("origin"), url)) {
+      return refuse(route, 403, "verification_failed", { reason: "origin" });
+    }
+    const rooms = env.ROOMS;
+    if (!env.RUN_SECRET || rooms === undefined) {
+      return refuse(route, 500, "internal", {
+        reason: "not_configured",
+        cause: "RUN_SECRET or ROOMS missing",
+      });
+    }
+    try {
+      return await rooms.get(rooms.idFromName(code) as never).fetch(request);
+    } catch (err) {
+      return refuse(route, 503, "unavailable", { reason: "room_store", ...describeCause(err) });
+    }
+  }
+
   return {
     /**
      * The nightly job (cron.ts). One `info` line with what it did, or an
@@ -1111,6 +1262,14 @@ export function createApp(deps: AppDeps): {
       if (pathname === LEAVE_PATH) return leave(request, env);
       if (pathname === RUN_START_PATH) return endless(request, env, RUN_START_PATH);
       if (pathname === GUESS_PATH) return endless(request, env, GUESS_PATH);
+      if (pathname === ROOM_SOCKET_PATH) return roomSocket(request, env);
+      if (
+        pathname === ROOM_CREATE_PATH ||
+        pathname === ROOM_JOIN_PATH ||
+        pathname === ROOM_PEEK_PATH
+      ) {
+        return room(request, env, pathname);
+      }
       // Not logged: scanners probe paths all day, and the log quota is daily.
       return error(404, "not_found");
     },
@@ -1149,6 +1308,41 @@ function runStub(
     streamBegin: guarded((s, first) => s.streamBegin(first)),
     streamAdvance: guarded((s, step) => s.streamAdvance(step)),
   };
+}
+
+/**
+ * The Durable Object for the room with this code. A failure reaching it
+ * becomes a `RunStoreError`, answered with 503, as a run's does.
+ */
+function roomStub(namespace: RoomNamespace, code: string): RoomStub {
+  const stub = (): RoomStub => namespace.get(namespace.idFromName(code) as never);
+  const guarded = async <R>(call: (s: RoomStub) => Promise<R>): Promise<R> => {
+    try {
+      return await call(stub());
+    } catch (err) {
+      throw new RunStoreError(err);
+    }
+  };
+  return {
+    create: (room) => guarded((s) => s.create(room)),
+    join: (player, now) => guarded((s) => s.join(player, now)),
+    peek: (now) => guarded((s) => s.peek(now)),
+  };
+}
+
+/**
+ * Whether a WebSocket upgrade came from one of our own pages: its `Origin`
+ * names the host the request was made to. A request with no `Origin` isn't a
+ * browser's, and a page can't leave the header off; nothing is gained by
+ * refusing it, since a seat still needs its signed token.
+ */
+function sameSite(origin: string | null, url: URL): boolean {
+  if (origin === null) return true;
+  try {
+    return new URL(origin).hostname === url.hostname;
+  } catch {
+    return false;
+  }
 }
 
 /** An error's message as a log line's `cause`, capped. */

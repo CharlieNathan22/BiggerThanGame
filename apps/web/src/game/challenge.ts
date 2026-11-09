@@ -20,6 +20,7 @@
 import { CHALLENGES, roundCap } from "@bt/core";
 import type { ChallengeLink } from "@bt/core";
 import { ENDLESS_PATH } from "../lib/paths";
+import { isMatch } from "./machine";
 import type { GameMode } from "./machine";
 
 export const CHALLENGE_PARAMS = ["challenge", "score", "sig"] as const;
@@ -43,7 +44,7 @@ export function readChallenge(search: string, mode: GameMode): ChallengeParam {
   const params = new URLSearchParams(search);
   if (!CHALLENGE_PARAMS.some((name) => params.has(name))) return { kind: "none" };
   // Twitch Mode has never had challenge links: a stray one is ignored.
-  if (mode === "stream") return { kind: "none" };
+  if (isMatch(mode)) return { kind: "none" };
   if (!CHALLENGES[mode]) return { kind: "retired" };
   const runId = params.get("challenge") ?? "";
   const scoreText = params.get("score") ?? "";

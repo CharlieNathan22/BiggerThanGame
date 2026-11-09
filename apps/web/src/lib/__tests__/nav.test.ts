@@ -59,6 +59,18 @@ describe("the title bar's navigation", () => {
     expect(marks("/about")).toMatchObject({ Play: undefined, About: "page" });
   });
 
+  it("marks Multiplayer, and only Multiplayer, current on 1v1", () => {
+    const marks = (path: string) =>
+      Object.fromEntries(NAV_LINKS.map((link) => [t(link.label), navCurrent(link, path)]));
+    expect(marks("/football-higher-or-lower/legends/multiplayer/1v1")).toEqual({
+      Play: undefined,
+      Leaderboards: undefined,
+      Multiplayer: "true",
+      "How to play": undefined,
+      About: undefined,
+    });
+  });
+
   it("marks Multiplayer, and only Multiplayer, current on the hub and Twitch Mode", () => {
     const marks = (path: string) =>
       Object.fromEntries(NAV_LINKS.map((link) => [t(link.label), navCurrent(link, path)]));

@@ -49,6 +49,14 @@
  * a `timeout` if there was none. Chat's votes are counted beside the machine
  * (stream/votes.ts), never in it.
  *
+ * 1v1 (`duel`) plays a match in a room, the same question for both players at
+ * the same moment (game/duel). A pick is locked in as in Twitch Mode, but it
+ * goes to the room at once; the clock running out locks in `timeout`. Nothing
+ * comes back for it. The reveal arrives when the room sends it (`revealed`):
+ * when both have answered, or at the server's deadline. A match can also stop
+ * without a reveal, when the other player forfeits (`stopped`). A player who
+ * comes back mid-match picks it up as a Daily run is picked up (`resumed`).
+ *
  * In a mode with challenge links (Endless, DESIGN.md §13) a run can start from
  * one. The link is offered with the start; the server says whether it checks
  * out — the run is then framed as "Beat n" — or not. Either way the run is a
@@ -62,7 +70,6 @@ import type {
   ChallengeLink,
   DailyResult,
   ChallengeStatus,
-  Guess,
   Mode,
   NamedVariant,
   PlayerCard,
@@ -98,10 +105,18 @@ export type Phase =
  */
 export type EndReason = RunEnd | "network";
 
-/** The modes the game page plays: the sequence modes, and Twitch Mode's match (`stream`). */
-export type GameMode = Extract<Mode, "friendly" | "endless" | "ranked"> | "stream";
+/**
+ * The modes the game page plays: the sequence modes, Twitch Mode's match
+ * (`stream`) and 1v1's (`duel`).
+ */
+export type GameMode = Extract<Mode, "friendly" | "endless" | "ranked"> | "stream" | "duel";
 
-/** A Twitch Mode match's settings, as the server started it. */
+/** Whether `mode` plays a match: a fixed number of questions on a chosen clock, every one scored. */
+export function isMatch(mode: GameMode): mode is "stream" | "duel" {
+  return mode === "stream" || mode === "duel";
+}
+
+/** A match's settings, as the server started it: Twitch Mode's, or a 1v1 room's. */
 export interface StreamSettings {
   readonly pool: StreamPool;
   readonly questions: number;
@@ -110,9 +125,14 @@ export interface StreamSettings {
 
 /**
  * An answer's response as the machine reads it: the round's reveal, then the
- * next question or the end — and, ending a Daily run, its result.
+ * next question or the end — and, ending a Daily run, its result. In 1v1,
+ * `capAt` is when the next question closes (`performance.now()`), from the
+ * room's own deadline.
  */
-export type Answered = AnswerResponse & { readonly result?: DailyResult };
+export type Answered = AnswerResponse & {
+  readonly result?: DailyResult;
+  readonly capAt?: number;
+};
 
 /**
  * One answered round, for the share grid and share image (M5). Only what the
@@ -264,22 +284,27 @@ export interface GameState {
   /**
    * Daily Ranked: when the question on screen must be answered by
    * (`performance.now()`), for a question picked up after a refresh with its
-   * clock already running. Null otherwise.
+   * clock already running. 1v1: when the room closes the question, on every
+   * one, so the clock never runs past the server's. Null otherwise.
    */
   readonly cap: number | null;
+  /** 1v1: the cap of the question to come, held until it is dealt. */
+  readonly nextCap: number | null;
   /** Daily Ranked: the finished run's result, on the board. */
   readonly result: DailyResult | null;
   /** A request waiting to be sent again; null when all is well. */
   readonly hitch: Hitch | null;
   /** The challenge link this run came from, if any. */
   readonly challenge: Challenge | null;
-  /** Twitch Mode: the match's settings, from its start; null before it and elsewhere. */
+  /** A match's settings (Twitch Mode, 1v1), from its start; null before it and elsewhere. */
   readonly stream: StreamSettings | null;
   /**
    * Twitch Mode: the streamer's pick for the question on screen, locked in and
-   * not yet sent. It goes when the voting window closes.
+   * not yet sent. It goes when the voting window closes. 1v1: the player's
+   * pick, sent to the room as it was locked in, or `timeout` once their clock
+   * has run out; the reveal waits on the room.
    */
-  readonly locked: Guess | null;
+  readonly locked: TimedGuess | null;
   /**
    * This run was started by Play again, not the first of the page visit: its
    * title card is the quicker one.
@@ -299,8 +324,10 @@ export type GameEvent =
       readonly runId: string;
       readonly round: RoundPayload;
       readonly challenge?: ChallengeStatus;
-      /** Twitch Mode: the match's settings. */
+      /** A match's settings (Twitch Mode, 1v1). */
       readonly stream?: StreamSettings;
+      /** 1v1: when the room closes round one (`performance.now()`). */
+      readonly capAt?: number;
     }
   | { readonly type: "startFailed"; readonly failure: Failure; readonly at: number }
   /** The title card has glided into the plaque: hold there for the photos. */
@@ -319,11 +346,16 @@ export type GameEvent =
   | { readonly type: "timeout"; readonly at: number }
   /** Twitch Mode's "End voting": the window closes early, and the locked pick goes. */
   | { readonly type: "close"; readonly at: number }
+  /** 1v1: the room has revealed the question on screen; its reveal is ready to be read. */
+  | { readonly type: "revealed"; readonly at: number }
+  /** 1v1: the match is over with no reveal to play (the other player forfeited). */
+  | { readonly type: "stopped"; readonly end: RunEnd }
   | { readonly type: "answered"; readonly response: Answered; readonly at: number }
   /**
    * Daily Ranked, after a refresh: the run's question on screen and the
    * answers so far. `remainingMs` is the time its clock has left, or null
-   * for a question dealt fresh, with its whole limit.
+   * for a question dealt fresh, with its whole limit. 1v1, on coming back to
+   * a match: with its settings, and the pick already locked in, if any.
    */
   | {
       readonly type: "resumed";
@@ -332,6 +364,8 @@ export type GameEvent =
       readonly results: readonly boolean[];
       readonly remainingMs: number | null;
       readonly at: number;
+      readonly stream?: StreamSettings;
+      readonly locked?: TimedGuess;
     }
   | { readonly type: "answerFailed"; readonly failure: Failure; readonly at: number }
   /** A hitch's wait is over: send the request again. */
@@ -370,6 +404,7 @@ export function initialState(
     checkFailed: false,
     refused: null,
     cap: null,
+    nextCap: null,
     result: null,
     hitch: null,
     challenge,
@@ -391,7 +426,7 @@ export function shouldSpin(round: RoundPayload, wheel = true): boolean {
 
 /** Whether the run on screen has a wheel: core's word on its variant, or a match's pool (`hasWheel`). */
 export function wheelOf(state: Pick<GameState, "mode" | "variant" | "stream">): boolean {
-  if (state.mode === "stream") return hasWheel(state.stream?.pool ?? "endless");
+  if (isMatch(state.mode)) return hasWheel(state.stream?.pool ?? "endless");
   return state.mode !== "endless" || hasWheel(variantOf(state.variant));
 }
 
@@ -426,6 +461,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         challenge: settleChallenge(state.challenge, event),
         round: event.round,
         stream: event.stream ?? null,
+        cap: event.capAt ?? null,
       };
 
     case "titled":
@@ -478,6 +514,8 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         streak: event.results.filter(Boolean).length,
         repeat: true,
         cap: event.remainingMs === null ? null : event.at + event.remainingMs,
+        stream: event.stream ?? null,
+        locked: event.locked ?? null,
       };
       // Straight to the cards: no title card, and the stat on the plaque at once.
       return { ...fresh, phase: "dealing", round: event.round, plaque: event.round.stat };
@@ -506,9 +544,19 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         if (event.guess === "timeout") return state;
         return { ...state, locked: event.guess };
       }
+      // 1v1: locked in, once, and sent to the room as it is (controller.ts).
+      if (state.mode === "duel") {
+        if (state.phase !== "awaiting" || state.locked !== null) return state;
+        return { ...state, locked: event.guess };
+      }
       return answer(state, event.guess, event);
 
     case "timeout":
+      // 1v1: out of time is an answer too, sent like a pick; the reveal is the room's to send.
+      if (state.mode === "duel") {
+        if (state.phase !== "awaiting" || state.locked !== null) return state;
+        return { ...state, locked: "timeout" };
+      }
       return answer(
         state,
         state.mode === "stream" ? (state.locked ?? "timeout") : "timeout",
@@ -522,6 +570,35 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       if (!canEndVoting(stream.limit, event.at - clock.startedAt)) return state;
       return answer(state, state.locked ?? "timeout", event);
     }
+
+    case "revealed": {
+      // The room reveals when both have answered, or at its deadline: usually
+      // with the question waiting, but a slow page may still be dealing it.
+      if (state.mode !== "duel" || state.round === null) return state;
+      const { phase, clock } = state;
+      if (phase !== "dealing" && phase !== "spinning" && phase !== "awaiting") return state;
+      const stopped: StoppedClock | null =
+        clock === null
+          ? state.stopped
+          : {
+              remainingMs: Math.max(0, clock.limitMs - (event.at - clock.startedAt)),
+              limitMs: clock.limitMs,
+            };
+      return {
+        ...state,
+        phase: "revealing",
+        guess: state.locked ?? "timeout",
+        plaque: state.round.stat,
+        clock: null,
+        cap: null,
+        stopped,
+        count: { tappedAt: event.at, arrivedAt: null },
+      };
+    }
+
+    case "stopped":
+      if (state.mode !== "duel" || state.phase === "idle" || state.phase === "over") return state;
+      return over(state, event.end);
 
     case "answered": {
       if (state.phase !== "revealing" || state.reveal !== null || state.count === null) {
@@ -542,6 +619,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         end: "end" in response ? response.end : null,
         link: "end" in response ? (response.challenge ?? null) : null,
         result: response.result ?? null,
+        nextCap: response.capAt ?? null,
       };
     }
 
@@ -614,6 +692,8 @@ export function reduce(state: GameState, event: GameEvent): GameState {
             reveal: null,
             next: null,
             end: null,
+            cap: state.nextCap,
+            nextCap: null,
           },
           state.next,
         );
@@ -667,11 +747,12 @@ function clockFor(state: GameState, at: number | undefined): QuestionClock | nul
 
 /**
  * The limit on question `round`, ms: the mode's (`QUESTION_LIMITS`), or a
- * Twitch Mode match's chosen one on every question; null with no clock.
+ * match's chosen one on every question (Twitch Mode, 1v1); null with no clock.
  */
 export function limitOf(state: Pick<GameState, "mode" | "stream">, round: number): number | null {
-  if (state.mode === "stream") return state.stream === null ? null : state.stream.limit * 1000;
-  return questionLimit(state.mode, round);
+  const { mode } = state;
+  if (isMatch(mode)) return state.stream === null ? null : state.stream.limit * 1000;
+  return questionLimit(mode, round);
 }
 
 /** What the server made of the offered link. A refusal made before the start stands. */

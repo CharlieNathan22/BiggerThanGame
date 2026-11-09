@@ -18,9 +18,22 @@
  * player, that timer is its clock: when it runs out, the answer goes as
  * `timeout`. Starting a new run bumps a generation number, so a response or
  * timer from an abandoned run is ignored.
+ *
+ * In 1v1 the room drives what the API drives elsewhere: a pick is handed to
+ * `onLock` as it is locked in (the page sends it to the room), and the room's
+ * reveal comes in through `revealed()`, after which the API's `answer` only
+ * hands over what the room already sent (game/duel/client.ts).
  */
 
-import type { CardImage, Guess, NamedVariant, RoundPayload, StartResponse } from "@bt/core";
+import type {
+  CardImage,
+  Guess,
+  NamedVariant,
+  RoundPayload,
+  RunEnd,
+  StartResponse,
+  TimedGuess,
+} from "@bt/core";
 import { classifyFailure } from "./api";
 import type { GameApi } from "./api";
 import {
@@ -66,16 +79,30 @@ export interface ControllerDeps {
    * any, settles when it has loaded or failed.
    */
   readonly preload?: (image: CardImage | undefined) => Promise<void> | void;
+  /**
+   * 1v1: the player's pick on question `round` has been locked in, or their
+   * clock has run out (`timeout`). The page sends it to the room.
+   */
+  readonly onLock?: (round: number, pick: TimedGuess) => void;
 }
 
 type Listener = (state: GameState) => void;
 
-/** A match's settings, when the start was Twitch Mode's (stream/api.ts adds the pool). */
-function streamOf(res: StartResponse): { readonly stream?: StreamSettings } {
-  const r = res as Partial<StreamStarted>;
-  return r.pool !== undefined && r.questions !== undefined && r.limit !== undefined
-    ? { stream: { pool: r.pool, questions: r.questions, limit: r.limit } }
-    : {};
+/**
+ * A match's settings, when the start was a match's (stream/api.ts and
+ * duel/client.ts add the pool), and in 1v1 when the room closes round one.
+ */
+function streamOf(res: StartResponse): {
+  readonly stream?: StreamSettings;
+  readonly capAt?: number;
+} {
+  const r = res as Partial<StreamStarted> & { readonly capAt?: number };
+  return {
+    ...(r.pool !== undefined && r.questions !== undefined && r.limit !== undefined
+      ? { stream: { pool: r.pool, questions: r.questions, limit: r.limit } }
+      : {}),
+    ...(r.capAt !== undefined ? { capAt: r.capAt } : {}),
+  };
 }
 
 export class GameController {
@@ -126,15 +153,29 @@ export class GameController {
     this.#dispatch({ type: "close", at: this.#deps.now() });
   }
 
+  /** 1v1: the room has revealed the question on screen. Its reveal is the API's to hand over. */
+  revealed(): void {
+    this.#dispatch({ type: "revealed", at: this.#deps.now() });
+  }
+
+  /** 1v1: the match is over with nothing to reveal (the other player forfeited). */
+  stop(end: RunEnd): void {
+    this.#dispatch({ type: "stopped", end });
+  }
+
   /**
    * Daily Ranked: carries on a run after a refresh, at the question the
-   * server hands back (`POST /api/run/resume`), straight to the cards.
+   * server hands back (`POST /api/run/resume`), straight to the cards. 1v1:
+   * the same on coming back to a match, with its settings and the pick the
+   * room already holds.
    */
   resume(run: {
     readonly runId: string;
     readonly round: RoundPayload;
     readonly results: readonly boolean[];
     readonly remainingMs: number | null;
+    readonly stream?: StreamSettings;
+    readonly locked?: TimedGuess;
   }): void {
     if (this.#state.phase !== "idle" && this.#state.phase !== "over") return;
     this.#generation++;
@@ -174,6 +215,16 @@ export class GameController {
     if (after.phase !== before.phase) this.#clearTimer();
     if (after.best > before.best) this.#deps.saveBest?.(after.best);
     if (after.phase === "over" && before.phase !== "over") this.#deps.onOver?.(after);
+    // 1v1: a pick just locked in goes to the room. Not one the room handed back on a return.
+    if (
+      after.mode === "duel" &&
+      after.locked !== null &&
+      before.locked === null &&
+      event.type !== "resumed" &&
+      after.round !== null
+    ) {
+      this.#deps.onLock?.(after.round.index, after.locked);
+    }
 
     if (event.type === "answered" && "next" in event.response) {
       void this.#preload(event.response.next);
@@ -267,7 +318,7 @@ export class GameController {
         return;
 
       case "revealing": {
-        if (before.phase === "awaiting" || event.type === "retry") {
+        if (before.phase !== "revealing" || event.type === "retry") {
           const { runId, round, guess } = after;
           if (runId === null || round === null || guess === null) return;
           api.answer(runId, round.index, guess).then(

@@ -8,9 +8,10 @@ import Breadcrumb from "../../../components/Breadcrumb.astro";
 import Card from "../../../components/Card.astro";
 import Cards from "../../../components/Cards.astro";
 import ChatVsYouIcon from "../../../components/ChatVsYouIcon.astro";
+import PlayersFacingIcon from "../../../components/PlayersFacingIcon.astro";
 import { t } from "../../../i18n";
 import { MULTIPLAYER_MODES } from "../../../lib/multiplayer";
-import { MULTIPLAYER_PATH, TWITCH_PATH } from "../../../lib/paths";
+import { DUEL_PATH, MULTIPLAYER_PATH, TWITCH_PATH } from "../../../lib/paths";
 import { breadcrumbLd, breadcrumbTrail } from "../../../lib/seo";
 
 const trail = breadcrumbTrail(MULTIPLAYER_PATH);
@@ -36,6 +37,7 @@ const trail = breadcrumbTrail(MULTIPLAYER_PATH);
         wide={i === 0}
       >
         {mode.icon === "chat-vs-player" && <ChatVsYouIcon />}
+        {mode.icon === "players-facing" && <PlayersFacingIcon />}
       </Card>
     ))}
   </Cards>
@@ -46,6 +48,13 @@ const trail = breadcrumbTrail(MULTIPLAYER_PATH);
     <p class="next">
       <a class="cta" href={TWITCH_PATH}>
         {t("multiplayer.twitch.name")}
+      </a>
+    </p>
+    <h2>{t("multiplayer.duel.heading")}</h2>
+    <p>{t("multiplayer.duel.body")}</p>
+    <p class="next">
+      <a class="cta" href={DUEL_PATH}>
+        {t("duel.heading")}
       </a>
     </p>
   </article>

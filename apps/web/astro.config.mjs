@@ -10,7 +10,8 @@ export default defineConfig({
   trailingSlash: "never",
   build: { assets: "_assets", format: "file" },
   vite: {
-    // `pnpm dev` runs `wrangler dev` on :8787 alongside this server.
-    server: { proxy: { "/api": "http://localhost:8787" } },
+    // `pnpm dev` runs `wrangler dev` on :8787 alongside this server. WebSockets
+    // too: a 1v1 room's connection is `/api/room/ws`.
+    server: { proxy: { "/api": { target: "http://localhost:8787", ws: true } } },
   },
 });

@@ -170,7 +170,7 @@ export function buildStreamRun(opts: StreamRunOptions): Round[] {
 
 /** One `BandRules` object per pool and length, so the dealer's memos see the same rules each time. */
 const bandsMemo = new Map<string, BandRules>();
-function streamBandsFor(pool: StreamPool, questions: number): BandRules {
+export function streamBandsFor(pool: StreamPool, questions: number): BandRules {
   const key = `${pool}#${questions}`;
   let rules = bandsMemo.get(key);
   if (rules === undefined) bandsMemo.set(key, (rules = streamBands(pool, questions)));

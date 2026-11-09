@@ -24,7 +24,9 @@ Breaking any of these silently breaks the leaderboard. They are not preferences.
    from `/api/round/next`. `apps/web` never imports `@bt/deck`, `deck.full.json` or anything under
    `packages/deck/{dist,data}` (ESLint enforces it; the leak scan of the built site is the
    backstop). Round responses are explicitly declared DTOs — never return a `Round`, whose
-   `anchor` and `challenger` are full `Player` objects.
+   `anchor` and `challenger` are full `Player` objects. A 1v1 room's messages are held to the
+   same: built only in `worker/src/room-render.ts`, and neither the challenger's figure nor the
+   other player's pick is in any message before the reveal.
 2. **Never prefetch hidden values** — not one round ahead, not ever. Display data (names, images)
    _must_ be prefetched; values must not.
 3. **The round sequence is a pure function of the seed and mode** and must not depend on player
@@ -114,7 +116,7 @@ they record every request's IP, location, user agent and headers. Don't turn the
 
 **Gameplay analytics** — `pnpm stats` prints the start/end summary (runs started, finished,
 abandoned, score spread, win rate) for the last 7 days. Name queries to see more:
-`pnpm stats streaks endings clock friendly stats distance bands dropoff leaves replays endless daily stream latest`, or
+`pnpm stats streaks endings clock friendly stats distance bands dropoff leaves replays endless daily stream duel latest`, or
 `pnpm stats all`;
 `pnpm stats run <runKey>` lists one run's answers with the gaps between them (the run key is in
 its `run_start`/`run_end` log lines);
@@ -129,16 +131,20 @@ permission and nothing else. Keep it in `.env` only; never commit, print or past
 ## Layout and boundaries
 
 ```
-packages/core/    framework-free TypeScript. The game.
+packages/core/    framework-free TypeScript. The game. Also a multiplayer room's state
+                  machine (room.ts), its wire format (room-protocol.ts) and 1v1's deal (duel.ts)
 packages/deck/    schema, validation, build pipeline. Data is a private submodule.
 apps/web/         Astro + Svelte; Twitch Mode's chat reading and vote counting in
-                  src/game/stream/ (client only: chat never reaches the server)
+                  src/game/stream/ (client only: chat never reaches the server); 1v1's room
+                  client, connection and seat in src/game/duel/
 worker/           fetch handler: /api/round/next (Friendly), /api/run/start and /api/round/guess
                   (Endless, Daily Ranked and Twitch Mode's matches: tokens, RunDO), /api/run/resume (Daily),
                   /api/run/submit, GET /api/board/endless/:period and POST
                   /api/board/endless/me (the boards: D1, Cache API; your live rank), GET
                   /api/board/daily and POST /api/board/daily/me, /api/feedback,
-                  /api/run/leave; scheduled (the nightly snapshot and prune, and Daily's
+                  /api/run/leave; 1v1's rooms: /api/room/create, /api/room/join,
+                  /api/room/peek and the room's WebSocket, GET /api/room/ws (RoomDO, one per
+                  room, in room-do.ts); scheduled (the nightly snapshot and prune, and Daily's
                   midnight freeze)
 migrations/       D1 migrations
 scripts/          pnpm stats (Node, no dependencies)
@@ -147,7 +153,12 @@ scripts/          pnpm stats (Node, no dependencies)
 **The Worker bundles the deck from `packages/deck/dist` via `worker/src/deck.ts` and nothing else.**
 It never imports `@bt/deck` at runtime — that package reads files with `node:fs`. `@bt/deck` is for
 Worker tests only. Handler logic lives in pure functions under `worker/src/`; `worker/index.ts` is
-wiring.
+wiring, and so are the two Durable Objects, `run-do.ts` and `room-do.ts`: a room's rules are the
+state machine in `@bt/core` (`room.ts`), with the time and the questions injected.
+
+**Durable Object migrations in `wrangler.toml` are append-only.** `v1` made `RunDO` and `v2`
+`RoomDO`; never edit or remove one that has been deployed. A new class is a new tag, and an owner
+step.
 
 **`packages/core` imports nothing browser- or Worker-specific.** No `window`, no `fetch`, no
 Cloudflare types. It runs in three places — browser, Worker, Node tests — and server-side
@@ -180,6 +191,9 @@ an `if` about game rules inside a `.svelte` file, it's in the wrong place.
   and `createApp` with mocked bindings — including the response-shape test, which must never be
   weakened. **Miniflare/workerd tests arrive in Phase 5**, covering token forgery, replay, timer
   expiry and the ranked one-attempt rule, and the determinism test runs under workerd there.
+- The **room machine** (`room.ts` in `@bt/core`) is pure and gets the same treatment: every rule
+  in Node with a clock moved by hand, and the real `RoomDO` over real WebSockets under workerd.
+  The response-shape test covers every room message to every seat too.
 - Run `pnpm simulate` after any change to the deck, the ramp or the wheel, and mention what moved.
 
 ---
@@ -203,9 +217,11 @@ Also ask before:
 
 DESIGN.md §16 and ARCHITECTURE.md §18 list deferred scope. In particular: **multiplayer, other
 sports, current players, accounts, weekly and all-time boards.** They're deferred deliberately, not
-overlooked. Don't scaffold them speculatively. Multiplayer has one exception, built on request:
-Twitch Mode (a streamer against their own chat). 1v1 and Last Man Standing are "Coming soon" cards
-on the Multiplayer hub and nothing more.
+overlooked. Don't scaffold them speculatively. Multiplayer has two exceptions, each built on
+request: Twitch Mode (a streamer against their own chat) and 1v1 (two friends in a private room,
+by invite link or code). Last Man Standing is a "Coming soon" card on the Multiplayer hub and
+nothing more: the room engine is shaped for it, but don't build it, random matchmaking or any
+board for a room's results until asked.
 
 ---
 

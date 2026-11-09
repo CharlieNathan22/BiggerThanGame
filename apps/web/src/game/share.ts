@@ -24,6 +24,7 @@ import { CHALLENGES, challengeOutcome, streakTitle } from "@bt/core";
 import type { ChallengeLink, ChallengeOutcome, NamedVariant, Tier } from "@bt/core";
 import { statLabel, t } from "../i18n";
 import { challengeUrl } from "./challenge";
+import { isMatch } from "./machine";
 import type { EndReason, GameState, RoundRecord } from "./machine";
 import { overCaption, scoreFigure } from "./view";
 import { asPlay, playId, playPath } from "./variant";
@@ -168,7 +169,7 @@ export function scoreText(score: number, play: PlayLike, end: EndReason | null =
 export function titleText(score: number, play: PlayLike): string {
   const { mode } = asPlay(play);
   // A Twitch Mode match has no streak titles: it is scored for both sides.
-  if (mode === "stream") return "";
+  if (isMatch(mode)) return "";
   const title = streakTitle(score, mode);
   return title === undefined ? "" : t(`title.${title.id}`);
 }
@@ -280,7 +281,7 @@ export function challengeText(
   variant?: NamedVariant,
 ): string | null {
   const { mode, theme } = asPlay(play);
-  if (mode === "ranked" || mode === "stream" || !CHALLENGES[mode] || link === null) return null;
+  if (mode === "ranked" || isMatch(mode) || !CHALLENGES[mode] || link === null) return null;
   return t("challenge.share", {
     heading: challengeHeading(link.score, play),
     url: challengeUrl(site, link, playPath(playId(mode, variant), theme)),

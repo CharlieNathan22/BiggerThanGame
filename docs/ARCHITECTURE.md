@@ -89,6 +89,9 @@ bucket — see section 9.
 │   │   ├── wheel.ts       # tier-weighted stat selection, correlated-pair exclusion
 │   │   ├── sequence.ts    # deterministic round sequence from a seed
 │   │   ├── api.ts         # /api/round/next request and response types, shared with the web app
+│   │   ├── duel.ts        # 1v1: the deal, its limits, its seed domain and deadline
+│   │   ├── room.ts        # a multiplayer room's state machine, and 1v1's rules (pure)
+│   │   ├── room-protocol.ts # a room's wire format: HTTP bodies, socket messages, codes
 │   │   └── types.ts
 │   └── deck/
 │       ├── data/          # private submodule, organised by deck type
@@ -132,8 +135,13 @@ bucket — see section 9.
 │   │   ├── moderation.ts  # the nickname blocklist check; blocklist-data.ts holds hashes only
 │   │   ├── shadow.ts      # the timing heuristics
 │   │   ├── stream.ts      # Twitch Mode: a match's start and guess (`stream`)
-│   │   └── stream-ledger.ts # a match's Durable Object's rules
-│   └── run-do.ts          # Durable Object: wiring over run-ledger.ts, daily-ledger.ts and stream-ledger.ts
+│   │   ├── stream-ledger.ts # a match's Durable Object's rules
+│   │   ├── room.ts        # 1v1: /api/room/create, /join and /peek as pure functions
+│   │   ├── room-host.ts   # a room between its state machine and its Durable Object: state, deal, render
+│   │   ├── room-render.ts # a room's outputs → the messages each seat gets
+│   │   └── room-analytics.ts # a room's events → data points and log lines (§19)
+│   ├── run-do.ts          # Durable Object: wiring over run-ledger.ts, daily-ledger.ts and stream-ledger.ts
+│   └── room-do.ts         # Durable Object: one per 1v1 room; sockets, storage and the alarm over room-host.ts
 ├── migrations/            # D1 migrations (wrangler d1 migrations)
 ├── scripts/
 │   ├── stats.ts           # pnpm stats — the saved Analytics Engine queries (§19)
@@ -433,6 +441,8 @@ seed(squad:<theme id>, runId)
 seed(friendly, runId)  = HMAC-SHA256(RUN_SECRET, "friendly:" + runBody)
 seed(stream, pool, runId)
                        = HMAC-SHA256(RUN_SECRET, "stream:<pool>:" + runBody)
+seed(duel, pool, matchId)
+                       = HMAC-SHA256(RUN_SECRET, "duel:<pool>:" + matchId)
 ```
 
 **Endless variants** (DESIGN.md §3, `ENDLESS_VARIANTS` in `@bt/core`) each derive their seed under
@@ -464,6 +474,16 @@ match's questions; DESIGN.md §8), in place of the pool's schedule and pair rule
 option `buildRun` is unchanged, and the sequence-level `Mode` and every table keyed by it are
 untouched, so every other mode's golden fingerprint holds. Matches have their own goldens
 (`stream.test.ts` in @bt/core).
+
+**1v1** (DESIGN.md §3, `duel.ts` in @bt/core) deals a match as Twitch Mode does, by the same
+match bands for its pool and length (`streamBandsFor`), under a domain of its own,
+`"duel:" + pool + ":"`: the same bands, never the same deal. Its seed's other half is the
+**match id**, `YYYYMMDD-<uuid>`, minted by the room when a match starts (a rematch is another),
+whose date is the deal's reference `now` as a run id's is. Both players are dealt from the one
+seed, so they get the same questions. `buildDuelRun` also carries the deal past the match's
+questions for sudden death (`RunOptions.extraRounds`): the rounds up to the match's length are
+the same with or without it (a test holds it), `buildRun` is unchanged without the option, and
+every other mode's golden fingerprint holds. A match has its own goldens (`duel.test.ts`).
 
 Ranked's seed depends only on the game number, so **every player gets the same sequence** — that is what
 makes the board comparable. Endless and Friendly are per-run.
@@ -1049,6 +1069,205 @@ result token. `/api/run/submit` refuses a match's token with `400 no_boards` (re
 `submit`) before its Durable Object, Turnstile or D1 are touched. The page sends no leave beacon
 for a match (it is often hidden while streamed) and offers no correction form.
 
+### 1v1 rooms
+
+1v1 (`duel`, DESIGN.md §3) is the one mode where the server speaks first: both players must get
+the same question at the same moment, and the reveal when both have answered. So it runs on a
+**room**: one Durable Object per room, holding both players' WebSockets, a pure state machine,
+and its own clocks. Last Man Standing will be other rules over the same engine.
+
+**A class of its own, `RoomDO`** (`worker/room-do.ts`, binding `ROOMS`), not another table in
+`RunDO`. A run's object is reached by RPC under its run key, once per answer, and its alarm is
+already shared between three ledgers. A room is reached by its code, holds sockets, outlives any
+one match, and its alarm means other things. Keeping them apart keeps every existing mode's alarm
+path untouched, and room codes and run keys in separate namespaces. The cost is one Durable
+Object migration, **`v2`** (`new_sqlite_classes = ["RoomDO"]` in `wrangler.toml`), applied by the
+next deploy: an owner step, below.
+
+**The layers**, each testable without the one above it:
+
+| Layer                         | What it is                                                                                           |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `room.ts` (@bt/core)          | the state machine: `step(state, input, deps) → { state, out }`, and `wakeAt(state)`. Pure.           |
+| `room-protocol.ts` (@bt/core) | the wire format: the three HTTP bodies, the versioned socket messages, the codes, the strict parser. |
+| `duel.ts` (@bt/core)          | the deal (`buildDuelRun`), the three limits, the seed domain, the deadline.                          |
+| `worker/src/room-host.ts`     | the machine with what it is kept from: the stored state, the deal (from the deck), the rendering.    |
+| `worker/src/room-render.ts`   | the machine's outputs as messages for each seat, built with `payload.ts`. A `Round` never leaves.    |
+| `worker/src/room.ts`          | the HTTP handlers: create, join, peek. Pure functions of the request.                                |
+| `worker/room-do.ts`           | wiring only: sockets (hibernation API), storage, the alarm.                                          |
+
+**The machine** (`lobby → playing → full time → [rematch → playing …] → closed`) is built for 2 to
+10 players with the mode's rules injected (`RoomRules`: how many play, what follows each reveal,
+who wins on a forfeit). `DUEL_RULES` is 1v1's; nothing in the machine says "two". It reads no
+clock, socket or deck: **the time comes in on every input**, and the questions come through
+`deps.facts`, which says only which way a question goes and whether the wheel spins. Its state is
+JSON all the way down (the object stores it as one row) and `step` never changes the state it is
+given.
+
+- **Inputs:** `join`, `connect`, `disconnect`, `ready`, `start`, `answer`, `rematch`, `leave`, and
+  `tick` (the alarm: nothing but the time).
+- **Time first.** Before any input is read, whatever was due by its `now` happens (`passTime`): a
+  question whose deadline has passed is revealed, a player away too long forfeits, an idle room
+  closes. So an answer that arrives after its deadline finds the question already revealed and is
+  refused, whether or not the alarm had fired.
+- **Out of turn is refused, and changes nothing:** an answer to another question or after the
+  reveal, a second answer, a start from the guest or before everyone is connected and ready, a
+  rematch outside full time or with a player gone, anything from a seat nobody holds. Each gets a
+  code (`out_of_turn`, `not_host`, `not_ready`, `opponent_left`, `bad_token`).
+- **Outputs** are abstract (`question`, `locked`, `reveal`, `players`, `fulltime`, `rematch`,
+  `refused`, `closed`, and `record` for analytics): the host renders them per seat.
+- **Scoring and sudden death** are the rules' `settle`, asked after every reveal: play on, or the
+  result. 1v1 plays every question; level after the last it plays on until the scores differ,
+  `SUDDEN_DEATH_MAX` (10) questions at most, then a draw; if the pool can deal no more, the higher
+  score wins and a level one is a draw.
+
+**The deal.** A match is `buildDuelRun`: Endless's engine on the pool's variant, by **Twitch
+Mode's match bands** for the pool and length (`streamBandsFor`, the same memoised objects, so the
+squad memo sees one schedule), cut at the match's questions plus `SUDDEN_DEATH_MAX`
+(`RunOptions.extraRounds`; a question past the match's own falls in the bands' last row). Its seed
+is `HMAC(RUN_SECRET, "duel:<pool>:" + matchId)` (§7), the match id (`YYYYMMDD-<uuid>`) minted by
+the room when the match starts, so a rematch is another deal. **The deal is never stored**: only
+the match id is, and the rounds are rebuilt from it (a few milliseconds) whenever the object has
+slept. The machine is only ever told which way each question goes.
+
+**The clock is the room's.** Each question has one deadline for both players,
+`duelDeadline(issuedAt, index, statChanged, limit, pool)`: the usual animation allowance (§8
+above, no spin for Instagram), the room's limit and the 3 s grace. A question's message carries
+`closesInMs`, the deadline less the grace, relative to when it was sent; the page caps its own
+clock at it (the machine's `cap`, as a resumed Daily question is capped). The reveal and the next
+question travel **in one message**, as Endless's guess response carries both, so the next
+question's allowance already covers the reveal's animation and the page's machine plays it as it
+plays any other mode's.
+
+**HTTP** (`worker/src/room.ts`), all behind the flood limit:
+
+```jsonc
+// POST /api/room/create
+→ { "pool": "endless", "questions": 10, "limit": 20, "name": "Ada", "turnstileToken": "…" }
+← { "code": "K7QM2X", "token": "…", "settings": { "mode": "duel", "pool": "endless",
+    "questions": 10, "limit": 20 }, "name": "Ada" }
+// POST /api/room/join
+→ { "code": "K7QM2X", "name": "Sam", "turnstileToken": "…" }
+← the same shape, the guest's token
+← 409 { "error": "conflict", "detail": "full" | "name_taken" | "closed" }
+// POST /api/room/peek: what an invite link opens on
+→ { "code": "K7QM2X" }
+← { "state": "open", "host": "Ada", "settings": { … } } | { "state": "full" } | { "state": "closed" }
+```
+
+- **Create**, in order: a run start against the IP (`RUN_STARTS`); strict parsing (`limit` one of
+  `DUEL_LIMITS`, 10, 20 or 30: Twitch Mode's minute is `400`); the pool known to the deck and the
+  length capped (`duelQuestions`); the name's form (`400 nickname_<problem>`) and the blocklist
+  (`422 nickname_rejected`); Turnstile; then the room's own key, its code and the host's player id
+  are minted and the room made. A code already held by a live room is tried again a few times
+  (`503 codes` if every one is taken).
+- **Join**: the same limiter and name checks, **Turnstile before the room is touched** (a wrong
+  code gets the same answer as a right one until a check has been solved), then the seat.
+- **Peek** costs a run start and no Turnstile. It says whose lobby it is and what it plays, and
+  nothing else.
+- **Room codes** (`roomCodeFrom`): six characters of `23456789BCDFGHJKMNPQRSTVWXYZ`, from
+  `crypto.getRandomValues`, each byte used only if it falls evenly on the alphabet. The object is
+  named by the code (`ROOMS.idFromName(code)`); a code is free again once its room has closed.
+
+**The seat token** (`signRoomToken`, `token.ts`): the progress token's shape and signature under
+its own prefix, `"room-token:"`, `{ v, room, seat, player }`, parsed strictly. `room` is the
+**room's own key** (`YYYYMMDD-<uuid>`, minted at create), never its code: a token is no use in
+another room, nor in a later room that gets the same code. `player` is a random id only the server
+and the token know; the room checks it still holds that seat (`RoomHost.admit`), so a seat given
+up (a leave, a forfeit) can't be taken back. It is not single-use: it is what a player comes back
+with, so the page keeps it in `localStorage` under `bt:room:<code>` (§14).
+
+**The socket**: `GET /api/room/ws?code=<code>` with `Upgrade: websocket`, checked by the Worker
+(the flood limit, the code's shape, and an `Origin` that names this host), then handed to the
+room's object. Messages are JSON, versioned (`v: 1`), and **codes only, never English**:
+
+| Client → server      | Meaning                                                       |
+| -------------------- | ------------------------------------------------------------- |
+| `hello { token }`    | first on every connection: the seat's token                   |
+| `ready { ready }`    | the lobby's toggle                                            |
+| `start`              | the host's, once both are connected and ready                 |
+| `answer { q, pick }` | `higher`, `lower`, or `timeout` when the page's clock ran out |
+| `rematch`, `leave`   | at full time; any time                                        |
+| `ping` (plain text)  | the heartbeat, answered `pong` without waking the object      |
+
+| Server → client                                            | Meaning                                                                                 |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `welcome { you, room }`                                    | the whole room for this seat: enough to draw any screen, and to pick a match up mid-way |
+| `players { phase, players }`                               | someone joined, left, readied, dropped or came back                                     |
+| `question { question }`                                    | a match's first question: a `RoundPayload`, `limitMs`, `closesInMs`, `suddenDeath`      |
+| `locked { seat }`                                          | a player has answered. Never which way.                                                 |
+| `reveal { reveal, picks, correct, scores, next? \| end? }` | the answer and both picks, then the next question or the result and the series          |
+| `fulltime { result, series, players }`                     | a match ended without a reveal: a forfeit                                               |
+| `rematch { seats }`, `closed { reason }`, `error { code }` | who has asked; goodbye, and why; a refusal                                              |
+
+- **Strict** (`parseClientMessage`): the version, a known type, exactly that type's keys, a size
+  cap. Anything else is `error bad_message`; from a socket that hasn't said `hello`, the door.
+- **Nothing hidden before a reveal.** A question is the `RoundPayload` every other mode sends, the
+  challenger's figure withheld. A pick shows as `locked`, the seat alone; a `welcome` gives a
+  player their own pick back and only the seats of who else has locked in. The challenger's figure
+  and the picks arrive together in `reveal`, whose `correct` is the reader's own. The
+  response-shape test and the leak scanner hold every message to every seat to it (§15).
+- **One connection a seat.** A newer `hello` for a seat takes it over; the older socket is told
+  `closed replaced` and hung up on (close code 4001). Close codes 4000 (closed), 4001 and 4002
+  (refused) mean "don't come back"; any other close is a drop, and the page reconnects.
+- **A message budget** per socket, counted in the object, sheds a flood; the numbers are in the
+  code.
+
+**Hibernation.** The object accepts sockets with `ctx.acceptWebSocket`, so it sleeps between
+messages with its sockets held open by the platform, and the heartbeat is an auto-response
+(`setWebSocketAutoResponse`) that never wakes it. What a socket is, it carries in its attachment:
+its seat once admitted, and when it was last heard from. An idle room costs almost nothing.
+
+**Alarms: nothing depends on a client being there.** After every step the alarm is set to
+`wakeAt`: the open question's deadline; in a match, a dropped player's `awaySince + REJOIN_MS`
+(30 s), after which they forfeit; otherwise the room's expiry, below. While anyone is connected
+it is also set to a sweep, a minute off at most, which drops a socket that has gone quiet (no
+message and no heartbeat: a phone that lost its signal never says goodbye) and one that never
+said `hello`. Every alarm sweeps, so the sweep's own minute only matters in the lobby and at
+full time: a match has an alarm for each question's deadline and each rejoin window, and those
+come sooner.
+
+- **Expiry: two clocks, outside a match only** (`roomExpired` in `room.ts` is the one
+  statement of the rule; the invite link's peek reads the same function, so a link opened just
+  before the alarm fires gets the same answer).
+  - `lastActivity + ROOM_IDLE_MS` (15 minutes), **only while nobody is connected**.
+    `lastActivity` moves to the moment a player disconnects, so the 15 minutes run from when
+    the room emptied; a host waiting in the lobby keeps the room.
+  - `lastAction + ROOM_QUIET_MS` (2 hours), **whoever is connected**. `lastAction` is the last
+    thing a player chose to do: create, join, ready, start, answer, rematch. A connection
+    coming or going doesn't move it, nor does a refused message, nor the `timeout` a page sends
+    by itself when its clock runs out. This is the cap on a tab left open: without it a
+    forgotten page would hold a room, and its sweep, for ever.
+
+  A socket still connected when the room closes this way gets `closed` with `expired` like
+  anyone else, and the page shows its closed screen.
+
+- **Presence is checked, not believed.** Because being connected holds a room open, the sweep
+  also **reconciles** it (`RoomHost.reconcile`): a seat the state says is connected with no
+  live socket (a deploy drops every socket without a close reaching the object) is marked
+  away. The sweep stays scheduled for as long as the room has a socket or believes a seat is
+  connected, so that check always comes. It keeps its own due time, stored with the room: set
+  when a sweep first becomes needed and again by each alarm, never by the messages and
+  connections in between, which would otherwise put it off for as long as the room stayed busy.
+
+- **Away is only a status in the lobby and at full time**: no timer runs, the seat is kept, and
+  only Leave or the room's expiry ends anything. **Only in a match** does being away count down.
+  A rematch that starts while a player is away gives them their 30 seconds from its start.
+- **Closed means gone**: the sockets are told why and hung up on, and the object deletes its
+  storage and its alarm. A code that names no room, an expired one and a closed one are the same
+  thing to a caller: `closed`.
+
+**Owner steps** (nothing here is done by a build or a test):
+
+1. **Deploy applies Durable Object migration `v2`**, which creates `RoomDO`. It can't be applied
+   on its own and can't be undone by removing it: once it has run, never edit or delete it, and
+   retire the class with a later migration if ever needed. No D1 migration, and no new secret
+   (`RUN_SECRET` and `TURNSTILE_SECRET` are reused).
+2. Check the account's plan supports SQLite-backed Durable Objects and WebSocket hibernation (the
+   free plan does, as it does for `RunDO`).
+3. If a `Content-Security-Policy` is ever added, `connect-src` needs the site's own `wss:`
+   origin for `/api/room/ws`.
+
 ### Disconnection
 
 Offline continuation is impossible by construction: the client does not hold the next value and
@@ -1059,6 +1278,10 @@ latest token in memory, so the run can still be published (`publishToken()`). On
 Object closes it as `disconnected` a few seconds past the deadline, with the same streak. A `409`
 (a spent or out-of-order token) banks the run the same way. There is no "unranked offline mode" —
 there is nothing to play offline with.
+
+1v1 is the exception in kind, not in principle: nothing is played offline, but **a player can come
+back**. The room holds the match, so a dropped player has 30 seconds to reconnect with their seat's
+token while the clock keeps running, and what they missed is wrong ("1v1 rooms", above).
 
 ---
 
@@ -1364,6 +1587,14 @@ player's own row comes from `/api/board/daily/me`, never cached.
 - **Twitch Mode** reuses the same bindings too: `ROUND_FLOOD` and `RUN_STARTS` (then Turnstile) on
   a match's start, `RUN_ANSWERS` on each guess keyed on the match. A 60-second window is far
   slower than an Endless answer, so no limit needs changing, and there is no new one.
+- **1v1's rooms** reuse the same bindings again, and add none: `ROUND_FLOOD` on every room
+  request and on the socket's upgrade, and `RUN_STARTS` per IP on create, join and peek, counted
+  before any other work. Create and join each also cost a **Turnstile** pass, asked before the
+  room's Durable Object is touched, so a room code can't be guessed at speed: every try costs a
+  solved check and a start, and a wrong code is answered no differently from a right one until it
+  has. Inside a room, each socket has a message budget of its own (in the code), and a seat needs
+  its signed token. Names get the leaderboards' checks (below); they are shown to one other
+  person, kept only in the room's own storage until it closes, and never logged.
 - **Feedback** (`/api/feedback`, §8) is rate-limited, checked before any other work, as well as
   protected by Turnstile. Nothing it receives reaches a response.
 - **Rate limits** per IP: Endless run starts, submissions (`RUN_SUBMITS`, sized so a classroom
@@ -1520,6 +1751,7 @@ and the board pages. **Svelte** hydrates one island: the game, on its own page. 
 | `/football-higher-or-lower/legends/daily/leaderboard`   | Daily Ranked's board: today's game                  | an island                       |
 | `/football-higher-or-lower/legends/multiplayer`         | the Multiplayer hub: a card per multiplayer mode    | none                            |
 | `/football-higher-or-lower/legends/multiplayer/twitch`  | the game (Twitch Mode)                              | the island                      |
+| `/football-higher-or-lower/legends/multiplayer/1v1`     | the game (1v1); `?room=<code>` is an invite link    | the island                      |
 | `/about`, `/credits`, `/privacy`                        | the stats and how to play; credits; privacy         | none                            |
 
 - The game island is `client:load`, not `client:visible` — it is above the fold and the first
@@ -2018,6 +2250,58 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   - **Privacy**: chat goes from Twitch to the streamer's browser and nowhere else. No message,
     viewer name or user id is stored, logged or sent; only the pick and the count per question
     reach the server, as telemetry (§19). The privacy page says so.
+- **1v1 on the game page** (`mode="duel"`, the same island; logic in `apps/web/src/game/duel/`,
+  components in `components/duel/`):
+  - **The room drives the game.** Everywhere else the page asks and the server answers; here the
+    room speaks first. `duel/client.ts` (`DuelClient`) turns its messages into what the
+    controller already understands: a match's first `question` starts a run, whose API `start`
+    hands that question over; a `reveal` is kept, the controller is told (`revealed()`), and the
+    API's `answer` hands it over with the next question or the end, the shape every mode's answer
+    has. So `controller.ts` plays a 1v1 match with the same phases, timings and reveal as any
+    other, and never makes a request.
+  - **The machine** (`machine.ts`, mode `duel`): a pick is locked in (`locked`, as Twitch Mode's
+    is) and handed to the page to send at once (`onLock`); the clock running out locks in
+    `timeout`. Neither answers the question. `revealed` moves to the reveal with whatever was
+    locked; `stopped` ends a match with no reveal (a forfeit); `resumed` picks a match up at the
+    room's question with its settings and any pick the room already holds. The clock is capped at
+    the room's deadline on every question (`cap`, from `closesInMs`).
+  - **The room is always right.** On every `welcome` and every `reveal`, if the game on screen is
+    not on the room's question (a page that slept through one), it is moved there (`#sync`)
+    rather than left to play out something stale. A pick made while the connection was down is
+    sent again when the room's snapshot doesn't have it.
+  - **The connection** (`duel/socket.ts`, `RoomSocket`): `hello` first, connected only once
+    welcomed. It reconnects by itself with a short capped backoff, **for as long as the room
+    hasn't said goodbye**: in the lobby and at full time there is no limit (a player away keeps
+    their seat), and in a match the page counts down the room's 30 seconds from when it dropped
+    while the socket keeps trying. **It reconnects at once when the player comes back**:
+    `visibilitychange` to visible, `online` and `pageshow` cancel any wait and connect straight
+    away, and a socket that looks alive is probed and replaced if the room doesn't answer, since
+    a phone returning from another app often holds a dead one. A heartbeat finds a connection that
+    died quietly. Socket, timers, clock, randomness and page events are injected.
+  - **The seat** (`duel/session.ts`): the room's token in **`localStorage`** under
+    `bt:room:<code>`, not `sessionStorage`, so the invite link opened again in a new tab, or after
+    the browser killed the tab, finds it. The page tries a kept seat before it looks at the room
+    or offers Join, so a returning player never meets "This room is full". It is cleared when the
+    room closes, when the player leaves or forfeits, and when the room refuses it (the page then
+    falls back to looking at the room and joining); not when another tab of the player's took the
+    seat over. With storage blocked it lasts the visit, in memory.
+  - **The page**: the setup (`DuelSetup.svelte`: create or join, the pool picker itself from
+    `components/stream/PoolPicker.svelte`, the name with its shuffle, the code), the lobby
+    (`DuelLobby.svelte`), a strip over the pitch with both scores, the other player locking in
+    and both connections (`DuelHud.svelte`), the two-row track (`DualTrack.svelte`, Twitch Mode's,
+    with this player's row on top and sudden death's questions as further segments), full time
+    (`DuelResult.svelte`) and a room that has gone (`DuelClosed.svelte`). The scoreboard and the
+    track hold a question's result back until its reveal has played (`beforeReveal`), so the score
+    never gives an answer away. Create and join each run the setup's own Turnstile widget, a fresh
+    token each time, as every start does. The settings are remembered under `bt:duel:pool`,
+    `bt:duel:length` and `bt:duel:timer`; `?pool=<theme slug>` preselects; the room's code goes
+    into the address (`?room=`) so a refresh comes back to it.
+  - **Announcements**: one live region says the question, then each reveal in full (the figure,
+    both picks and verdicts, the score); a second says the other player locking in, dropping out
+    and coming back, once each. The strip's countdowns are not live regions.
+  - **Under `pnpm dev`** the Vite proxy carries WebSockets too (`ws: true`), so the room's socket
+    reaches `wrangler dev` like every `/api` call. There is no dev-only tool for 1v1: a tie is
+    forced by both players picking the same way.
 - **All visible game text is in `apps/web/src/i18n/en.ts`**, a flat keyed object with
   `{placeholder}` interpolation (`t()`). Components hold no user-facing string literals. Another
   language is another file with the same keys; there is no language switching yet.
@@ -2084,6 +2368,32 @@ lang="en-GB">`; the page's own title and meta description; an absolute canonical
   source over a fake socket (`stream-chat.test.ts`), the scoring, share and settings
   (`stream-match.test.ts`), and the controller with fake Turnstile and server
   (`stream-play.test.ts`).
+- **1v1:** in Node, the room machine with fixed questions and a clock moved by hand
+  (`room.test.ts` in @bt/core: creating, joining, a full room, names that differ only in case,
+  ready and start, both answering early, one answering and the deadline passing, no answers,
+  sudden death to a winner and to the ten-question draw, the pool running out, coming back within
+  30 seconds, the forfeit after it, a host five minutes away from the lobby returning to the same
+  room, a start refused while the guest is away, the host and the guest leaving, rematches and the
+  series, expiry, and every out-of-turn input refused with the state unchanged); the wire format
+  (`room-protocol.test.ts`: the code alphabet, strict parsing); the dealer and its goldens
+  (`duel.test.ts`: the same questions for both, each pool's players only, a squad never repeating,
+  the caps, sudden death in the last row, and every other mode's runs unchanged); the handlers,
+  the seat token and whole matches through the host (`worker/src/__tests__/room.test.ts`: strict
+  bodies, only the three limits, Turnstile before the room, moderation, the limiter, a taken code,
+  forged and edited tokens, another room's token, a reused code's old token, a seat given up); the
+  **response-shape test** over every message to every seat across whole matches on every pool
+  (`response-shape.test.ts`, "1v1 room messages": key whitelists, where a number may appear, the
+  leak scanner, no figure or pick before its reveal), which must never be weakened either; and the
+  recorded events, with no names. Under workerd, the real `RoomDO`: a whole match over **two real
+  WebSockets** with a disconnect and a rejoin, the alarm closing a question, a rematch and a
+  forfeit; a seat taken over by a newer socket and forged tokens refused; an unknown room; the
+  alarm expiring an idle room and deleting it; and a match's seed dealing the same rounds as in
+  Node. In the web app: the connection over a fake socket (`duel-socket.test.ts`: reconnecting
+  without limit, at once on visibility and online, no duplicate sockets, a stale socket replaced,
+  a goodbye final), the seat kept on the device (`duel-session.test.ts`: a new tab restoring it,
+  cleared on closed, leave and forfeit, storage blocked), the room's view and its words
+  (`duel-room.test.ts`, the share text included), and the controller driven by a fake room
+  (`duel-play.test.ts`).
 - **Latency:** test the reveal under artificial delay (0ms, 200ms, 800ms, 3s). The count-up must
   hold and settle rather than snap or freeze, and no image fetch may occur inside the reveal window.
   In Endless the question's clock must not run while the answer is in flight, and the next
@@ -2132,8 +2442,10 @@ moderation were complete (Phase 6A); Daily Ranked (Phase 6B) followed on the sam
 
 - **Accounts.** The real fix for the one-attempt rule and for cross-device history.
 - **Multiplayer**, beyond Twitch Mode (which needs no lobby: chat is read in the streamer's
-  browser). For 1v1 and Last Man Standing, a Durable Object per lobby is the canonical pattern
-  when they arrive; the DO namespace introduced here is a useful precedent.
+  browser) and 1v1 (§8, "1v1 rooms"). **Last Man Standing** is the same room engine with other
+  rules (`RoomRules`: up to ten seats, a miss eliminating a player rather than costing a point);
+  the machine, the protocol, the Durable Object and the page's connection are already shaped for
+  it. Not built: random matchmaking, spectators, and any board for a room's results.
 - **Weekly and all-time boards for Ranked.** Endless has today, this week and this month
   (DESIGN.md §13, §14); no all-time board.
 
@@ -2196,6 +2508,10 @@ has `level`, `message`, `event` and `route`; most have a `reason`. `message` is 
 lists as the line:
 
 - `run_start`, `run_end`, `run_resume`, `run_leave` or `run_submit` for the run lines, exactly;
+- `room_create`, `match_start` or `match_end` for a 1v1 room's lines (`room-analytics.ts`), with
+  `mode: "duel"`, the pool, the questions, the limit and the room's key (never its code), and on
+  an end the reason, the higher and the lower score and the sudden-death questions played. Never
+  a name;
 - `nightly` for the cron's line;
 - `Legend suggested`, `Problem reported` or `Card error reported` for an accepted feedback message;
 - `<event> · <reason>` for a refusal or failure, e.g. `bad_request · invalid_json`, or the event
@@ -2444,6 +2760,17 @@ data points are exactly as before. Split the squads by `blob10`.
   double5 the peak voters on one question. Counts only: no message, name or id from chat. Its
   `run_start` and `run_end` lines say `"mode": "stream"` with `pool`, `questions` and `limit`, and
   `run_end` adds `chatScore` and `peakVoters`.
+
+- **1v1** (`duel` in blob2, written by `room-analytics.ts`) has events of its own, in the same
+  columns: `index1` is the **room's key** (never its code, which is how a room is joined); blob1
+  is `room` (a room made), `start` (a match started) or `end`; blob3 is `rematch` for a match
+  after a room's first, else `fresh`; blob5 the host's country as the room was made; blob10 the
+  theme id for a squad pool and blob11 the pool. `room` has double1 the questions and double2 the
+  limit; `start` adds double3 the match's number in the room; `end` has blob6 how it ended
+  (`finished`, `sudden-death`, `draw`, `exhausted`, `forfeit`), double1 the **higher** score and
+  double2 the lower (never whose), double3 the questions, double4 the limit, double5 the
+  sudden-death questions played and double6 the match's number. No answer events, and **no
+  names**: nothing a player typed reaches the dataset or a log line.
 
 **What the numbers can and can't say.** Friendly is stateless (§7): a resent answer is judged and
 recorded again, and a technical caller can answer rounds out of order or without ever starting.
@@ -2778,6 +3105,33 @@ WHERE blob2 = 'stream'
   AND timestamp > NOW() - INTERVAL '7' DAY
 GROUP BY pool, questions, limit_s
 ORDER BY matches DESC
+```
+
+**1v1: rooms and matches** (`duel`): per pool, length and timer, rooms made, matches started and
+finished, how many were rematches, went to sudden death, were drawn or were forfeited, and the
+mean winning and losing scores.
+
+```sql
+SELECT
+  blob11 AS pool,
+  if(blob1 = 'end', double3, double1) AS questions,
+  if(blob1 = 'end', double4, double2) AS limit_s,
+  sumIf(_sample_interval, blob1 = 'room') AS rooms,
+  sumIf(_sample_interval, blob1 = 'start') AS started,
+  sumIf(_sample_interval, blob1 = 'start' AND blob3 = 'rematch') AS rematches,
+  sumIf(_sample_interval, blob1 = 'end') AS finished,
+  sumIf(_sample_interval, blob1 = 'end' AND double5 > 0) AS sudden_death,
+  sumIf(_sample_interval, blob6 = 'draw' OR (blob6 = 'exhausted' AND double1 = double2)) AS draws,
+  sumIf(_sample_interval, blob6 = 'forfeit') AS forfeits,
+  round(sumIf(_sample_interval * double1, blob1 = 'end')
+    / sumIf(_sample_interval, blob1 = 'end'), 1) AS winner_mean,
+  round(sumIf(_sample_interval * double2, blob1 = 'end')
+    / sumIf(_sample_interval, blob1 = 'end'), 1) AS loser_mean
+FROM biggerthan_game_events
+WHERE blob2 = 'duel'
+  AND timestamp > NOW() - INTERVAL '7' DAY
+GROUP BY pool, questions, limit_s
+ORDER BY rooms DESC
 ```
 
 **Latest 50 starts and ends** (`latest`): newest first, for a look at what's happening now. The

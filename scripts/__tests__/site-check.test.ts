@@ -401,6 +401,7 @@ describe("the themes' pages", () => {
 describe("the Multiplayer pages", () => {
   const MULTIPLAYER = "/football-higher-or-lower/legends/multiplayer";
   const TWITCH = `${MULTIPLAYER}/twitch`;
+  const DUEL = `${MULTIPLAYER}/1v1`;
 
   it("index the hub with a breadcrumb, and Twitch Mode as a game page, with the default preview", () => {
     const expect_ = siteExpectations(["/og-image.png"]);
@@ -408,6 +409,28 @@ describe("the Multiplayer pages", () => {
     expect(expect_.structuredData[TWITCH]).toEqual(["BreadcrumbList", "VideoGame"]);
     expect(expect_.previewImages?.[TWITCH]).toBeUndefined();
     expect(expect_.playModes?.[TWITCH]).toBe("MultiPlayer");
+  });
+
+  it("index 1v1 as a game page of its own, MultiPlayer, with the default preview", () => {
+    const expect_ = siteExpectations(["/og-image.png"]);
+    expect(expect_.structuredData[DUEL]).toEqual(["BreadcrumbList", "VideoGame"]);
+    expect(expect_.previewImages?.[DUEL]).toBeUndefined();
+    expect(expect_.playModes?.[DUEL]).toBe("MultiPlayer");
+    // It must be built: the checks say so when it isn't.
+    expect(checkPages(site({}), expect_)).toContain(`${DUEL}: expected, but not built`);
+  });
+
+  it("hold 1v1's canonical to its own page, whatever room the link carried", () => {
+    const multi = { ...GAME, playMode: "https://schema.org/MultiPlayer" };
+    const expect_ = { ...EXPECT, playModes: { "/game": "MultiPlayer" as const } };
+    // A canonical that carried a room's code would be a page of its own to index.
+    const wrong = site({
+      "/game": {
+        ld: [WEBSITE, TRAIL, multi],
+        canonical: "https://biggerthangame.com/game?room=K7QM2X",
+      },
+    });
+    expect(checkPages(wrong, expect_).join("\n")).toMatch(/canonical/);
   });
 
   it("hold Twitch Mode's game to MultiPlayer, and every other to SinglePlayer", () => {

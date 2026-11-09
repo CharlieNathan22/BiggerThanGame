@@ -108,6 +108,19 @@ class_name = "RunDO"
 tag = "v1"
 new_sqlite_classes = ["RunDO"]
 
+# One Durable Object per 1v1 room (worker/room-do.ts, ARCHITECTURE.md §8),
+# named by the room's code: it holds the room's two WebSockets (with the
+# hibernation API, so a room that is only waiting costs almost nothing), runs
+# the room's state machine and owns its clocks. A class of its own, so the
+# migration below creates it on the next deploy.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RoomDO"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["RoomDO"]
+
 # The leaderboards (ARCHITECTURE.md §10): scores and the nightly snapshots.
 # Local dev and every test use wrangler's local D1 (under .wrangler/); nothing
 # here or in the scripts points at the remote database. The owner creates it

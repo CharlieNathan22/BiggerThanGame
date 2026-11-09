@@ -10,6 +10,8 @@
  *   seed(ranked, gameNo)  = HMAC-SHA256(RUN_SECRET, "ranked:" + gameNo)
  *   seed(stream, pool, runId)
  *                         = HMAC-SHA256(RUN_SECRET, "stream:<pool>:" + runId)
+ *   seed(duel, pool, matchId)
+ *                         = HMAC-SHA256(RUN_SECRET, "duel:<pool>:" + matchId)
  *
  * Each Endless variant's domain is its `seedDomain` (variants.ts in @bt/core),
  * so no two variants' runs can share a seed even if they shared a run id.
@@ -22,8 +24,8 @@
  * are at most 2³² runs per mode. Kept on purpose: ARCHITECTURE.md §7.
  */
 
-import { seedDomainOf, streamSeedDomain } from "@bt/core";
-import type { EndlessVariantId, StreamPool } from "@bt/core";
+import { duelSeedDomain, seedDomainOf, streamSeedDomain } from "@bt/core";
+import type { DuelPool, EndlessVariantId, StreamPool } from "@bt/core";
 import { hmacSha256, toHex } from "./hmac.js";
 import type { RunMode } from "./run-id.js";
 
@@ -54,6 +56,15 @@ export async function rankedSeed(secret: string, gameNo: number): Promise<string
  */
 export async function streamSeed(secret: string, runId: string, pool: StreamPool): Promise<string> {
   return toHex(await hmacSha256(secret, `${streamSeedDomain(pool)}${runId}`));
+}
+
+/**
+ * A 1v1 match's seed, under its pool's own domain (`duelSeedDomain`, @bt/core).
+ * `matchId` is the match's own, `YYYYMMDD-<uuid>`, minted by the room when the
+ * match starts: a rematch is another id, and another deal.
+ */
+export async function duelSeed(secret: string, matchId: string, pool: DuelPool): Promise<string> {
+  return toHex(await hmacSha256(secret, `${duelSeedDomain(pool)}${matchId}`));
 }
 
 /** The seed for a run of `mode`. */

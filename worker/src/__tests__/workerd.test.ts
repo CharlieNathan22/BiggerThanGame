@@ -4,7 +4,9 @@
  * (worker/test/entry.ts). What the Node tests can only fake: a nonce spent
  * once in real storage, the resend rule, the alarm closing a silent run (and
  * finishing and posting a quiet Daily one into D1), whole runs over HTTP, and
- * the same seed dealing the same run here as in Node.
+ * the same seed dealing the same run here as in Node. And 1v1's rooms: the
+ * real `RoomDO`, a whole match over two real WebSockets with a disconnect and
+ * a rejoin, a seat taken over, and the alarm closing a question and a room.
  *
  * Slower than the rest (the Worker is bundled and workerd started once).
  */
@@ -13,7 +15,16 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DAILY_QUESTIONS, IDLE_FINISH_MS, buildRun, buildStreamRun, valueOf } from "@bt/core";
+import {
+  DAILY_QUESTIONS,
+  IDLE_FINISH_MS,
+  ROOM_IDLE_MS,
+  ROOM_QUIET_MS,
+  buildDuelRun,
+  buildRun,
+  buildStreamRun,
+  valueOf,
+} from "@bt/core";
 import type {
   BoardResponse,
   DailyGuessResponse,
@@ -21,6 +32,10 @@ import type {
   DailyStartResponse,
   Guess,
   GuessResponse,
+  RoomClientMessage,
+  RoomQuestion,
+  RoomSeatResponse,
+  RoomServerMessage,
   RoundPayload,
   RunStartResponse,
   StreamGuessResponse,
@@ -46,9 +61,17 @@ const server = createTestHarness({
         compatibility_date: "2026-09-17",
         compatibility_flags: ["nodejs_compat"],
         vars: { RUN_SECRET: SECRET, TURNSTILE_SECRET: "test-turnstile-secret" },
-        durable_objects: { bindings: [{ name: "RUNS", class_name: "RunDO" }] },
+        durable_objects: {
+          bindings: [
+            { name: "RUNS", class_name: "RunDO" },
+            { name: "ROOMS", class_name: "RoomDO" },
+          ],
+        },
         d1_databases: [{ binding: "DB", database_name: "test", database_id: "test-db" }],
-        migrations: [{ tag: "v1", new_sqlite_classes: ["RunDO"] }],
+        migrations: [
+          { tag: "v1", new_sqlite_classes: ["RunDO"] },
+          { tag: "v2", new_sqlite_classes: ["RoomDO"] },
+        ],
       },
     },
   ],
@@ -453,5 +476,400 @@ describe("a Twitch Mode match under workerd", () => {
     }
     expect(answered).toBe(10);
     expect(last).toMatchObject({ end: "finished", score: 7 });
+  }, 60_000);
+});
+
+describe("a 1v1 room under workerd", () => {
+  /** The test Worker's RoomDO, with its test-only `alarmAt` and `alarmDue`. */
+  interface RoomsBinding {
+    idFromName(name: string): unknown;
+    get(id: unknown): {
+      alarmAt(now: number): Promise<void>;
+      alarmDue(): Promise<number | null>;
+    };
+  }
+
+  /** Where the harness is listening: a real socket needs a real address. */
+  let base: URL;
+
+  /** One player's real WebSocket: what it has been sent, and a way to wait for the next of a kind. */
+  class Seat {
+    readonly messages: RoomServerMessage[] = [];
+    readonly raw: string[] = [];
+    closed: { code: number; reason: string } | undefined;
+    private cursor = 0;
+    private readonly ws: WebSocket;
+
+    constructor(code: string) {
+      const url = new URL(`/api/room/ws?code=${code}`, base);
+      url.protocol = "ws:";
+      this.ws = new WebSocket(url);
+      this.ws.addEventListener("message", (event) => {
+        const data = String(event.data);
+        this.raw.push(data);
+        if (data !== "pong") this.messages.push(JSON.parse(data) as RoomServerMessage);
+      });
+      this.ws.addEventListener("close", (event) => {
+        this.closed = { code: event.code, reason: event.reason };
+      });
+    }
+
+    opened(): Promise<void> {
+      return new Promise((done, failed) => {
+        this.ws.addEventListener("open", () => done(), { once: true });
+        this.ws.addEventListener("error", () => failed(new Error("socket failed")), {
+          once: true,
+        });
+      });
+    }
+
+    send(message: RoomClientMessage | string): void {
+      this.ws.send(typeof message === "string" ? message : JSON.stringify(message));
+    }
+
+    /** The next message of type `t` not yet taken, waiting for it if it hasn't come. */
+    async next<T extends RoomServerMessage["t"]>(
+      t: T,
+    ): Promise<Extract<RoomServerMessage, { t: T }>> {
+      const until = Date.now() + 10_000;
+      for (;;) {
+        for (; this.cursor < this.messages.length; this.cursor++) {
+          const message = this.messages[this.cursor]!;
+          if (message.t === t) {
+            this.cursor += 1;
+            return message as Extract<RoomServerMessage, { t: T }>;
+          }
+        }
+        if (Date.now() > until) {
+          throw new Error(`no "${t}" came: ${JSON.stringify(this.messages.slice(-4))}`);
+        }
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
+
+    async gone(): Promise<{ code: number; reason: string }> {
+      const until = Date.now() + 10_000;
+      while (this.closed === undefined) {
+        if (Date.now() > until) throw new Error("the socket never closed");
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      return this.closed;
+    }
+
+    close(): void {
+      this.ws.close();
+    }
+  }
+
+  beforeAll(async () => {
+    base = (await server.listen()).url;
+  });
+
+  async function seated(code: string, token: string): Promise<Seat> {
+    const seat = new Seat(code);
+    await seat.opened();
+    seat.send({ v: 1, t: "hello", token });
+    return seat;
+  }
+
+  async function room(
+    questions: 10 | 20 = 10,
+  ): Promise<{ code: string; tokens: [string, string] }> {
+    const made = await post<RoomSeatResponse>("/api/room/create", {
+      pool: "endless",
+      questions,
+      limit: 30,
+      name: "Ada",
+      turnstileToken: "test",
+    });
+    expect(made.status).toBe(200);
+    const joined = await post<RoomSeatResponse>("/api/room/join", {
+      code: made.body.code,
+      name: "Sam",
+      turnstileToken: "test",
+    });
+    expect(joined.status).toBe(200);
+    return { code: made.body.code, tokens: [made.body.token, joined.body.token] };
+  }
+
+  /** The right answer, from the test's own copy of the fixture deck, as at today (the match's day). */
+  function rightPick(question: RoomQuestion): Guess {
+    const today = new Date();
+    const day = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const { round } = question;
+    const challenger = fixtureDeck.find((p) => p.id === round.challenger.id)!;
+    return valueOf(challenger, round.stat.key, day)! > round.anchor.value ? "higher" : "lower";
+  }
+
+  async function alarmAt(code: string, now: number): Promise<void> {
+    const env = (await server.getWorker().getEnv()) as unknown as { ROOMS: RoomsBinding };
+    await env.ROOMS.get(env.ROOMS.idFromName(code)).alarmAt(now);
+  }
+
+  async function alarmDue(code: string): Promise<number | null> {
+    const env = (await server.getWorker().getEnv()) as unknown as { ROOMS: RoomsBinding };
+    return env.ROOMS.get(env.ROOMS.idFromName(code)).alarmDue();
+  }
+
+  it("deals the same match and sudden death from the same seed as Node", async () => {
+    const node = buildDuelRun({
+      deck: fixtureDeck,
+      seed: "duel:endless:1",
+      now: NOW,
+      pool: "endless",
+      questions: 10,
+    })
+      .map((r) => `${r.index}:${r.stat}:${r.anchor.id}>${r.challenger.id}`)
+      .join("|");
+    expect(node.split("|")).toHaveLength(20);
+    const res = await server.fetch(
+      "http://localhost/test/fingerprint?seed=duel:endless:1&variant=endless&questions=10&duel=1",
+    );
+    expect(await res.text()).toBe(node);
+  });
+
+  it("plays a whole match over two real WebSockets, through a disconnect and a rejoin", async () => {
+    const { code, tokens } = await room();
+    expect((await post("/api/room/peek", { code })).body).toEqual({ state: "full" });
+    const host = await seated(code, tokens[0]);
+    let guest = await seated(code, tokens[1]);
+    expect((await host.next("welcome")).you).toBe(0);
+    const welcome = await guest.next("welcome");
+    expect(welcome.you).toBe(1);
+    expect(welcome.room).toMatchObject({
+      code,
+      phase: "lobby",
+      settings: { mode: "duel", pool: "endless", questions: 10, limit: 30 },
+    });
+
+    // The heartbeat is answered, and never read as a message.
+    guest.send("ping");
+    host.send({ v: 1, t: "ready", ready: true });
+    guest.send({ v: 1, t: "ready", ready: true });
+    // The guest can't start it.
+    guest.send({ v: 1, t: "start" });
+    expect((await guest.next("error")).code).toBe("not_host");
+    host.send({ v: 1, t: "start" });
+
+    let forHost = (await host.next("question")).question;
+    let forGuest = (await guest.next("question")).question;
+    expect(guest.raw).toContain("pong");
+    let hostScore = 0;
+    let guestScore = 0;
+    let end: Extract<RoomServerMessage, { t: "reveal" }>["end"];
+    while (end === undefined) {
+      // The same question for both, at the same moment.
+      expect(forGuest).toEqual(forHost);
+      const index = forHost.round.index;
+      const pick = rightPick(forHost);
+
+      if (index === 4) {
+        // The guest's connection drops mid-match; the host is told, with the time left.
+        guest.close();
+        let away = await host.next("players");
+        while (away.players[1]?.connected !== false) away = await host.next("players");
+        expect(away.players[1]!.rejoinInMs).toBeGreaterThan(25_000);
+        // Back with the same token, on a new socket: the same seat, the same question.
+        guest = await seated(code, tokens[1]);
+        const back = await guest.next("welcome");
+        expect(back.you).toBe(1);
+        expect(back.room.phase).toBe("playing");
+        expect(back.room.question?.round).toEqual(forHost.round);
+        expect(back.room.match).toMatchObject({ no: 1, scores: [hostScore, guestScore] });
+      }
+
+      host.send({ v: 1, t: "answer", q: index, pick });
+      if (index === 6) {
+        // The guest never answers this one: the alarm closes it at its deadline.
+        expect((await guest.next("locked")).seat).toBe(0);
+        await alarmAt(code, Date.now() + 60_000);
+      } else {
+        // The guest gets every third question wrong.
+        guest.send({ v: 1, t: "answer", q: index, pick: index % 3 === 0 ? other(pick) : pick });
+      }
+      const hostReveal = await host.next("reveal");
+      const guestReveal = await guest.next("reveal");
+      const guestRight = index !== 6 && index % 3 !== 0;
+      hostScore += 1;
+      if (guestRight) guestScore += 1;
+      expect(hostReveal.reveal.round).toBe(index);
+      expect(hostReveal.reveal.correct).toBe(true);
+      expect(guestReveal.reveal.correct).toBe(guestRight);
+      expect(guestReveal.reveal.value).toBe(hostReveal.reveal.value);
+      expect(hostReveal.scores).toEqual([hostScore, guestScore]);
+      expect(hostReveal.picks[1]).toBe(index === 6 ? null : guestRight ? pick : other(pick));
+      end = hostReveal.end;
+      if (hostReveal.next !== undefined) {
+        forHost = hostReveal.next;
+        forGuest = guestReveal.next!;
+      }
+    }
+    // Ten for the host; the guest missed questions 3, 6 (never answered) and 9.
+    expect([hostScore, guestScore]).toEqual([10, 7]);
+    expect(end.result).toMatchObject({ winner: 0, reason: "finished", scores: [10, 7] });
+    expect(end.series).toEqual({ wins: [1, 0], draws: 0 });
+
+    // A second answer to the last question, after full time: refused.
+    host.send({ v: 1, t: "answer", q: 10, pick: "higher" });
+    expect((await host.next("error")).code).toBe("out_of_turn");
+
+    // Both ask for a rematch: a new match in the same room.
+    guest.send({ v: 1, t: "rematch" });
+    expect((await host.next("rematch")).seats).toEqual([1]);
+    host.send({ v: 1, t: "rematch" });
+    expect((await guest.next("question")).question).toMatchObject({ match: 2 });
+
+    // The guest leaves it: a forfeit, the host wins, and the guest's socket is closed.
+    guest.send({ v: 1, t: "leave" });
+    const full = await host.next("fulltime");
+    expect(full.result).toMatchObject({ winner: 0, reason: "forfeit", left: 1 });
+    expect(full.series).toEqual({ wins: [2, 0], draws: 0 });
+    expect((await guest.next("closed")).reason).toBe("left");
+    expect((await guest.gone()).code).toBe(4000);
+    host.close();
+  }, 60_000);
+
+  it("takes over a seat with a newer socket, and refuses a forged or foreign token", async () => {
+    const { code, tokens } = await room();
+    const elsewhere = await room();
+    const first = await seated(code, tokens[0]);
+    await first.next("welcome");
+
+    const second = await seated(code, tokens[0]);
+    expect((await second.next("welcome")).you).toBe(0);
+    expect((await first.next("closed")).reason).toBe("replaced");
+    expect((await first.gone()).code).toBe(4001);
+
+    for (const token of [elsewhere.tokens[0], `${tokens[0]}x`, "nonsense"]) {
+      const stranger = await seated(code, token);
+      expect((await stranger.next("error")).code).toBe("bad_token");
+      expect((await stranger.gone()).code).toBe(4002);
+    }
+    // Speaking before `hello` is no better.
+    const rude = new Seat(code);
+    await rude.opened();
+    rude.send({ v: 1, t: "start" });
+    expect((await rude.next("error")).code).toBe("bad_token");
+    await rude.gone();
+    // The seat's own socket is untouched by any of it.
+    second.send({ v: 1, t: "ready", ready: true });
+    let players = await second.next("players");
+    while (players.players[0]?.ready !== true) players = await second.next("players");
+    expect(players.players[0]).toMatchObject({ seat: 0, name: "Ada", connected: true });
+    second.close();
+  }, 60_000);
+
+  it("tells a socket there is no such room, and refuses what isn't a room code", async () => {
+    const seat = new Seat("ZZZZZZ");
+    await seat.opened();
+    expect((await seat.next("closed")).reason).toBe("unknown");
+    expect((await seat.gone()).code).toBe(4000);
+
+    const bad = await server.fetch("http://localhost/api/room/ws?code=nope", {
+      headers: { upgrade: "websocket" },
+    });
+    expect(bad.status).toBe(400);
+    const plain = await server.fetch("http://localhost/api/room/ws?code=K7QM2X");
+    expect(plain.status).toBe(400);
+    const foreign = await server.fetch("http://localhost/api/room/ws?code=K7QM2X", {
+      headers: { upgrade: "websocket", origin: "https://elsewhere.example" },
+    });
+    expect(foreign.status).toBe(403);
+  }, 60_000);
+
+  it("keeps a room while its host is connected, and expires it fifteen minutes after they go", async () => {
+    const { code, tokens } = await room();
+    const host = await seated(code, tokens[0]);
+    await host.next("welcome");
+    // The alarm, as at an hour on: the host is there, so the room is too.
+    await alarmAt(code, Date.now() + 60 * 60_000);
+    expect((await post("/api/room/peek", { code })).body).toEqual({ state: "full" });
+    host.send({ v: 1, t: "ready", ready: true });
+    let players = await host.next("players");
+    while (players.players[0]?.ready !== true) players = await host.next("players");
+    expect(players.players[0]).toMatchObject({ seat: 0, connected: true });
+    // The host goes. Once the room has seen it, fifteen minutes on it is gone.
+    host.close();
+    let state = "open";
+    for (let tries = 0; tries < 50 && state !== "closed"; tries++) {
+      await new Promise((done) => setTimeout(done, 100));
+      await alarmAt(code, Date.now() + ROOM_IDLE_MS + 5000);
+      state = ((await post("/api/room/peek", { code })).body as { state: string }).state;
+    }
+    expect(state).toBe("closed");
+    const join = await post("/api/room/join", { code, name: "Kit", turnstileToken: "test" });
+    expect(join).toEqual({ status: 409, body: { error: "conflict", detail: "closed" } });
+  }, 60_000);
+
+  it("looks for quiet sockets a minute on, and nothing the room is busy with puts that off", async () => {
+    const { code, tokens } = await room();
+    const host = await seated(code, tokens[0]);
+    await host.next("welcome");
+    // Nothing of the room's own is due for hours: the alarm is the sweep, within the minute.
+    const due = await alarmDue(code);
+    expect(due).not.toBeNull();
+    expect(due! - Date.now()).toBeGreaterThan(30_000);
+    expect(due! - Date.now()).toBeLessThanOrEqual(60_000);
+
+    // Another socket arriving, and messages a few hundred milliseconds apart: each sets
+    // the alarm again, and none of them moves the sweep.
+    const guest = await seated(code, tokens[1]);
+    await guest.next("welcome");
+    for (const ready of [true, false, true]) {
+      await new Promise((done) => setTimeout(done, 400));
+      host.send({ v: 1, t: "ready", ready });
+      let players = await host.next("players");
+      while (players.players[0]?.ready !== ready) players = await host.next("players");
+      expect(await alarmDue(code)).toBe(due);
+    }
+
+    // An alarm sweeps, and the minute starts again from there.
+    await alarmAt(code, Date.now());
+    const next = await alarmDue(code);
+    expect(next).toBeGreaterThan(due!);
+    expect(next! - Date.now()).toBeLessThanOrEqual(60_000);
+    host.close();
+    guest.close();
+  }, 60_000);
+
+  it("closes a room on a connected host after two hours with nothing done, and keeps nothing", async () => {
+    const { code, tokens } = await room();
+    const host = await seated(code, tokens[0]);
+    await host.next("welcome");
+    // Just short of the two hours the room is there, connected host and all.
+    await alarmAt(code, Date.now() + ROOM_QUIET_MS - 60_000);
+    expect((await post("/api/room/peek", { code })).body).toEqual({ state: "full" });
+    // Past them, from its alarm: the host is told, as anyone in a closed room is, and hung up on.
+    await alarmAt(code, Date.now() + ROOM_QUIET_MS + 1000);
+    expect((await host.next("closed")).reason).toBe("expired");
+    expect((await host.gone()).code).toBe(4000);
+    expect((await post("/api/room/peek", { code })).body).toEqual({ state: "closed" });
+    const join = await post("/api/room/join", { code, name: "Kit", turnstileToken: "test" });
+    expect(join).toEqual({ status: 409, body: { error: "conflict", detail: "closed" } });
+    // Its token opens nothing now.
+    const late = await seated(code, tokens[0]);
+    expect((await late.next("closed")).reason).toBe("unknown");
+  }, 60_000);
+
+  it("says a third player the room is full, and a taken name is taken", async () => {
+    const made = await post<RoomSeatResponse>("/api/room/create", {
+      pool: "endless",
+      questions: 10,
+      limit: 10,
+      name: "Ada",
+      turnstileToken: "test",
+    });
+    const { code } = made.body;
+    expect((await post("/api/room/peek", { code })).body).toMatchObject({
+      state: "open",
+      host: "Ada",
+    });
+    const same = await post("/api/room/join", { code, name: "ADA", turnstileToken: "test" });
+    expect(same).toEqual({ status: 409, body: { error: "conflict", detail: "name_taken" } });
+    expect(
+      (await post("/api/room/join", { code, name: "Sam", turnstileToken: "test" })).status,
+    ).toBe(200);
+    const third = await post("/api/room/join", { code, name: "Kit", turnstileToken: "test" });
+    expect(third).toEqual({ status: 409, body: { error: "conflict", detail: "full" } });
   }, 60_000);
 });

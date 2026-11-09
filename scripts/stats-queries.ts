@@ -10,7 +10,12 @@
  * double6 the server-measured answer time in ms; for a leave blob6 phase,
  * blob7 trigger, blob8 stat and double1 round; for a Twitch Mode end (blob2
  * `stream`) blob11 the pool, double1 the streamer's score, double2 the
- * questions, double3 the limit, double4 chat's score, double5 the peak voters. Counts are
+ * questions, double3 the limit, double4 chat's score, double5 the peak voters; for
+ * 1v1 (blob2 `duel`, worker/src/room-analytics.ts) index1 the room's key, blob1
+ * `room`, `start` or `end`, blob3 `rematch` for a match after a room's first,
+ * blob11 the pool, the questions and the limit in double1 and double2 (double3
+ * and double4 on an end, after the higher and the lower score), and on an end
+ * double5 the sudden-death questions played. Counts are
  * `SUM(_sample_interval)`, never `count()`, so they stay right if Analytics
  * Engine samples.
  *
@@ -442,6 +447,33 @@ WHERE blob2 = 'stream'
   AND ${timeWindow(o)}
 GROUP BY pool, questions, limit_s
 ORDER BY matches DESC`,
+  },
+  duel: {
+    title: "1v1: rooms and matches",
+    about:
+      "Per pool, length and timer: rooms made, matches started and finished, how many were " +
+      "rematches, went to sudden death, were drawn or were forfeited, and the mean winning " +
+      "and losing scores. Counts only: never a name or a room code.",
+    sql: (o) => `SELECT
+  blob11 AS pool,
+  if(blob1 = 'end', double3, double1) AS questions,
+  if(blob1 = 'end', double4, double2) AS limit_s,
+  sumIf(_sample_interval, blob1 = 'room') AS rooms,
+  sumIf(_sample_interval, blob1 = 'start') AS started,
+  sumIf(_sample_interval, blob1 = 'start' AND blob3 = 'rematch') AS rematches,
+  sumIf(_sample_interval, blob1 = 'end') AS finished,
+  sumIf(_sample_interval, blob1 = 'end' AND double5 > 0) AS sudden_death,
+  sumIf(_sample_interval, blob6 = 'draw' OR (blob6 = 'exhausted' AND double1 = double2)) AS draws,
+  sumIf(_sample_interval, blob6 = 'forfeit') AS forfeits,
+  round(sumIf(_sample_interval * double1, blob1 = 'end')
+    / sumIf(_sample_interval, blob1 = 'end'), 1) AS winner_mean,
+  round(sumIf(_sample_interval * double2, blob1 = 'end')
+    / sumIf(_sample_interval, blob1 = 'end'), 1) AS loser_mean
+FROM ${DATASET}
+WHERE blob2 = 'duel'
+  AND ${timeWindow(o)}
+GROUP BY pool, questions, limit_s
+ORDER BY rooms DESC`,
   },
   latest: {
     title: "Latest 50 starts and ends",
